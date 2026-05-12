@@ -8,6 +8,14 @@ export const app = express();
 
 app.use(express.json());
 
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "zhihu-hackathon-backend",
+    version: "0.1.0"
+  });
+});
+
 app.use("/api/health", healthRoutes);
 app.use("/api/zhihu", zhihuRoutes);
 app.use("/api/search", searchRoutes);

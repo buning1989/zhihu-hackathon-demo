@@ -5,7 +5,10 @@
   "workspaces": ["backend"],
   "scripts": {
     "dev": "npm run dev -w backend",
+    "dev:backend": "npm run dev -w backend",
+    "dev:compose": "docker compose -f infra/docker-compose.yml up",
     "build": "npm run build -w backend",
-    "start": "npm run start -w backend"
+    "start": "npm run start -w backend",
+    "smoke": "bash scripts/smoke-test.sh"
   }
 }

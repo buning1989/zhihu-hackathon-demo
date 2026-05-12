@@ -27,10 +27,13 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 
 export const config = {
   host: process.env.HOST || "127.0.0.1",
-  port: parsePositiveInteger(process.env.PORT, 3001),
+  port: parsePositiveInteger(process.env.PORT ?? process.env.BACKEND_PORT, 8000),
   zhihu: {
-    accessSecret: process.env.ZH_ACCESS_SECRET ?? "",
+    accessSecret: process.env.ZH_ACCESS_SECRET ?? process.env.ZHIHU_API_KEY ?? "",
     searchApiUrl: process.env.ZH_SEARCH_API_URL || DEFAULT_ZHIHU_SEARCH_API_URL,
-    timeoutMs: parsePositiveInteger(process.env.ZH_API_TIMEOUT_MS, 10000)
+    timeoutMs: parsePositiveInteger(
+      process.env.ZH_API_TIMEOUT_MS ?? process.env.ZHIHU_API_TIMEOUT,
+      10000
+    )
   }
 };

@@ -1,0 +1,31 @@
+name: zhihu-hackathon-demo
+
+services:
+  backend:
+    image: node:22-alpine
+    working_dir: /workspace/backend
+    command: sh -lc "npm install && npm run dev"
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${BACKEND_PORT:-8000}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
+      ZHIHU_API_KEY: ${ZHIHU_API_KEY:-}
+      ZH_ACCESS_SECRET: ${ZHIHU_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
+    volumes:
+      - ..:/workspace
+      - backend_node_modules:/workspace/backend/node_modules
+
+  frontend:
+    image: nginx:1.27-alpine
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    volumes:
+      - ../frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+
+volumes:
+  backend_node_modules:

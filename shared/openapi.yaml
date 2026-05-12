@@ -1,0 +1,340 @@
+openapi: 3.1.0
+info:
+  title: Zhihu Hackathon Demo API
+  version: 0.1.0
+  description: Minimal shared contract for frontend and backend collaboration.
+servers:
+  - url: http://localhost:8000
+    description: Local backend
+tags:
+  - name: Health
+  - name: Demo
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Backend is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    service: zhihu-hackathon-backend
+                    version: 0.1.0
+  /api/demo/search:
+    post:
+      tags:
+        - Demo
+      summary: Create a mock demo search session
+      operationId: createDemoSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemoSearchRequest"
+            examples:
+              default:
+                value:
+                  query: "不工作了能去哪儿？"
+                  sessionId: s_demo_001
+                  mode: mock
+      responses:
+        "200":
+          description: Search result shaped for frontend rendering.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoSearchResponse"
+              examples:
+                mock:
+                  value:
+                    schemaVersion: "0.1"
+                    sessionId: s_demo_001
+                    query:
+                      raw: "不工作了能去哪儿？"
+                      display: "想看看离开工作轨道的人后来去了哪里"
+                    sections:
+                      - id: paths
+                        title: "可能路径"
+                        cards:
+                          - id: c_mock_001
+                            type: content
+                            title: "小城市生活"
+                            summary: "一条来自知乎公开内容的占位摘要。"
+                            evidence:
+                              text: "这里放真实或 mock 的原文证据句。"
+                              source:
+                                provider: zhihu
+                                title: "知乎内容标题"
+                                url: "https://www.zhihu.com/question/mock"
+                                authorName: "知乎作者"
+                            actions:
+                              - type: open_url
+                                label: "查看原文"
+                                url: "https://www.zhihu.com/question/mock"
+                    meta:
+                      mode: mock
+                      generatedAt: "2026-05-12T00:00:00.000Z"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/demo/session/{sessionId}:
+    get:
+      tags:
+        - Demo
+      summary: Fetch a demo session by id
+      operationId: getDemoSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: s_demo_001
+      responses:
+        "200":
+          description: Previously generated demo session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoSessionResponse"
+        "404":
+          description: Session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+        version:
+          type: string
+    DemoSearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+        sessionId:
+          type: string
+          description: Optional client-provided session id.
+        mode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+          default: mock
+    DemoSearchResponse:
+      type: object
+      required:
+        - schemaVersion
+        - sessionId
+        - query
+        - sections
+        - meta
+      properties:
+        schemaVersion:
+          type: string
+          example: "0.1"
+        sessionId:
+          type: string
+        query:
+          $ref: "#/components/schemas/QueryView"
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoSection"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DemoSessionResponse:
+      allOf:
+        - $ref: "#/components/schemas/DemoSearchResponse"
+        - type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - active
+                - expired
+    QueryView:
+      type: object
+      required:
+        - raw
+        - display
+      properties:
+        raw:
+          type: string
+        display:
+          type: string
+    DemoSection:
+      type: object
+      required:
+        - id
+        - title
+        - cards
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoCard"
+    DemoCard:
+      type: object
+      required:
+        - id
+        - type
+        - title
+        - summary
+        - evidence
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - person
+            - content
+            - path
+            - build_prompt
+        title:
+          type: string
+        summary:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        evidence:
+          $ref: "#/components/schemas/Evidence"
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Block"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Action"
+    Evidence:
+      type: object
+      required:
+        - text
+        - source
+      properties:
+        text:
+          type: string
+        source:
+          $ref: "#/components/schemas/Source"
+    Source:
+      type: object
+      required:
+        - provider
+        - url
+      properties:
+        provider:
+          type: string
+          example: zhihu
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        authorName:
+          type: string
+        contentId:
+          type: string
+    Block:
+      type: object
+      required:
+        - type
+        - content
+      properties:
+        type:
+          type: string
+          enum:
+            - paragraph
+            - quote
+            - list
+            - callout
+        content:
+          type: string
+        source:
+          $ref: "#/components/schemas/Source"
+    Action:
+      type: object
+      required:
+        - type
+        - label
+      properties:
+        type:
+          type: string
+          enum:
+            - open_url
+            - view_detail
+            - ask_followup
+        label:
+          type: string
+        url:
+          type: string
+          format: uri
+        targetId:
+          type: string
+    ResponseMeta:
+      type: object
+      required:
+        - mode
+        - generatedAt
+      properties:
+        mode:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        traceId:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string

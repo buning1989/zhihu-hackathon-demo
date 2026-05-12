@@ -35,11 +35,13 @@ backend/
 服务会读取项目根目录或 `backend/` 目录下的 `.env.local`：
 
 ```env
-ZH_ACCESS_SECRET=你的知乎 Access Secret
+ZHIHU_API_KEY=你的知乎 API Key
+ZH_ACCESS_SECRET=兼容旧变量，可留空
 ZH_SEARCH_API_URL=https://developer.zhihu.com/api/v1/content/zhihu_search
 ZH_API_TIMEOUT_MS=10000
 HOST=127.0.0.1
-PORT=3001
+BACKEND_PORT=8000
+PORT=8000
 ```
 
 `.env.local` 已加入 `.gitignore`，不要提交真实 Secret。
@@ -54,14 +56,22 @@ npm run build
 npm run dev
 ```
 
-默认监听 `http://127.0.0.1:3001`。
+默认监听 `http://127.0.0.1:8000`。`PORT` 会优先于 `BACKEND_PORT`，用于兼容旧脚本。
 
 ## 接口
+
+### GET /health
+
+```bash
+curl "http://127.0.0.1:8000/health"
+```
+
+根路径健康检查，用于 demo 冒烟测试。
 
 ### GET /api/health
 
 ```bash
-curl "http://127.0.0.1:3001/api/health"
+curl "http://127.0.0.1:8000/api/health"
 ```
 
 返回服务状态。
@@ -69,7 +79,7 @@ curl "http://127.0.0.1:3001/api/health"
 ### GET /api/zhihu/search
 
 ```bash
-curl "http://127.0.0.1:3001/api/zhihu/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=5"
 ```
 
 底层调试接口，会真实调用知乎搜索 API，并保留原始 `Code` / `Message` / `Data` 结构。
@@ -77,7 +87,7 @@ curl "http://127.0.0.1:3001/api/zhihu/search?query=不工作了能去哪儿&coun
 ### GET /api/search
 
 ```bash
-curl "http://127.0.0.1:3001/api/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
 ```
 
 业务搜索接口，会把知乎原始响应映射为前端更容易消费的标准结构：
@@ -112,7 +122,8 @@ curl "http://127.0.0.1:3001/api/search?query=不工作了能去哪儿&count=5"
 ```bash
 npm run build
 npm run dev
-curl "http://127.0.0.1:3001/api/health"
-curl "http://127.0.0.1:3001/api/zhihu/search?query=不工作了能去哪儿&count=5"
-curl "http://127.0.0.1:3001/api/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/health"
+curl "http://127.0.0.1:8000/api/health"
+curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
 ```
