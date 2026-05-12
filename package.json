@@ -1,0 +1,11 @@
+{
+  "name": "zhihu-hackathon-demo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["backend"],
+  "scripts": {
+    "dev": "npm run dev -w backend",
+    "build": "npm run build -w backend",
+    "start": "npm run start -w backend"
+  }
+}
