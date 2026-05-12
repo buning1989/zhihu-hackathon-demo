@@ -1,15 +1,44 @@
 # 知乎黑客松后端
 
-最小可运行 Node.js + TypeScript 后端，使用 Express 提供健康检查和知乎搜索代理接口。
+Node.js + TypeScript + Express 后端服务，当前提供健康检查、知乎搜索调试接口和前端友好的标准搜索接口。
+
+## 目录结构
+
+```text
+backend/
+  src/
+    server.ts
+    app.ts
+    config/
+      env.ts
+    routes/
+      health.routes.ts
+      zhihu.routes.ts
+      search.routes.ts
+    providers/
+      zhihu/
+        zhihu.provider.ts
+        zhihu.types.ts
+        zhihu.mapper.ts
+    services/
+      search.service.ts
+    middleware/
+      error.middleware.ts
+    types/
+      api.types.ts
+    utils/
+      httpError.ts
+```
 
 ## 环境变量
 
-服务会读取项目根目录下的 `.env.local`：
+服务会读取项目根目录或 `backend/` 目录下的 `.env.local`：
 
 ```env
 ZH_ACCESS_SECRET=你的知乎 Access Secret
 ZH_SEARCH_API_URL=https://developer.zhihu.com/api/v1/content/zhihu_search
 ZH_API_TIMEOUT_MS=10000
+HOST=127.0.0.1
 PORT=3001
 ```
 
@@ -17,31 +46,73 @@ PORT=3001
 
 ## 启动
 
+在项目根目录执行：
+
 ```bash
 npm install
+npm run build
 npm run dev
 ```
 
-默认监听 `http://localhost:3001`。
+默认监听 `http://127.0.0.1:3001`。
 
-## 测试
+## 接口
 
-```bash
-curl "http://localhost:3001/api/health"
-```
+### GET /api/health
 
 ```bash
-curl "http://localhost:3001/api/zhihu/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:3001/api/health"
 ```
 
-搜索接口会真实调用：
+返回服务状态。
 
-```text
-GET https://developer.zhihu.com/api/v1/content/zhihu_search?Query=...&Count=...
+### GET /api/zhihu/search
+
+```bash
+curl "http://127.0.0.1:3001/api/zhihu/search?query=不工作了能去哪儿&count=5"
 ```
 
-并携带：
+底层调试接口，会真实调用知乎搜索 API，并保留原始 `Code` / `Message` / `Data` 结构。
 
-- `Authorization: Bearer ${ZH_ACCESS_SECRET}`
-- `X-Request-Timestamp: 当前秒级 Unix 时间戳`
-- `Content-Type: application/json`
+### GET /api/search
+
+```bash
+curl "http://127.0.0.1:3001/api/search?query=不工作了能去哪儿&count=5"
+```
+
+业务搜索接口，会把知乎原始响应映射为前端更容易消费的标准结构：
+
+```json
+{
+  "success": true,
+  "data": {
+    "query": "不工作了能去哪儿",
+    "count": 5,
+    "hasMore": false,
+    "searchHashId": "",
+    "items": []
+  }
+}
+```
+
+错误统一返回：
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ZHIHU_AUTH_FAILED",
+    "message": "知乎 API 鉴权失败"
+  }
+}
+```
+
+## 验收
+
+```bash
+npm run build
+npm run dev
+curl "http://127.0.0.1:3001/api/health"
+curl "http://127.0.0.1:3001/api/zhihu/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:3001/api/search?query=不工作了能去哪儿&count=5"
+```

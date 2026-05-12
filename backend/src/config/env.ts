@@ -2,12 +2,14 @@ import dotenv from "dotenv";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-for (const envPath of [
+const envPaths = [
   resolve(process.cwd(), ".env.local"),
   resolve(process.cwd(), "..", ".env.local")
-]) {
+];
+
+for (const envPath of envPaths) {
   if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
+    dotenv.config({ path: envPath, override: false });
   }
 }
 
