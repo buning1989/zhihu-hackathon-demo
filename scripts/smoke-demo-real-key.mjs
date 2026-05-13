@@ -92,19 +92,16 @@ async function main() {
     assertNonEmptyString(chatData.boundaryNotice, "data.boundaryNotice");
 
     const chatDebug = readRecord(chatData.debug, "data.debug");
-    assertEqual(chatDebug.chatMode, "mock_fallback", "data.debug.chatMode");
+    assertEqual(chatDebug.chatMode, "real_llm_chat", "data.debug.chatMode");
 
-    const evidenceStage = findStage(stageResults, "evidence_extract");
-    const evidenceStatus = evidenceStage
-      ? `evidence_extract attempted=${evidenceStage.attempted} succeeded=${evidenceStage.succeeded}`
-      : "evidence_extract not reported";
+    const evidenceStage = assertStageAttemptedSucceeded(stageResults, "evidence_extract");
 
     console.log("PASS demo real-key smoke");
     console.log(`demo counts paths=${demoData.paths.length} people=${demoData.people.length} personas=${personas.length}`);
     console.log(
       `deepseek stages ${REQUIRED_DEEPSEEK_STAGES.map((stage) => `${stage}=1`).join(" ")}`
     );
-    console.log(`${evidenceStatus}; persona_chat=mock_fallback`);
+    console.log(`summary evidence_extract=${evidenceStage.succeeded} persona_chat=${chatDebug.chatMode}`);
   } finally {
     await closeServer(server);
   }
@@ -146,6 +143,17 @@ function assertStageSucceeded(stageResults, stage) {
   }
 
   assertEqual(result.succeeded, 1, `data.debug.llmStageResults.${stage}.succeeded`);
+}
+
+function assertStageAttemptedSucceeded(stageResults, stage) {
+  const result = findStage(stageResults, stage);
+  if (!result) {
+    throw new Error(`data.debug.llmStageResults missing ${stage}.`);
+  }
+
+  assertEqual(result.attempted, 1, `data.debug.llmStageResults.${stage}.attempted`);
+  assertEqual(result.succeeded, 1, `data.debug.llmStageResults.${stage}.succeeded`);
+  return result;
 }
 
 function findStage(stageResults, stage) {
