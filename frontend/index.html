@@ -935,14 +935,6 @@
       max-width: 100%;
     }
 
-    .sample-library-title {
-      width: min(1180px, 100%);
-      margin: 34px auto 0;
-      color: var(--text);
-      font-size: 24px;
-      line-height: 1.25;
-    }
-
     .empty-result-panel {
       position: relative;
       z-index: 10;
@@ -1609,7 +1601,6 @@
       width: 100%;
       padding: 11px 0 10px;
       border: 0;
-      border-bottom: 1px dashed rgba(216, 154, 69, 0.42);
       border-radius: 0;
       color: var(--text);
       background: transparent;
@@ -1620,15 +1611,21 @@
 
     .article-link:hover {
       color: var(--warm);
-      border-bottom-color: rgba(216, 154, 69, 0.68);
       background: transparent;
       transform: translateY(-1px);
     }
 
     .article-link.is-active {
       color: #3f2b0f;
-      border-bottom-color: rgba(216, 154, 69, 0.72);
       background: transparent;
+    }
+
+    .article-link-text {
+      text-decoration-line: underline;
+      text-decoration-color: rgba(216, 154, 69, 0.58);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 5px;
+      text-decoration-skip-ink: none;
     }
 
     .card-actions {
@@ -1703,6 +1700,7 @@
     .inline-ask-panel {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 22px;
       height: 100%;
       overflow: hidden;
       padding: 34px;
@@ -1715,20 +1713,13 @@
 
     .inline-ask-head {
       display: grid;
-      gap: 10px;
-      margin-bottom: 18px;
+      gap: 0;
     }
 
     .inline-ask-kicker {
       color: var(--accent-warm);
       font-size: 14px;
       font-weight: 900;
-    }
-
-    .inline-ask-boundary {
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.72;
     }
 
     .inline-ask-text {
@@ -1739,23 +1730,23 @@
 
     .inline-ask-actions {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 10px;
       align-items: center;
-      margin-top: 22px;
       padding-top: 18px;
       border-top: 1px solid var(--line);
     }
 
     .inline-ask-actions .primary {
-      flex: 1 1 100%;
+      flex: 0 0 auto;
     }
 
     .inline-ask-actions .text-button {
-      flex: 1 1 auto;
+      flex: 0 0 auto;
     }
 
     .ghost-text-button {
+      margin-left: auto;
       min-height: 42px;
       padding: 9px 8px;
       border: 0;
@@ -3442,6 +3433,16 @@
       return person.personaDisplayName || `${person.name}的分身`;
     }
 
+    function personDisplayName(person) {
+      const raw = textOf(person?.name || "").trim();
+      const cleaned = raw
+        .replace(/基于公开回答整理的/g, "")
+        .replace(/样本/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      return cleaned && !/^\d+$/.test(cleaned) ? cleaned : "知乎用户";
+    }
+
     function peopleForPath(pathId = state.selectedPathId) {
       const path = paths.find((item) => item.id === pathId);
       const personRefs = new Set(toArray(path?.personRefs).map(String));
@@ -3735,7 +3736,6 @@
                   <p>${escapeHtml(selectedPath.desc)}</p>
                 </div>
               </div>
-              <h2 class="sample-library-title">人物样本库</h2>
               <div class="path-showcase is-expanded" aria-label="${escapeHtml(selectedPath.name)}的前人样本库">
                 ${renderExpandedPathPanel(selectedPath)}
               </div>
@@ -3774,7 +3774,7 @@
       return `
         <button class="sample-person ${person.id === state.selectedPersonId ? "is-selected" : ""}" type="button" data-action="select-person" data-id="${person.id}" data-gender="${person.gender}" style="animation-delay:${duplicateIndex * -0.22}s">
           <img class="peep-img" src="${avatarSrc(person.avatar, duplicateIndex)}" alt="">
-          <span class="caption"><strong>Hi，我是${person.name}</strong>${person.badge}</span>
+          <span class="caption"><strong>Hi，我是${escapeHtml(personDisplayName(person))}</strong></span>
         </button>
       `;
     }
@@ -3836,7 +3836,6 @@
       const articles = getPersonArticles(person);
       const matchReasons = toArray(person.match?.reasons);
       const matchedVariables = toArray(person.match?.matchedVariables || person.match?.matched_variables);
-      const riskNotes = toArray(person.match?.riskNotes || person.match?.risk_notes);
       const matchMeta = [
         person.match?.level ? `匹配等级：${person.match.level}` : "",
         person.match?.score !== undefined ? `匹配度：${formatScore(person.match.score)}` : ""
@@ -3844,13 +3843,11 @@
       return `
         <article class="person-card has-peep">
           <div class="card-peep" aria-hidden="true"><img src="${avatarSrc(person.avatar)}" alt=""></div>
-          <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(person.name)}</a></h2>
-          <p class="meta-line">${escapeHtml([person.role, person.badge].filter(Boolean).join(" · "))}</p>
+          <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
           ${person.oneLine ? `<p class="summary">${escapeHtml(person.oneLine)}</p>` : ""}
           <div class="section-block">
             <h3>TA 是谁</h3>
             <p>${person.who}</p>
-            ${renderSourceLine(person.sourceRefs)}
           </div>
           <div class="section-block">
             <h3>为什么匹配到 TA</h3>
@@ -3858,12 +3855,10 @@
             <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
             ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
             ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
-            ${riskNotes.length ? `<p class="source-line">风险提示：${escapeHtml(riskNotes.join("；"))}</p>` : ""}
           </div>
           <div class="section-block">
             <h3>TA 的经历时间线</h3>
             <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
-            ${person.evidenceIds.length ? `<p class="evidence-line">证据：${escapeHtml(person.evidenceIds.join("、"))}</p>` : ""}
           </div>
           ${person.lesson ? `
             <div class="section-block">
@@ -3872,15 +3867,8 @@
             </div>
           ` : ""}
           <div class="section-block">
-            <h3>AI 分身边界</h3>
-            <p>${escapeHtml(person.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</p>
-            ${person.personaOpeningLine ? `<p class="meta-line">${escapeHtml(person.personaOpeningLine)}</p>` : ""}
-            ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
-            ${renderSourceLine(person.personaSourceRefs)}
-          </div>
-          <div class="section-block">
             <h3>TA的真实经历</h3>
-            <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}">《${escapeHtml(article.title)}》</button>`).join("")}</div>
+            <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
           </div>
           <div class="card-actions">
             <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
@@ -3896,10 +3884,6 @@
         <section class="inline-ask-panel" aria-label="向 TA 提问">
           <div class="inline-ask-head">
             <span class="inline-ask-kicker">向 TA 提问</span>
-            <p class="inline-ask-boundary">${escapeHtml(person.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</p>
-            ${person.personaOpeningLine ? `<p class="inline-ask-boundary">${escapeHtml(person.personaOpeningLine)}</p>` : ""}
-            ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
-            ${renderSourceLine(person.personaSourceRefs)}
           </div>
           <textarea class="editable-text inline-ask-text" id="inlineAskText">${escapeHtml(questionText)}</textarea>
           <div class="inline-ask-actions">
