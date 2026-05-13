@@ -198,7 +198,21 @@ export interface DemoDebug {
   llmComposerUsed: boolean;
   llmRepairUsed?: boolean;
   llmRepairFailed?: boolean;
+  llmStageResults?: DemoDebugLlmStageResult[];
+  enhancedPeopleCount?: number;
+  enhancedPathCount?: number;
+  partialFallbackUsed?: boolean;
   fallbackReason: string;
   guardWarnings: string[];
   notes: string[];
+}
+
+export interface DemoDebugLlmStageResult {
+  stage: "path_enhancer" | "people_enhancer" | "persona_enhancer";
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  repairUsed: number;
+  repairFailed: number;
+  fallbackReasons: string[];
 }
