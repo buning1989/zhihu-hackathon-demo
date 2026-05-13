@@ -15,6 +15,11 @@ interface TokenExchangeLogContext {
   hasCode: boolean;
 }
 
+interface ZhihuJsonResponse {
+  httpStatus: number;
+  body: unknown;
+}
+
 export function buildZhihuAuthorizationUrl(state: string): string {
   assertZhihuOAuthConfigured();
 
@@ -38,7 +43,14 @@ export async function exchangeCodeForToken(code: string): Promise<ZhihuAccessTok
     code
   });
 
-  const responseBody = await requestZhihuJson(
+  const tokenExchangeLogContext: TokenExchangeLogContext = {
+    redirectUri: config.zhihu.redirectUri,
+    appId: config.zhihu.appId,
+    grantType: "authorization_code",
+    hasCode: Boolean(code)
+  };
+
+  const tokenResponse = await requestZhihuTokenJson(
     new URL("/access_token", config.zhihu.openapiBase),
     {
       method: "POST",
@@ -47,23 +59,19 @@ export async function exchangeCodeForToken(code: string): Promise<ZhihuAccessTok
       },
       body
     },
-    "ZHIHU_OAUTH_TOKEN_FAILED",
-    "知乎 OAuth token 请求失败",
-    {
-      redirectUri: config.zhihu.redirectUri,
-      appId: config.zhihu.appId,
-      grantType: "authorization_code",
-      hasCode: Boolean(code)
-    }
+    tokenExchangeLogContext
   );
 
+  const responseBody = tokenResponse.body;
   const payload = unwrapData(responseBody);
   if (!isRecord(payload)) {
+    logTokenExchangeFailure(tokenResponse.httpStatus, responseBody, tokenExchangeLogContext);
     throw new HttpError(502, "ZHIHU_OAUTH_BAD_RESPONSE", "知乎 OAuth token 响应格式异常");
   }
 
   const accessToken = readString(payload, "access_token", "accessToken");
   if (!accessToken) {
+    logTokenExchangeFailure(tokenResponse.httpStatus, responseBody, tokenExchangeLogContext);
     throw new HttpError(502, "ZHIHU_OAUTH_BAD_RESPONSE", "知乎 OAuth token 响应缺少 access_token");
   }
 
@@ -127,8 +135,7 @@ async function requestZhihuJson(
   url: URL,
   init: RequestInit,
   errorCode: string,
-  fallbackMessage: string,
-  tokenExchangeLogContext?: TokenExchangeLogContext
+  fallbackMessage: string
 ): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.zhihu.timeoutMs);
@@ -142,10 +149,6 @@ async function requestZhihuJson(
     const apiCode = readApiCode(body);
 
     if (!response.ok || (apiCode !== null && apiCode >= 400)) {
-      if (tokenExchangeLogContext) {
-        logTokenExchangeFailure(response.status, body, tokenExchangeLogContext);
-      }
-
       throw new HttpError(
         mapZhihuErrorStatus(response.status, apiCode),
         errorCode,
@@ -160,18 +163,56 @@ async function requestZhihuJson(
     }
 
     if (error instanceof Error && error.name === "AbortError") {
-      if (tokenExchangeLogContext) {
-        logTokenExchangeFailure(null, null, tokenExchangeLogContext);
-      }
-
       throw new HttpError(504, "ZHIHU_OAUTH_TIMEOUT", "知乎 OAuth 请求超时");
     }
 
-    if (tokenExchangeLogContext) {
-      logTokenExchangeFailure(null, null, tokenExchangeLogContext);
+    throw new HttpError(502, errorCode, fallbackMessage);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestZhihuTokenJson(
+  url: URL,
+  init: RequestInit,
+  tokenExchangeLogContext: TokenExchangeLogContext
+): Promise<ZhihuJsonResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.zhihu.timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+    const body = parseJsonBody(await response.text());
+
+    if (!response.ok) {
+      logTokenExchangeFailure(response.status, body, tokenExchangeLogContext);
+
+      throw new HttpError(
+        mapZhihuErrorStatus(response.status, readApiCode(body)),
+        "ZHIHU_OAUTH_TOKEN_FAILED",
+        readZhihuErrorMessage(body) || "知乎 OAuth token 请求失败"
+      );
     }
 
-    throw new HttpError(502, errorCode, fallbackMessage);
+    return {
+      httpStatus: response.status,
+      body
+    };
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === "AbortError") {
+      logTokenExchangeFailure(null, null, tokenExchangeLogContext);
+      throw new HttpError(504, "ZHIHU_OAUTH_TIMEOUT", "知乎 OAuth 请求超时");
+    }
+
+    logTokenExchangeFailure(null, null, tokenExchangeLogContext);
+    throw new HttpError(502, "ZHIHU_OAUTH_TOKEN_FAILED", "知乎 OAuth token 请求失败");
   } finally {
     clearTimeout(timeout);
   }
