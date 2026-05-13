@@ -11,6 +11,7 @@
     "AI is not a fact source; persona answers must be grounded in public content and evidence.",
     "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
     "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
+    "paths should be differentiated life paths with summary, whyRelevant, tradeoff, diversityKey, and sourceRefs.",
     "people[].experienceSummary is the primary author/sample experience summary and should be displayed only when source=llm and status=ready.",
     "Debug fallbackSummary may exist for troubleshooting, but it is not a frontend primary display field.",
     "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape."
@@ -95,25 +96,42 @@
     "paths": [
       {
         "id": "return-home",
-        "name": "去了又回来",
-        "count": 18,
-        "desc": "这类样本把远方当成暂停键，后来发现真正要处理的是工作边界、现金流和回流成本。",
+        "title": "有人去了远方，又回头重建工作边界",
+        "summary": "这条路把远方当成暂停键，先解决从高压工作里撤出来的问题，同时把现金流和回流节奏摆到台面上。",
+        "whyRelevant": "它回应的是用户想离开工作结构、去别处生活的困惑：地点能提供距离，但不能自动解决工作边界。",
+        "tradeoff": "代价是收入、身份周期和重新找工作的节奏会变得更具体，公开内容也只支撑这段经历片段。",
         "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照工作边界和回流成本，判断仍以来源片段为准。",
-        "short": "看清代价后回流"
+        "diversityKey": "回流成本",
+        "stance": "experience",
+        "personRefs": ["person_return_home"],
+        "evidenceIds": ["ev_return_home_place", "ev_return_home_cashflow"],
+        "sourceRefs": ["source_mock_return_home"]
       },
       {
         "id": "small-city",
-        "name": "换个城市生活",
-        "count": 23,
-        "desc": "这类样本没有彻底离开工作，而是用更低成本的城市重新调整节奏。",
-        "short": "降低成本重排生活"
+        "title": "有人换到低成本城市，先把日常排稳",
+        "summary": "这条路不是彻底不工作，而是用更低的房租、通勤和生活压力换回判断时间。",
+        "whyRelevant": "它回应的是“不工作之后能去哪儿”的落脚问题：先找一个能活下来的生活半径，再谈长期方向。",
+        "tradeoff": "限制是机会密度和社交支持可能下降，低成本地点不能自动带来新的职业秩序。",
+        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照生活成本和停靠地点，判断仍以来源片段为准。",
+        "diversityKey": "低成本停靠",
+        "stance": "mixed",
+        "personRefs": ["person_small_city"],
+        "evidenceIds": ["ev_small_city_cost"],
+        "sourceRefs": ["source_mock_small_city"]
       },
       {
         "id": "freelance-transition",
-        "name": "自由职业过渡",
-        "count": 14,
-        "desc": "这类样本尝试把时间拿回来，但同时需要面对收入波动和自我管理。",
-        "short": "换自由也换压力"
+        "title": "有人把工作搬出公司，用接单换自主时间",
+        "summary": "这条路不是简单不上班，而是把公司里的工作换成接单、写作、咨询或远程协作。",
+        "whyRelevant": "它回应的是不想继续被组织消耗、但仍需要收入来源的矛盾。",
+        "tradeoff": "代价是收入波动、自我管理和获客压力会被放大，自由本身不等于稳定。",
+        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照现金流和自我管理压力，判断仍以来源片段为准。",
+        "diversityKey": "自由职业过渡",
+        "stance": "mixed",
+        "personRefs": ["person_freelance"],
+        "evidenceIds": ["ev_freelance_income"],
+        "sourceRefs": ["source_mock_freelance"]
       }
     ],
     "people": [

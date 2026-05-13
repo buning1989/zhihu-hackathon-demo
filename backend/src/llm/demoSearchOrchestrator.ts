@@ -5,7 +5,20 @@ import {
   buildPromptUserContext,
   createDemoContextUsed
 } from "../services/userContext.service.js";
-import { selectQualitySearchItems } from "../services/demoCandidateQuality.service.js";
+import {
+  MAX_REFILL_ROUNDS,
+  MAX_RERANK_CANDIDATES,
+  MIN_EFFECTIVE_CANDIDATES,
+  TARGET_EFFECTIVE_CANDIDATES,
+  assessSearchCandidates,
+  attachAssessmentMetadata,
+  buildDynamicTopicSignals,
+  buildRoughTierDistribution,
+  selectRerankCandidateAssessments,
+  selectRuleFallbackAssessments,
+  toCandidateQualityDebug,
+  type CandidateAssessment
+} from "../services/demoCandidateQuality.service.js";
 import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoDataMode,
@@ -19,6 +32,7 @@ import {
   type DemoPersona,
   type DemoSearchQueryPlan,
   type DemoSearchQueryResultDebug,
+  type DemoSearchQueryType,
   type DemoSearchResponse,
   type DemoSourceRef
 } from "../types/demo.types.js";
@@ -31,12 +45,15 @@ import { EVIDENCE_EXTRACT_SYSTEM_PROMPT } from "./prompts/evidenceExtractPrompt.
 import { EXPERIENCE_SUMMARY_SYSTEM_PROMPT } from "./prompts/experienceSummaryPrompt.js";
 import { GROUNDING_GUARD_SYSTEM_PROMPT } from "./prompts/groundingGuardPrompt.js";
 import { INTENT_EXPAND_SYSTEM_PROMPT } from "./prompts/intentExpandPrompt.js";
+import { CANDIDATE_RERANK_SYSTEM_PROMPT } from "./prompts/candidateRerankPrompt.js";
 import {
+  type CandidateRerankOutput,
   type DemoResponseComposeOutput,
   type EvidenceExtractOutput,
   type ExperienceSummaryOutput,
   type GroundingGuardOutput,
   type IntentExpandOutput,
+  parseCandidateRerankOutput,
   parseDemoResponseComposeOutput,
   parseEvidenceExtractOutput,
   parseExperienceSummaryOutput,
@@ -44,6 +61,7 @@ import {
   parseIntentExpandOutput
 } from "./schemas/taskSchemas.js";
 import { buildFallbackSearchQueryPlan, sortSearchQueryPlans } from "./searchQueryPlan.js";
+import { enforceDemoPathDiversity } from "../services/demoPathDiversity.service.js";
 
 interface ComposeMultiLlmDemoSearchInput {
   query: string;
@@ -69,9 +87,15 @@ interface CleanedCandidate {
   experienceSignalScore: number;
   contentLength: number;
   filterReason: string;
+  roughScore?: number;
   matchedQuery?: string;
   queryType?: string;
   queryPurpose?: string;
+  contentRole?: string;
+  relationToUserIntent?: string;
+  summaryAngle?: string;
+  diversityKey?: string;
+  keepReason?: string;
 }
 
 interface ExperienceSummaryCandidate {
@@ -132,8 +156,30 @@ interface SearchByExpandedQueriesResult {
   items: SearchItem[];
   searchQueries: DemoSearchQueryPlan[];
   searchQueryResults: DemoSearchQueryResultDebug[];
+  rawCandidateCount: number;
   mergedCandidateCount: number;
   dedupedCandidateCount: number;
+}
+
+interface CandidatePipelineResult {
+  items: SearchItem[];
+  candidateQuality: DemoCandidateQuality[];
+  stageResult: DemoDebugLlmStageResult;
+  durationMs: number;
+  rerankEnabled: boolean;
+  rerankUsed: boolean;
+  rerankFailedReason: string;
+  rerankCandidatesCount: number;
+  selectedCandidatesCount: number;
+  droppedCandidatesCount: number;
+  refillTriggered: boolean;
+  refillReason: string;
+  refillQueries: DemoSearchQueryPlan[];
+  refillCandidateCount: number;
+  finalCandidateCount: number;
+  roughTierDistribution: ReturnType<typeof buildRoughTierDistribution>;
+  finalCandidates: NonNullable<DemoSearchResponse["debug"]["finalCandidates"]>;
+  droppedCandidates: NonNullable<DemoSearchResponse["debug"]["droppedCandidates"]>;
 }
 
 const MAX_SEARCH_QUERIES = 12;
@@ -146,6 +192,7 @@ const EXPERIENCE_SUMMARY_MIN_EXPERIENCE_SIGNAL_SCORE = 0.26;
 const EXPERIENCE_SUMMARY_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEMO_LLM_STAGE_TIMEOUT_MS: Partial<Record<LlmTaskType, number>> = {
   intent_expand: 3000,
+  candidate_rerank: 10000,
   evidence_extract: 9000,
   demo_response_compose: 7000,
   experience_summary: 12000,
@@ -175,12 +222,28 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const recalledSearch = await searchByExpandedQueries(
     input.query,
-    intentStage.output.searchQueries,
+    intentStage.output,
     input.count,
     input.userContext
   );
-  const qualitySelection = selectQualitySearchItems(input.query, recalledSearch.items, MAX_REAL_ITEMS);
-  const cleanedSearchItems = qualitySelection.items;
+  const candidatePipeline = await runCandidatePipeline(
+    input.query,
+    intentStage.output,
+    recalledSearch,
+    input.count,
+    input.userContext
+  );
+  stageResults.push(candidatePipeline.stageResult);
+  timings.push({
+    stageName: candidatePipeline.stageResult.stage,
+    durationMs: candidatePipeline.durationMs,
+    llmUsed: candidatePipeline.rerankUsed,
+    fallbackUsed:
+      candidatePipeline.stageResult.attempted === 0 || candidatePipeline.stageResult.failed > 0,
+    fallbackReason: candidatePipeline.stageResult.fallbackReasons.join("; ")
+  });
+
+  const cleanedSearchItems = candidatePipeline.items;
   if (cleanedSearchItems.length === 0) {
     throw new HttpError(
       502,
@@ -196,7 +259,7 @@ export async function composeMultiLlmDemoSearchResponse(
     items: cleanedSearchItems,
     startedAt: input.startedAt,
     userContext: input.userContext,
-    candidateQuality: qualitySelection.candidateQuality
+    candidateQuality: candidatePipeline.candidateQuality
   });
 
   const candidates = buildCleanedCandidatesFromResponse(response);
@@ -220,6 +283,16 @@ export async function composeMultiLlmDemoSearchResponse(
   timings.push(createStageTiming(composeStage));
 
   const applyStats = applyDemoResponseComposeOutput(response, composeStage.output, guardWarnings);
+  response.debug.pathDiversityCheck = enforceDemoPathDiversity(response.paths, {
+    mergeCount: response.debug.pathDiversityCheck?.mergeCount,
+    notes: [
+      ...(response.debug.pathDiversityCheck?.notes ?? []),
+      composeStage.stageResult.succeeded > 0
+        ? "LLM composer output rechecked for path title/summary diversity"
+        : "LLM composer fallback preserved deterministic path diversity"
+    ]
+  });
+  response.debug.pathDuplicateFound = response.debug.pathDiversityCheck.duplicateFound;
   syncTopLevelPersonas(response);
 
   const experienceSummaryStage = await runTimedStage(() =>
@@ -267,6 +340,9 @@ export async function composeMultiLlmDemoSearchResponse(
     enhancedPathCount: applyStats.pathCount,
     partialFallbackUsed: fallbackSummary.kind === "partial_llm_fallback",
     pathSource: applyStats.pathCount > 0 ? "llm" : response.debug.pathSource,
+    composerFallbackTriggered: composeStage.stageResult.succeeded === 0,
+    pathDuplicateFound: response.debug.pathDiversityCheck?.duplicateFound ?? false,
+    pathDiversityCheck: response.debug.pathDiversityCheck,
     intentStage: buildIntentStageDebug(
       intentStage.stageResult,
       composeStage.stageResult,
@@ -276,11 +352,32 @@ export async function composeMultiLlmDemoSearchResponse(
     fallbackKind: fallbackSummary.kind,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
+    userCoreQuestion: intentStage.output.userCoreQuestion,
+    topicSignals: intentStage.output.topicSignals,
     searchQueries: recalledSearch.searchQueries,
     searchQueryResults: recalledSearch.searchQueryResults,
+    rawCandidateCount: recalledSearch.rawCandidateCount,
     mergedCandidateCount: recalledSearch.mergedCandidateCount,
     dedupedCandidateCount: recalledSearch.dedupedCandidateCount,
     validCandidateCount: cleanedSearchItems.length,
+    roughTierDistribution: candidatePipeline.roughTierDistribution,
+    rerankEnabled: candidatePipeline.rerankEnabled,
+    rerankUsed: candidatePipeline.rerankUsed,
+    rerankDurationMs: candidatePipeline.durationMs,
+    rerankFailedReason: candidatePipeline.rerankFailedReason,
+    rerankCandidatesCount: candidatePipeline.rerankCandidatesCount,
+    selectedCandidatesCount: candidatePipeline.selectedCandidatesCount,
+    droppedCandidatesCount: candidatePipeline.droppedCandidatesCount,
+    refillTriggered: candidatePipeline.refillTriggered,
+    refillReason: candidatePipeline.refillReason,
+    refillQueries: candidatePipeline.refillQueries,
+    refillCandidateCount: candidatePipeline.refillCandidateCount,
+    finalCandidateCount: candidatePipeline.finalCandidateCount,
+    finalCandidates: attachFinalCandidateSourceRefs(
+      candidatePipeline.finalCandidates,
+      response.debug.candidateQuality
+    ),
+    droppedCandidates: candidatePipeline.droppedCandidates,
     candidateQuality: response.debug.candidateQuality,
     experienceSummaryDebug: experienceSummaryStage.output.debug,
     notes:
@@ -499,7 +596,11 @@ async function runDemoResponseComposeStage(
         {
           role: "user",
           content: JSON.stringify({
+            originalQuery: truncateText(query, 120),
             query: truncateText(query, 120),
+            userCoreQuestion: intent.userCoreQuestion,
+            focusTags: intent.focusTags,
+            topicSignals: intent.topicSignals,
             userContext: buildPromptUserContext(userContext),
             intent,
             evidenceExtract: evidence,
@@ -509,6 +610,7 @@ async function runDemoResponseComposeStage(
               sourceRefs: response.meta.sourceRefs.map((sourceRef) => sourceRef.id)
             },
             baseResponse: toDemoComposeContext(response),
+            finalCandidates: candidates.map(toDemoResponseComposeFinalCandidate),
             candidates
           })
         }
@@ -735,12 +837,12 @@ async function runGroundingGuardStage(
 
 async function searchByExpandedQueries(
   _originalQuery: string,
-  queries: DemoSearchQueryPlan[],
+  intent: IntentExpandOutput,
   count: number,
   _userContext?: UserContext
 ): Promise<SearchByExpandedQueriesResult> {
-  const normalizedQueries = sortSearchQueryPlans(queries).slice(0, MAX_SEARCH_QUERIES);
-  const perQueryCount = Math.min(Math.max(count, 3), 5);
+  const normalizedQueries = sortSearchQueryPlans(intent.searchQueries).slice(0, MAX_SEARCH_QUERIES);
+  const perQueryCount = Math.min(Math.max(count, 3), 3);
   const items: SearchItem[] = [];
   const errors: string[] = [];
   const searchQueryResults: DemoSearchQueryResultDebug[] = [];
@@ -782,35 +884,587 @@ async function searchByExpandedQueries(
     items: dedupedItems,
     searchQueries: normalizedQueries,
     searchQueryResults,
+    rawCandidateCount: items.length,
     mergedCandidateCount: items.length,
     dedupedCandidateCount: dedupedItems.length
   };
 }
 
+async function runCandidatePipeline(
+  query: string,
+  intent: IntentExpandOutput,
+  recalledSearch: SearchByExpandedQueriesResult,
+  count: number,
+  userContext?: UserContext
+): Promise<CandidatePipelineResult> {
+  const startedAt = Date.now();
+  const context = {
+    originalQuery: query,
+    userCoreQuestion: intent.userCoreQuestion,
+    focusTags: intent.focusTags,
+    topicSignals: intent.topicSignals,
+    searchQueries: recalledSearch.searchQueries
+  };
+  let allItems = recalledSearch.items;
+  let assessments = assessSearchCandidates(context, allItems);
+  let rerankCandidates = selectRerankCandidateAssessments(assessments);
+  let rerankOutput: CandidateRerankOutput | undefined;
+  let stageResult: DemoDebugLlmStageResult;
+  let rerankFailedReason = "";
+  let rerankDropReasonById = new Map<string, string>();
+  const rerankEnabled = llmRouter.isTaskConfigured("candidate_rerank");
+
+  if (rerankCandidates.length === 0) {
+    stageResult = createSkippedStage("candidate_rerank", "no rough-filtered candidates for rerank");
+  } else if (!rerankEnabled) {
+    stageResult = createSkippedStage("candidate_rerank", "DeepSeek not configured; rule rerank fallback used");
+  } else {
+    try {
+      const content = await runJsonTaskWithStageTimeout("candidate_rerank", {
+        temperature: 0.1,
+        maxTokens: 2200,
+        messages: [
+          {
+            role: "system",
+            content: CANDIDATE_RERANK_SYSTEM_PROMPT
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              originalQuery: truncateText(query, 120),
+              userCoreQuestion: intent.userCoreQuestion,
+              focusTags: intent.focusTags,
+              topicSignals: intent.topicSignals,
+              searchQueries: recalledSearch.searchQueries,
+              candidates: rerankCandidates.slice(0, MAX_RERANK_CANDIDATES).map(toCandidateRerankPromptItem)
+            })
+          }
+        ]
+      });
+      rerankOutput = parseCandidateRerankOutput(
+        content,
+        new Set(rerankCandidates.map((candidate) => candidate.candidateId))
+      );
+      stageResult = createSuccessStage("candidate_rerank");
+    } catch (error) {
+      rerankFailedReason = formatErrorSummary(error);
+      stageResult = createFallbackStage("candidate_rerank", error);
+    }
+  }
+
+  let selectedAssessments = rerankOutput
+    ? applyCandidateRerankOutput(assessments, rerankOutput)
+    : selectRuleFallbackAssessments(assessments, TARGET_EFFECTIVE_CANDIDATES);
+  if (rerankOutput) {
+    rerankDropReasonById = markRerankDroppedCandidates(rerankCandidates, rerankOutput);
+  }
+  let refillTriggered = false;
+  let refillReason = "";
+  let refillQueries: DemoSearchQueryPlan[] = [];
+  let refillCandidateCount = 0;
+
+  if (selectedAssessments.length < MIN_EFFECTIVE_CANDIDATES && MAX_REFILL_ROUNDS > 0) {
+    refillTriggered = true;
+    refillReason = `selectedCandidates=${selectedAssessments.length} below MIN_EFFECTIVE_CANDIDATES=${MIN_EFFECTIVE_CANDIDATES}`;
+    refillQueries = buildRefillQueries(intent, selectedAssessments, recalledSearch.searchQueries);
+
+    if (refillQueries.length > 0) {
+      const refillSearch = await searchByQueryPlans(refillQueries, 5);
+      refillCandidateCount = refillSearch.items.length;
+      allItems = dedupeSearchItems([...allItems, ...refillSearch.items]);
+      assessments = assessSearchCandidates(
+        {
+          ...context,
+          searchQueries: [...recalledSearch.searchQueries, ...refillQueries]
+        },
+        allItems
+      );
+      restoreDropReasons(assessments, rerankDropReasonById);
+      const selectedIds = new Set(selectedAssessments.map((assessment) => assessment.candidateId));
+      const supplemental = selectRuleFallbackAssessments(
+        assessments.filter((assessment) => !selectedIds.has(assessment.candidateId)),
+        TARGET_EFFECTIVE_CANDIDATES - selectedAssessments.length
+      );
+      selectedAssessments = [
+        ...selectedAssessments,
+        ...supplemental
+      ].slice(0, TARGET_EFFECTIVE_CANDIDATES);
+      rerankCandidates = selectRerankCandidateAssessments(assessments);
+    }
+  }
+
+  if (selectedAssessments.length < MIN_EFFECTIVE_CANDIDATES) {
+    const selectedIds = new Set(selectedAssessments.map((assessment) => assessment.candidateId));
+    const backup = selectRuleFallbackAssessments(
+      assessments.filter((assessment) => !selectedIds.has(assessment.candidateId)),
+      TARGET_EFFECTIVE_CANDIDATES - selectedAssessments.length
+    );
+    selectedAssessments = [...selectedAssessments, ...backup].slice(0, TARGET_EFFECTIVE_CANDIDATES);
+  }
+
+  selectedAssessments = enforceSelectedDiversity(selectedAssessments, assessments).slice(
+    0,
+    TARGET_EFFECTIVE_CANDIDATES
+  );
+  for (const assessment of selectedAssessments) {
+    applyRuleKeepMetadata(assessment, intent);
+  }
+
+  const selectedIds = new Set(selectedAssessments.map((assessment) => assessment.candidateId));
+  const droppedAssessments = assessments
+    .filter((assessment) => !selectedIds.has(assessment.candidateId))
+    .sort((left, right) => left.roughScore - right.roughScore);
+  const droppedForDebug = sortDroppedCandidateExamples(droppedAssessments);
+  const candidateQuality = assessments.map((assessment) =>
+    toCandidateQualityDebug(assessment, selectedIds.has(assessment.candidateId))
+  );
+  const assessmentById = new Map(assessments.map((assessment) => [assessment.candidateId, assessment]));
+  const selectedItems = selectedAssessments
+    .map((assessment) =>
+      attachAssessmentMetadata(assessment.item, assessmentById.get(assessment.candidateId) ?? assessment)
+    )
+    .slice(0, TARGET_EFFECTIVE_CANDIDATES);
+
+  return {
+    items: selectedItems,
+    candidateQuality,
+    stageResult,
+    durationMs: Date.now() - startedAt,
+    rerankEnabled,
+    rerankUsed: stageResult.succeeded > 0,
+    rerankFailedReason,
+    rerankCandidatesCount: rerankCandidates.length,
+    selectedCandidatesCount: selectedAssessments.length,
+    droppedCandidatesCount: droppedAssessments.length,
+    refillTriggered,
+    refillReason,
+    refillQueries,
+    refillCandidateCount,
+    finalCandidateCount: selectedItems.length,
+    roughTierDistribution: buildRoughTierDistribution(assessments),
+    finalCandidates: selectedAssessments.map(toFinalCandidateDebug),
+    droppedCandidates: droppedForDebug.slice(0, 3).map(toDroppedCandidateDebug)
+  };
+}
+
+async function searchByQueryPlans(
+  queries: DemoSearchQueryPlan[],
+  perQueryCount: number
+): Promise<{ items: SearchItem[]; results: DemoSearchQueryResultDebug[] }> {
+  const items: SearchItem[] = [];
+  const results: DemoSearchQueryResultDebug[] = [];
+
+  for (const queryPlan of queries) {
+    try {
+      const result = await searchService.search(queryPlan.query, perQueryCount);
+      const queryItems = result.items
+        .slice(0, perQueryCount)
+        .map((item) => attachMatchedQuery(item, queryPlan));
+      items.push(...queryItems);
+      results.push({
+        ...queryPlan,
+        returnedCount: queryItems.length
+      });
+    } catch (error) {
+      results.push({
+        ...queryPlan,
+        returnedCount: 0,
+        error: formatErrorSummary(error)
+      });
+    }
+  }
+
+  return {
+    items,
+    results
+  };
+}
+
 function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
-  const seen = new Set<string>();
-  const result: SearchItem[] = [];
+  const groups = new Map<string, SearchItem>();
 
   for (const item of items) {
-    const key = item.url || item.id || normalizeText(item.title);
-    if (!key || seen.has(key)) {
+    const key = buildDedupeKey(item);
+    if (!key) {
+      continue;
+    }
+
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, normalizeMatchedQueryList(item));
+      continue;
+    }
+
+    groups.set(key, mergeDuplicateSearchItem(existing, item));
+  }
+
+  return Array.from(groups.values()).sort(compareDedupeItems);
+}
+
+function attachMatchedQuery(item: SearchItem, queryPlan: DemoSearchQueryPlan): SearchItem {
+  const matchedQueries = [
+    ...(item.matchedQueries ?? []),
+    {
+      query: queryPlan.query,
+      type: queryPlan.type,
+      purpose: queryPlan.purpose
+    }
+  ];
+
+  return {
+    ...item,
+    matchedQuery: queryPlan.query,
+    queryType: queryPlan.type,
+    queryPurpose: queryPlan.purpose,
+    matchedQueries: uniqueMatchedQueries(matchedQueries)
+  };
+}
+
+function toCandidateRerankPromptItem(candidate: CandidateAssessment): Record<string, unknown> {
+  return {
+    candidateId: candidate.candidateId,
+    title: truncateText(candidate.title, 90),
+    author: truncateText(candidate.author, 40),
+    summary: truncateText(candidate.summary, 160),
+    contentSnippet: truncateText(candidate.item.text || candidate.item.evidence.text || candidate.title, 320),
+    matchedQuery: candidate.matchedQuery,
+    queryType: candidate.queryType,
+    queryPurpose: candidate.queryPurpose,
+    roughScore: candidate.roughScore,
+    roughReason: candidate.roughReason
+  };
+}
+
+function toDemoResponseComposeFinalCandidate(candidate: CleanedCandidate): Record<string, unknown> {
+  return {
+    candidateId: candidate.candidateId,
+    personId: candidate.personId,
+    articleId: candidate.articleId,
+    title: candidate.title,
+    author: candidate.author,
+    summary: truncateText(candidate.text, 240),
+    contentSnippet: truncateText(candidate.text, 520),
+    contentRole: candidate.contentRole,
+    relationToUserIntent: candidate.relationToUserIntent,
+    summaryAngle: candidate.summaryAngle,
+    diversityKey: candidate.diversityKey,
+    matchedQuery: candidate.matchedQuery,
+    queryType: candidate.queryType,
+    keepReason: candidate.keepReason,
+    sourceRefs: [candidate.sourceRefId],
+    evidenceText: candidate.evidenceText
+  };
+}
+
+function applyCandidateRerankOutput(
+  assessments: CandidateAssessment[],
+  output: CandidateRerankOutput
+): CandidateAssessment[] {
+  const assessmentById = new Map(assessments.map((assessment) => [assessment.candidateId, assessment]));
+  const selected: CandidateAssessment[] = [];
+  const seen = new Set<string>();
+
+  for (const item of output.selected) {
+    const assessment = assessmentById.get(item.candidateId);
+    if (!assessment || seen.has(item.candidateId)) {
+      continue;
+    }
+
+    assessment.relevanceScore = Number((item.relevanceScore / 100).toFixed(2));
+    assessment.contentRole = item.contentRole;
+    assessment.relationToUserIntent = item.relationToUserIntent;
+    assessment.summaryAngle = item.summaryAngle;
+    assessment.diversityKey = item.diversityKey;
+    assessment.keepReason = item.keepReason;
+    selected.push(assessment);
+    seen.add(item.candidateId);
+  }
+
+  for (const item of output.dropped) {
+    const assessment = assessmentById.get(item.candidateId);
+    if (assessment) {
+      assessment.dropReason = item.dropReason;
+    }
+  }
+
+  return selected.slice(0, TARGET_EFFECTIVE_CANDIDATES);
+}
+
+function markRerankDroppedCandidates(
+  rerankCandidates: CandidateAssessment[],
+  output: CandidateRerankOutput
+): Map<string, string> {
+  const selectedIds = new Set(output.selected.map((item) => item.candidateId));
+  const explicitDropReasonById = new Map(
+    output.dropped.map((item) => [item.candidateId, item.dropReason])
+  );
+  const dropReasonById = new Map<string, string>();
+
+  for (const candidate of rerankCandidates) {
+    if (selectedIds.has(candidate.candidateId)) {
+      continue;
+    }
+
+    candidate.dropReason =
+      explicitDropReasonById.has(candidate.candidateId)
+        ? `LLM dropped: ${explicitDropReasonById.get(candidate.candidateId)}`
+        : "LLM batch rerank did not keep this candidate for the final diverse set";
+    dropReasonById.set(candidate.candidateId, candidate.dropReason);
+  }
+
+  return dropReasonById;
+}
+
+function restoreDropReasons(
+  assessments: CandidateAssessment[],
+  dropReasonById: Map<string, string>
+): void {
+  for (const assessment of assessments) {
+    const dropReason = dropReasonById.get(assessment.candidateId);
+    if (dropReason) {
+      assessment.dropReason = dropReason;
+    }
+  }
+}
+
+function sortDroppedCandidateExamples(candidates: CandidateAssessment[]): CandidateAssessment[] {
+  return [...candidates].sort((left, right) => {
+    const leftLlm = left.dropReason?.startsWith("LLM") ? 1 : 0;
+    const rightLlm = right.dropReason?.startsWith("LLM") ? 1 : 0;
+    return rightLlm - leftLlm || left.roughScore - right.roughScore;
+  });
+}
+
+function buildRefillQueries(
+  intent: IntentExpandOutput,
+  selectedAssessments: CandidateAssessment[],
+  searchQueries: DemoSearchQueryPlan[]
+): DemoSearchQueryPlan[] {
+  const selectedTypeCounts = selectedAssessments.reduce((counts, assessment) => {
+    if (assessment.queryType) {
+      counts.set(assessment.queryType, (counts.get(assessment.queryType) ?? 0) + 1);
+    }
+    return counts;
+  }, new Map<DemoSearchQueryType, number>());
+  const existingQueries = new Set(searchQueries.map((plan) => normalizeText(plan.query)));
+  const lowCoverageExisting = searchQueries
+    .filter((plan) => plan.type !== "original" && (selectedTypeCounts.get(plan.type) ?? 0) === 0)
+    .slice(0, 3);
+  const dynamicPlans = intent.topicSignals
+    .slice(0, 4)
+    .flatMap((signal, index) => [
+      createRefillPlan(`${signal} 真实经历`, "real_experience", "基于 topicSignals 补召回真实经历", index + 2),
+      createRefillPlan(`${signal} 失败复盘`, "failure_review", "基于 topicSignals 补召回失败与代价", index + 4),
+      createRefillPlan(`${signal} 怎么选`, "decision_conflict", "基于 topicSignals 补召回决策冲突", index + 5)
+    ])
+    .filter((plan) => {
+      const key = normalizeText(plan.query);
+      if (existingQueries.has(key)) {
+        return false;
+      }
+
+      existingQueries.add(key);
+      return true;
+    });
+
+  return [...lowCoverageExisting, ...dynamicPlans].slice(0, 5);
+}
+
+function createRefillPlan(
+  query: string,
+  type: DemoSearchQueryType,
+  purpose: string,
+  priority: number
+): DemoSearchQueryPlan {
+  return {
+    query: truncateText(query, 40),
+    type,
+    purpose,
+    priority: Math.min(Math.max(priority, 1), 6)
+  };
+}
+
+function enforceSelectedDiversity(
+  selectedAssessments: CandidateAssessment[],
+  assessments: CandidateAssessment[]
+): CandidateAssessment[] {
+  const selectedTypes = new Set(selectedAssessments.map((assessment) => assessment.queryType).filter(Boolean));
+  if (selectedTypes.size !== 1 || selectedAssessments.length < 2) {
+    return selectedAssessments;
+  }
+
+  const selectedIds = new Set(selectedAssessments.map((assessment) => assessment.candidateId));
+  const alternative = assessments
+    .filter((assessment) => !selectedIds.has(assessment.candidateId) && assessment.queryType && !selectedTypes.has(assessment.queryType))
+    .sort((left, right) => right.roughScore - left.roughScore)[0];
+  if (!alternative) {
+    return selectedAssessments;
+  }
+
+  return [...selectedAssessments.slice(0, -1), alternative];
+}
+
+function applyRuleKeepMetadata(candidate: CandidateAssessment, intent: IntentExpandOutput): void {
+  const topic = candidate.relevanceSignals?.[0] ?? intent.topicSignals[0] ?? candidate.matchedQuery ?? "当前问题";
+  candidate.relationToUserIntent =
+    candidate.relationToUserIntent ??
+    `这条公开内容与用户问题共同涉及「${topic}」，可作为同类处境或决策变量的参照。`;
+  candidate.summaryAngle =
+    candidate.summaryAngle ??
+    (candidate.narrativeSignals?.length
+      ? `提炼这条内容中的${candidate.narrativeSignals.slice(0, 2).join("、")}线索`
+      : `提炼围绕「${topic}」的具体信息和可验证边界`);
+  candidate.diversityKey =
+    candidate.diversityKey ?? candidate.queryType ?? candidate.relevanceSignals?.[0] ?? "public-content";
+  candidate.keepReason =
+    candidate.keepReason ??
+    `规则兜底保留：${candidate.roughReason || candidate.filterReason}`;
+}
+
+function toFinalCandidateDebug(candidate: CandidateAssessment): NonNullable<DemoSearchResponse["debug"]["finalCandidates"]>[number] {
+  return {
+    candidateId: candidate.candidateId,
+    title: truncateText(candidate.title, 80),
+    author: truncateText(candidate.author, 40),
+    matchedQuery: candidate.matchedQuery,
+    queryType: candidate.queryType,
+    roughScore: candidate.roughScore,
+    relevanceScore: Math.round(candidate.relevanceScore * 100),
+    contentRole: candidate.contentRole,
+    relationToUserIntent: candidate.relationToUserIntent,
+    summaryAngle: candidate.summaryAngle,
+    diversityKey: candidate.diversityKey,
+    keepReason: candidate.keepReason,
+    sourceRefs: candidate.sourceRefId ? [candidate.sourceRefId] : []
+  };
+}
+
+function attachFinalCandidateSourceRefs(
+  finalCandidates: NonNullable<DemoSearchResponse["debug"]["finalCandidates"]>,
+  candidateQuality: DemoCandidateQuality[] | undefined
+): NonNullable<DemoSearchResponse["debug"]["finalCandidates"]> {
+  const sourceRefByCandidateId = new Map(
+    (candidateQuality ?? [])
+      .filter((candidate): candidate is DemoCandidateQuality & { sourceRefId: string } =>
+        Boolean(candidate.sourceRefId)
+      )
+      .map((candidate) => [candidate.candidateId, candidate.sourceRefId])
+  );
+
+  return finalCandidates.map((candidate) => ({
+    ...candidate,
+    sourceRefs:
+      candidate.sourceRefs && candidate.sourceRefs.length > 0
+        ? candidate.sourceRefs
+        : sourceRefByCandidateId.has(candidate.candidateId)
+          ? [sourceRefByCandidateId.get(candidate.candidateId)!]
+          : []
+  }));
+}
+
+function toDroppedCandidateDebug(candidate: CandidateAssessment): NonNullable<DemoSearchResponse["debug"]["droppedCandidates"]>[number] {
+  return {
+    candidateId: candidate.candidateId,
+    title: truncateText(candidate.title, 80),
+    roughScore: candidate.roughScore,
+    dropReason: candidate.dropReason ?? candidate.filterReason
+  };
+}
+
+function buildDedupeKey(item: SearchItem): string {
+  const stableId = item.id && !item.id.startsWith("zhihu_item_") ? item.id : "";
+  if (stableId) {
+    return `id:${stableId}`;
+  }
+
+  if (item.url) {
+    return `url:${item.url}`;
+  }
+
+  const normalizedTitle = normalizeTitle(item.title);
+  if (normalizedTitle) {
+    return `title:${normalizedTitle}`;
+  }
+
+  const author = normalizeText(item.author.name);
+  return normalizedTitle || author ? `title_author:${normalizedTitle}:${author}` : "";
+}
+
+function normalizeMatchedQueryList(item: SearchItem): SearchItem {
+  return {
+    ...item,
+    matchedQueries: uniqueMatchedQueries(item.matchedQueries ?? [])
+  };
+}
+
+function mergeDuplicateSearchItem(existing: SearchItem, incoming: SearchItem): SearchItem {
+  const preferred = compareDedupeItems(existing, incoming) <= 0 ? existing : incoming;
+  const secondary = preferred === existing ? incoming : existing;
+  const matchedQueries = uniqueMatchedQueries([
+    ...(existing.matchedQueries ?? []),
+    ...(incoming.matchedQueries ?? [])
+  ]);
+
+  return {
+    ...preferred,
+    text: preferred.text || secondary.text,
+    evidence: preferred.evidence.text ? preferred.evidence : secondary.evidence,
+    author: preferred.author.name ? preferred.author : secondary.author,
+    matchedQuery: matchedQueries[0]?.query ?? preferred.matchedQuery,
+    queryType: matchedQueries[0]?.type ?? preferred.queryType,
+    queryPurpose: matchedQueries[0]?.purpose ?? preferred.queryPurpose,
+    matchedQueries
+  };
+}
+
+function compareDedupeItems(left: SearchItem, right: SearchItem): number {
+  const leftScore = dedupePreferenceScore(left);
+  const rightScore = dedupePreferenceScore(right);
+  return rightScore - leftScore;
+}
+
+function dedupePreferenceScore(item: SearchItem): number {
+  return (
+    (item.matchedQueries?.length ?? (item.matchedQuery ? 1 : 0)) * 30 +
+    normalizeText(item.text || item.evidence.text).length +
+    (item.url ? 20 : 0) +
+    (item.author.name ? 10 : 0) +
+    Math.min(item.stats.voteUpCount, 100)
+  );
+}
+
+function uniqueMatchedQueries(
+  values: Array<{ query?: string; type?: string; purpose?: string }>
+): NonNullable<SearchItem["matchedQueries"]> {
+  const seen = new Set<string>();
+  const result: NonNullable<SearchItem["matchedQueries"]> = [];
+
+  for (const value of values) {
+    const query = normalizeText(value.query ?? "");
+    if (!query) {
+      continue;
+    }
+
+    const key = query.toLowerCase();
+    if (seen.has(key)) {
       continue;
     }
 
     seen.add(key);
-    result.push(item);
+    result.push({
+      query,
+      type: value.type,
+      purpose: value.purpose
+    });
   }
 
   return result;
 }
 
-function attachMatchedQuery(item: SearchItem, queryPlan: DemoSearchQueryPlan): SearchItem {
-  return {
-    ...item,
-    matchedQuery: queryPlan.query,
-    queryType: queryPlan.type,
-    queryPurpose: queryPlan.purpose
-  };
+function normalizeTitle(title: string): string {
+  return normalizeText(title)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\u4e00-\u9fa5]+/gu, "");
 }
 
 function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): CleanedCandidate[] {
@@ -833,10 +1487,10 @@ function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): Clean
 
       const sourceRef = response.meta.sourceRefs.find((item) => item.id === sourceRefId);
       const quality = qualityBySourceRefId.get(sourceRefId);
-      const text = truncateText(article.text || article.summary || article.title, 1200);
+      const text = truncateText(article.text || article.summary || article.title, 850);
       const evidenceText = truncateText(
         article.evidence.map((item) => item.text).join("\n") || text,
-        420
+        260
       );
 
       if (normalizeText(text).length < MIN_CONTENT_LENGTH) {
@@ -862,7 +1516,12 @@ function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): Clean
         filterReason: quality?.filterReason ?? "used_as_core_evidence: selected by response composer",
         matchedQuery: quality?.matchedQuery,
         queryType: quality?.queryType,
-        queryPurpose: quality?.queryPurpose
+        queryPurpose: quality?.queryPurpose,
+        contentRole: quality?.contentRole,
+        relationToUserIntent: quality?.relationToUserIntent,
+        summaryAngle: quality?.summaryAngle,
+        diversityKey: quality?.diversityKey,
+        keepReason: quality?.keepReason
       });
     }
   }
@@ -1127,12 +1786,20 @@ function buildExperienceFallbackSummary(person: DemoPerson): string {
 function createFallbackIntent(query: string): IntentExpandOutput {
   const intentTags = inferIntentTags(query);
   const userNeedSummary = `用户正在探索「${truncateText(query, 40)}」相关的公开经验与可行路径。`;
+  const searchQueries = buildFallbackSearchQueryPlan(query);
+  const topicSignals = buildDynamicTopicSignals({
+    originalQuery: query,
+    userCoreQuestion: userNeedSummary,
+    focusTags: intentTags,
+    searchQueries
+  });
 
   return {
     intent: "life_path_exploration",
     userCoreQuestion: userNeedSummary,
     focusTags: intentTags,
-    searchQueries: buildFallbackSearchQueryPlan(query),
+    topicSignals,
+    searchQueries,
     intentTags,
     userNeedSummary
   };
@@ -1241,7 +1908,14 @@ function applyDemoResponseComposeOutput(
     const path = pathById.get(item.id);
     if (
       !path ||
-      !areSafeTexts([item.title, item.summary, item.fitReason ?? ""]) ||
+      !areSafeTexts([
+        item.title,
+        item.summary,
+        item.whyRelevant ?? "",
+        item.tradeoff ?? "",
+        item.fitReason ?? "",
+        item.diversityKey ?? ""
+      ]) ||
       !isExperiencePathTitle(item.title)
     ) {
       guardWarnings.push(`demo_response_compose path skipped: ${item.id}`);
@@ -1250,7 +1924,10 @@ function applyDemoResponseComposeOutput(
 
     path.title = item.title;
     path.summary = item.summary;
+    if (item.whyRelevant && isSafeFitReason(item.whyRelevant)) path.whyRelevant = item.whyRelevant;
+    if (item.tradeoff && isSafeText(item.tradeoff)) path.tradeoff = item.tradeoff;
     if (item.fitReason && isSafeFitReason(item.fitReason)) path.fitReason = item.fitReason;
+    if (item.diversityKey && isSafeText(item.diversityKey)) path.diversityKey = item.diversityKey;
     path.stance = item.stance;
     stats.pathCount += 1;
   }
@@ -1445,15 +2122,30 @@ function toPersona(person: DemoPerson): DemoPersona {
 function toDemoComposeContext(response: DemoSearchResponse): Record<string, unknown> {
   return {
     analysis: response.analysis,
-    paths: response.paths,
+    paths: response.paths.map((path) => ({
+      id: path.id,
+      title: path.title,
+      summary: path.summary,
+      whyRelevant: path.whyRelevant,
+      tradeoff: path.tradeoff,
+      fitReason: path.fitReason,
+      diversityKey: path.diversityKey,
+      stance: path.stance,
+      personRefs: path.personRefs,
+      sourceRefs: path.sourceRefs,
+      evidenceIds: path.evidenceIds
+    })),
     people: response.people.map((person) => ({
       id: person.id,
       name: person.name,
       sampleType: person.sampleType,
       pathId: person.pathId,
       role: person.role,
+      roleLabel: person.roleLabel,
       badge: person.badge,
       oneLine: person.oneLine,
+      matchedPathTitle: person.matchedPathTitle,
+      relevanceReason: person.relevanceReason,
       fitReason: person.fitReason,
       who: person.who,
       overlaps: person.overlaps,
@@ -1497,6 +2189,9 @@ function toGroundingGuardContext(response: DemoSearchResponse): Record<string, u
       id: path.id,
       title: path.title,
       summary: path.summary,
+      whyRelevant: path.whyRelevant,
+      tradeoff: path.tradeoff,
+      diversityKey: path.diversityKey,
       sourceRefs: path.sourceRefs,
       evidenceIds: path.evidenceIds
     })),
@@ -1701,16 +2396,11 @@ function summarizeIntentStageReason(
 }
 
 function inferIntentTags(query: string): string[] {
-  const tags = [
-    ["暂停工作", ["不工作", "不上班", "失业", "裸辞"]],
-    ["地点选择", ["去哪", "哪里", "城市", "回老家", "新西兰"]],
-    ["现金流", ["钱", "收入", "副业", "存款"]],
-    ["风险兜底", ["怎么办", "风险", "保障", "焦虑"]]
-  ]
-    .filter(([, keywords]) => (keywords as string[]).some((keyword) => query.includes(keyword)))
-    .map(([tag]) => tag as string);
+  const tags = buildDynamicTopicSignals({
+    originalQuery: query
+  }).slice(0, 4);
 
-  return tags.length > 0 ? tags : ["人生路径", "公开经验"];
+  return tags.length > 0 ? tags : ["公开经验", "可行路径"];
 }
 
 function ensurePublicContentBoundary(value: string): string {
@@ -1799,7 +2489,7 @@ function isExperiencePathTitle(value: string): boolean {
   ];
 
   return (
-    value.includes("有人") &&
+    (value.includes("有人") || value.includes("有些人")) &&
     !adviceTitleFragments.some((fragment) => value.includes(fragment))
   );
 }

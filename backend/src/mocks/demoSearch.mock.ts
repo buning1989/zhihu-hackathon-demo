@@ -15,6 +15,7 @@ import {
   inferQueryIntent,
   type DemoPathPlan
 } from "../services/demoPathBuilder.service.js";
+import { enforceDemoPathDiversity } from "../services/demoPathDiversity.service.js";
 import { createDemoSearchIdentity } from "../services/demoQueryIdentity.service.js";
 
 interface MockOptions {
@@ -121,6 +122,9 @@ export function createMockDemoSearchResponse(
   const paths = buildQueryAwareMockPaths(identity.normalizedQuery, mockDataset, people).filter(
     (path) => pathIds.has(path.id)
   );
+  const pathDiversityCheck = enforceDemoPathDiversity(paths, {
+    notes: ["mock fallback generated query-aware path variants without LLM"]
+  });
   const personas = people.map((person) => ({
     id: person.aiPersona.personaId,
     personId: person.id,
@@ -227,6 +231,9 @@ export function createMockDemoSearchResponse(
       enhancedPathCount: 0,
       partialFallbackUsed: false,
       pathSource: options.pathSource ?? "fallback",
+      composerFallbackTriggered: options.fallbackUsed ?? dataMode !== "real",
+      pathDuplicateFound: pathDiversityCheck.duplicateFound,
+      pathDiversityCheck,
       intentStage: buildMockIntentStageDebug(dataMode, options),
       fallbackUsed: options.fallbackUsed ?? false,
       fallbackKind: "",
@@ -335,11 +342,17 @@ function buildQueryAwareMockPaths(
   return dataset.seeds.map((seed) => ({
     id: seed.plan.id,
     title: seed.plan.title,
-    summary: `${seed.plan.summary} 该路径来自 deterministic mock 样本，用于无真实召回时对齐当前问题。`,
+    summary: `${seed.plan.summary} 它解决的是「${seed.plan.variables[0] ?? seed.plan.title}」如何先落地，新的问题是「${seed.plan.variables[1] ?? "代价边界"}」会被放大。`,
+    whyRelevant: `它回应的是「${truncateText(
+      normalizedQuery,
+      24
+    )}」里关于「${seed.plan.variables[0] ?? seed.plan.title}」的困惑，判断仍以 mock 来源片段为准。`,
+    tradeoff: `代价是「${seed.plan.variables[0] ?? seed.plan.title}」不能单独给出答案，仍要面对「${seed.plan.variables[1] ?? "现实成本"}」和证据不足。`,
     fitReason: `结合你的问题「${truncateText(
       normalizedQuery,
       24
     )}」，这条路径只说明公开样本可用来对照「${seed.plan.variables[0] ?? seed.plan.title}」，判断仍以来源片段为准。`,
+    diversityKey: seed.plan.variables[0] ?? seed.plan.id,
     stance: seed.plan.stance,
     personRefs: people.filter((person) => person.pathId === seed.plan.id).map((person) => person.id),
     evidenceIds: seed.evidenceIds,
@@ -366,15 +379,21 @@ function buildQueryAwareMockPeople(
       name: `${truncateText(primaryVariable, 8)}样本`,
       pathId: seed.plan.id,
       role: `基于公开回答整理的${truncateText(primaryVariable, 12)}样本`,
+      roleLabel: `代表「${seed.plan.title}」的公开样本`,
       badge: truncateText(primaryVariable, 12),
       avatar: "",
-      oneLine: `这个样本提醒你，判断「${truncateText(
-        normalizedQuery,
-        18
-      )}」时先看${primaryVariable}和${secondaryVariable}。`,
+      oneLine: truncateText(
+        `这个样本提供的是「${seed.plan.title}」这一路径，重点不是结论，而是${primaryVariable}和${secondaryVariable}怎么被放到一起看。`,
+        90
+      ),
       experienceSummary: null,
       experienceSummarySource: "none",
       experienceSummaryStatus: "pending",
+      matchedPathTitle: seed.plan.title,
+      relevanceReason: `它适合回应「${truncateText(
+        normalizedQuery,
+        18
+      )}」，因为这条 mock 来源把问题落在「${primaryVariable}」上，而不是泛泛谈选择。`,
       fitReason: `结合你的问题「${truncateText(
         normalizedQuery,
         24
@@ -485,7 +504,7 @@ function buildQueryAwarePersonPersona(
     personaId,
     displayName,
     label: "基于公开内容生成",
-    openingLine: "你可以继续问这段公开内容里的选择、代价和下一步判断。",
+    openingLine: "我只能沿着这段公开内容聊：这里真正要拆的是选择、代价和下一步判断。",
     suggestedQuestions,
     boundary: DEMO_PERSONA_BOUNDARY_NOTICE,
     grounding: {

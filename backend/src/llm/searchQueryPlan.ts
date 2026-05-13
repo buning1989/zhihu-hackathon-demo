@@ -119,76 +119,7 @@ function completeSearchQueryPlan(
 }
 
 function selectFallbackCategoryPlans(query: string): DemoSearchQueryPlan[] {
-  if (isStudyQuery(query)) {
-    return studyFallbackPlans();
-  }
-
-  if (isCityChoiceQuery(query)) {
-    return cityChoiceFallbackPlans(query);
-  }
-
-  if (isWorkExitQuery(query)) {
-    return workExitFallbackPlans(query);
-  }
-
   return genericFallbackPlans(query);
-}
-
-function workExitFallbackPlans(query: string): DemoSearchQueryPlan[] {
-  const destinationQueries = query.includes("去哪") || query.includes("哪里")
-    ? [
-        plan("辞职后回小城市生活", "life_path", "召回离开职场后的地点和生活路径", 3)
-      ]
-    : [];
-
-  return [
-    plan("裸辞后去了哪里", "real_experience", "召回裸辞后的真实去向", 2),
-    plan("不上班以后怎么生活", "real_experience", "召回不上班后的生活状态", 2),
-    plan("离开职场后的真实经历", "real_experience", "召回离开职场后的公开经历", 2),
-    plan("自由职业真实经历", "life_path", "召回自由职业或副业过渡路径", 3),
-    ...destinationQueries,
-    plan("辞职后怎么生活", "life_path", "召回离职后的生活安排", 3),
-    plan("裸辞失败复盘", "failure_review", "召回失败和代价", 4),
-    plan("裸辞后悔吗", "failure_review", "召回后悔和风险讨论", 4),
-    plan("不想上班怎么办", "decision_conflict", "召回行动前的决策困境", 5),
-    plan("要不要裸辞", "decision_conflict", "召回是否行动的讨论", 5),
-    plan("不工作怎么养活自己", "alternative_solution", "召回收入和替代方案", 6),
-    plan("不上班还能做什么", "alternative_solution", "召回工作外的替代选择", 6)
-  ];
-}
-
-function cityChoiceFallbackPlans(query: string): DemoSearchQueryPlan[] {
-  const city = extractKnownCity(query);
-  const cityLabel = city || "大城市";
-  const returnHomeQuery = city ? `从${city}回老家后生活` : "从大城市回老家后生活";
-  const stayOrReturnQuery = city ? `留在${city}还是回老家真实经历` : "留在大城市还是回老家真实经历";
-  const decisionQuery = city ? `要不要离开${city}回老家` : "要不要离开大城市回老家";
-
-  return [
-    plan(stayOrReturnQuery, "real_experience", "召回去留选择的真实经历", 2),
-    plan(returnHomeQuery, "real_experience", "召回回老家后的生活状态", 2),
-    plan(`留在${cityLabel}还是回老家怎么选`, "decision_conflict", "召回去留之间的决策困境", 5),
-    plan("离开大城市回老家后悔吗", "failure_review", "召回后悔和风险讨论", 4),
-    plan("回老家发展失败复盘", "failure_review", "召回回流后的失败和代价", 4),
-    plan("回老家后怎么生活", "life_path", "召回回老家的生活路径", 3),
-    plan("不留大城市还有什么选择", "alternative_solution", "召回留城之外的替代选择", 6),
-    plan("回老家以后怎么养活自己", "alternative_solution", "召回回流后的收入方案", 6),
-    plan(decisionQuery, "decision_conflict", "召回是否离开的讨论", 5)
-  ];
-}
-
-function studyFallbackPlans(): DemoSearchQueryPlan[] {
-  return [
-    plan("不想读研了真实经历", "real_experience", "召回不想继续读研的真实经历", 2),
-    plan("不读研后来怎么样", "real_experience", "召回放弃读研后的后续状态", 2),
-    plan("不读研还有什么出路", "life_path", "召回读研之外的路径", 3),
-    plan("不读研怎么找工作", "alternative_solution", "召回就业替代方案", 6),
-    plan("读研读不下去怎么办", "decision_conflict", "召回继续或停止的决策困境", 5),
-    plan("要不要继续读研", "decision_conflict", "召回是否继续读研的讨论", 5),
-    plan("放弃读研后悔吗", "failure_review", "召回后悔与风险讨论", 4),
-    plan("读研失败复盘", "failure_review", "召回失败和代价复盘", 4),
-    plan("不想读研的人后来怎么样", "life_path", "召回不同人生路径", 3)
-  ];
 }
 
 function genericFallbackPlans(query: string): DemoSearchQueryPlan[] {
@@ -383,28 +314,6 @@ function plan(
     purpose,
     priority
   };
-}
-
-function isWorkExitQuery(query: string): boolean {
-  return ["工作", "上班", "裸辞", "辞职", "离职", "职场", "自由职业", "gap"].some((keyword) =>
-    query.toLowerCase().includes(keyword.toLowerCase())
-  );
-}
-
-function isCityChoiceQuery(query: string): boolean {
-  return ["北京", "上海", "深圳", "广州", "大城市", "老家", "回家", "回老家", "城市", "留下", "留在"].some(
-    (keyword) => query.includes(keyword)
-  );
-}
-
-function isStudyQuery(query: string): boolean {
-  return ["读研", "研究生", "考研", "导师", "论文"].some((keyword) => query.includes(keyword));
-}
-
-function extractKnownCity(query: string): string {
-  return ["北京", "上海", "深圳", "广州", "杭州", "成都", "武汉", "南京"].find((city) =>
-    query.includes(city)
-  ) ?? "";
 }
 
 function extractCorePhrase(query: string): string {

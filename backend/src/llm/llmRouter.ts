@@ -10,6 +10,7 @@ import {
 
 export type LlmTaskType =
   | "intent_expand"
+  | "candidate_rerank"
   | "evidence_extract"
   | "demo_response_compose"
   | "experience_summary"

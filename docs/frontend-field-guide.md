@@ -62,7 +62,7 @@ Content-Type: application/json
 
 1. 用 `analysis.steps` 和 `analysis.focusTags` 支撑 loading / 问题理解区域。
 2. 联调或 preview 可读 `contextUsed` 展示是否使用了知乎登录上下文。
-3. 用 `paths[]` 渲染路径图，可展示 `paths[].fitReason`。
+3. 用 `paths[]` 渲染路径图，优先展示 `title / summary / whyRelevant / tradeoff`，可辅助展示 `paths[].fitReason`。
 4. 用 `people[]` 渲染人物样本卡，这是主数据，可展示 `people[].fitReason`。
 5. 用 `people[].articles[]` 渲染原文入口和证据。
 6. 用 `people[].match` 渲染匹配解释。
@@ -82,6 +82,17 @@ Content-Type: application/json
 前端不要期待或展示 OAuth token、cookie、完整 userInfo、userId、头像原始对象。`contextUsed` 不是证据来源，也不能替代 `sourceRefs/evidenceIds`。
 
 `fitReason` 可出现在 `paths[]`、`people[]`、`personas[]`。它只能解释“为什么这个公开内容可能与当前问题和轻量资料信号相关”，不能写成确定诊断、身份判断或夸张承诺。展示时建议放在“匹配说明”或调试区域旁边，并继续优先展示证据和原文入口。
+
+## paths[] 路径图
+
+`paths[]` 不是文章摘要列表，而是基于用户问题和候选内容提炼出的差异化人生路径。前端可以继续兼容旧字段，但新展示优先读取：
+
+- `paths[].title`：具体路径标题，不是抽象标签。
+- `paths[].summary`：这条路径是什么，解决了什么问题。
+- `paths[].whyRelevant`：它和用户原问题的关系。
+- `paths[].tradeoff`：代价、风险、限制或不确定性。
+- `paths[].diversityKey`：调试或辅助展示用的差异化标签。
+- `paths[].sourceRefs[]`：至少一条来源引用，用于回到 evidence/source。
 
 ## people[] 是主数据
 

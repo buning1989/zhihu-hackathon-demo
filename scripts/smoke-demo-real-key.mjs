@@ -12,13 +12,16 @@ const VALIDATION_QUERIES = [
   decodeURIComponent("%33%35%E5%B2%81%E8%A3%B8%E8%BE%9E%E6%98%AF%E4%B8%8D%E6%98%AF%E5%AE%8C%E4%BA%86"),
   decodeURIComponent("%E6%88%91%E4%B8%8D%E6%83%B3%E4%B8%8A%E7%8F%AD%E4%BD%86%E4%B9%9F%E4%B8%8D%E7%9F%A5%E9%81%93%E8%83%BD%E5%B9%B2%E5%98%9B"),
   decodeURIComponent("%E7%95%99%E5%9C%A8%E5%8C%97%E4%BA%AC%E8%BF%98%E6%98%AF%E5%9B%9E%E8%80%81%E5%AE%B6"),
-  decodeURIComponent("%E4%B8%8D%E6%83%B3%E8%AF%BB%E7%A0%94%E4%BA%86%E6%80%8E%E4%B9%88%E5%8A%9E")
+  decodeURIComponent("%E4%B8%8D%E6%83%B3%E8%AF%BB%E7%A0%94%E4%BA%86%E6%80%8E%E4%B9%88%E5%8A%9E"),
+  decodeURIComponent("%E8%A6%81%E4%B8%8D%E8%A6%81%E5%92%8C%E9%95%BF%E6%9C%9F%E6%B6%88%E8%80%97%E6%88%91%E7%9A%84%E6%9C%8B%E5%8F%8B%E6%96%AD%E8%81%94"),
+  decodeURIComponent("%E7%88%B6%E6%AF%8D%E4%B8%8D%E5%90%8C%E6%84%8F%E6%88%91%E7%9A%84%E9%80%89%E6%8B%A9%E6%80%8E%E4%B9%88%E5%8A%9E")
 ];
 const DEFAULT_CHAT_MESSAGE = decodeURIComponent(
   "%E8%BF%99%E6%AE%B5%E5%85%AC%E5%BC%80%E5%86%85%E5%AE%B9%E9%87%8C%EF%BC%8C%E7%AC%AC%E4%B8%80%E6%AD%A5%E5%BA%94%E8%AF%A5%E6%83%B3%E6%B8%85%E6%A5%9A%E4%BB%80%E4%B9%88%EF%BC%9F"
 );
 const REQUIRED_DEMO_STAGES = [
   "intent_expand",
+  "candidate_rerank",
   "evidence_extract",
   "demo_response_compose",
   "experience_summary",
@@ -139,8 +142,10 @@ async function runDemoSearch(baseUrl, query, count, label) {
     assertStageTiming(timings, stage);
   }
   assertExperiencePathTitles(data.paths, `${label} data.paths`);
+  assertPathExtractionFields(data.paths, debug, `${label} data.paths`);
   assertSearchPlan(debug, query, `${label} data.debug`);
   assertCandidateQuality(debug, `${label} data.debug.candidateQuality`);
+  assertCandidatePipelineDebug(debug, `${label} data.debug`);
   assertExperienceSummaries(data.people, `${label} data.people`);
 
   return {
@@ -151,8 +156,52 @@ async function runDemoSearch(baseUrl, query, count, label) {
   };
 }
 
+function assertCandidatePipelineDebug(debug, label) {
+  const topicSignals = assertNonEmptyArray(debug.topicSignals, `${label}.topicSignals`);
+  if (topicSignals.length < 4) {
+    throw new Error(`${label}.topicSignals expected several dynamic signals, got ${topicSignals.length}.`);
+  }
+
+  const roughTierDistribution = readRecord(debug.roughTierDistribution, `${label}.roughTierDistribution`);
+  for (const key of ["strong", "usable", "backup", "drop"]) {
+    if (!Number.isFinite(roughTierDistribution[key])) {
+      throw new Error(`${label}.roughTierDistribution.${key} expected number.`);
+    }
+  }
+
+  for (const key of [
+    "rawCandidateCount",
+    "dedupedCandidateCount",
+    "rerankCandidatesCount",
+    "selectedCandidatesCount",
+    "droppedCandidatesCount",
+    "finalCandidateCount"
+  ]) {
+    if (!Number.isFinite(debug[key])) {
+      throw new Error(`${label}.${key} expected a finite number.`);
+    }
+  }
+
+  if (debug.rerankCandidatesCount > 20) {
+    throw new Error(`${label}.rerankCandidatesCount must be <= 20.`);
+  }
+
+  const finalCandidates = assertNonEmptyArray(debug.finalCandidates, `${label}.finalCandidates`);
+  for (const candidate of finalCandidates) {
+    const item = readRecord(candidate, `${label}.finalCandidates[]`);
+    assertNonEmptyString(item.title, `${label}.finalCandidates.title`);
+    assertNonEmptyString(item.summaryAngle, `${label}.finalCandidates.summaryAngle`);
+    assertNonEmptyString(item.relationToUserIntent, `${label}.finalCandidates.relationToUserIntent`);
+    assertNonEmptyString(item.diversityKey, `${label}.finalCandidates.diversityKey`);
+    assertNonEmptyArray(item.sourceRefs, `${label}.finalCandidates.sourceRefs`);
+  }
+}
+
 function assertExperiencePathTitles(paths, label) {
   const pathItems = assertNonEmptyArray(paths, label);
+  if (pathItems.length < 3 || pathItems.length > 5) {
+    throw new Error(`${label} expected 3-5 paths, got ${pathItems.length}.`);
+  }
   const titles = pathItems.map((item) => readString(readRecord(item, label).title, `${label}.title`));
   const adviceFragments = [
     "比较工作机会",
@@ -176,6 +225,37 @@ function assertExperiencePathTitles(paths, label) {
   }
 }
 
+function assertPathExtractionFields(paths, debug, label) {
+  const pathItems = assertNonEmptyArray(paths, label);
+  const summaryPrefixes = new Set();
+
+  pathItems.forEach((path, index) => {
+    const item = readRecord(path, `${label}[${index}]`);
+    assertNonEmptyString(item.summary, `${label}[${index}].summary`);
+    assertNonEmptyString(item.whyRelevant, `${label}[${index}].whyRelevant`);
+    assertNonEmptyString(item.tradeoff, `${label}[${index}].tradeoff`);
+    assertNonEmptyArray(item.sourceRefs, `${label}[${index}].sourceRefs`);
+    assertNonEmptyString(item.diversityKey, `${label}[${index}].diversityKey`);
+
+    const prefix = String(item.summary).slice(0, 20);
+    if (summaryPrefixes.has(prefix)) {
+      throw new Error(`${label}[${index}].summary repeats first 20 chars: ${prefix}`);
+    }
+    summaryPrefixes.add(prefix);
+  });
+
+  if (typeof debug.composerFallbackTriggered !== "boolean") {
+    throw new Error(`${label} debug.composerFallbackTriggered expected boolean.`);
+  }
+  if (typeof debug.pathDuplicateFound !== "boolean") {
+    throw new Error(`${label} debug.pathDuplicateFound expected boolean.`);
+  }
+  const diversityCheck = readRecord(debug.pathDiversityCheck, `${label} debug.pathDiversityCheck`);
+  if (!Number.isFinite(diversityCheck.rewriteCount) || !Number.isFinite(diversityCheck.mergeCount)) {
+    throw new Error(`${label} debug.pathDiversityCheck expected rewriteCount and mergeCount.`);
+  }
+}
+
 function assertCandidateQuality(debug, label) {
   const candidates = assertNonEmptyArray(debug.candidateQuality, label);
   const used = candidates.filter((candidate) => isRecord(candidate) && candidate.usedAsEvidence === true);
@@ -185,7 +265,18 @@ function assertCandidateQuality(debug, label) {
 
   for (const candidate of candidates) {
     const item = readRecord(candidate, label);
-    for (const key of ["relevanceScore", "qualityScore", "experienceSignalScore", "contentLength"]) {
+    for (const key of [
+      "relevanceScore",
+      "qualityScore",
+      "experienceSignalScore",
+      "contentLength",
+      "roughScore",
+      "topicHitScore",
+      "narrativeScore",
+      "specificityScore",
+      "basicQualityScore",
+      "penaltyScore"
+    ]) {
       if (!Number.isFinite(item[key])) {
         throw new Error(`${label}.${key} expected a finite number.`);
       }
@@ -193,6 +284,8 @@ function assertCandidateQuality(debug, label) {
     assertNonEmptyString(item.filterReason, `${label}.filterReason`);
     assertNonEmptyString(item.matchedQuery, `${label}.matchedQuery`);
     assertNonEmptyString(item.queryType, `${label}.queryType`);
+    assertNonEmptyString(item.roughTier, `${label}.roughTier`);
+    assertNonEmptyString(item.roughReason, `${label}.roughReason`);
 
     if (item.contentLength < 30 && item.usedAsEvidence === true) {
       throw new Error(`${label} short candidate became core evidence: ${item.title || item.candidateId}.`);
@@ -309,6 +402,7 @@ function assertStageTiming(timings, stage) {
 
 function printDemoRunDetails(run) {
   printSearchPlan(run);
+  printCandidatePipeline(run);
   printDemoPaths(run);
   printExperienceSummaries(run);
   printCandidateQuality(run);
@@ -368,16 +462,26 @@ function assertExperienceSummaryText(value, label) {
 function printDemoPaths(run) {
   const debug = readRecord(run.data.debug, `${run.label} debug`);
   const paths = assertNonEmptyArray(run.data.paths, `${run.label} data.paths`);
-  console.log(`paths ${run.label} query="${run.query}" pathSource=${debug.pathSource || ""}`);
+  const diversityCheck = isRecord(debug.pathDiversityCheck) ? debug.pathDiversityCheck : {};
+  console.log(
+    `paths ${run.label} query="${run.query}" pathSource=${debug.pathSource || ""} count=${paths.length} composerFallback=${debug.composerFallbackTriggered === true} duplicateFound=${debug.pathDuplicateFound === true} rewrites=${formatNumber(diversityCheck.rewriteCount)} merges=${formatNumber(diversityCheck.mergeCount)}`
+  );
 
   paths.forEach((path, index) => {
     const item = readRecord(path, `${run.label} data.paths[${index}]`);
     const title = readString(item.title, `${run.label} data.paths[${index}].title`);
     const summary = typeof item.summary === "string" ? item.summary : "";
+    const whyRelevant = typeof item.whyRelevant === "string" ? item.whyRelevant : "";
+    const tradeoff = typeof item.tradeoff === "string" ? item.tradeoff : "";
+    const diversityKey = typeof item.diversityKey === "string" ? item.diversityKey : "";
+    const sourceRefCount = Array.isArray(item.sourceRefs) ? item.sourceRefs.length : 0;
     const source = formatPathSource(item, debug);
 
     console.log(`  path[${index + 1}] title=${title}`);
     console.log(`    summary=${summary}`);
+    console.log(`    whyRelevant=${whyRelevant}`);
+    console.log(`    tradeoff=${tradeoff}`);
+    console.log(`    sourceRefs=${sourceRefCount} diversityKey=${diversityKey}`);
     console.log(`    source=${source}`);
   });
 }
@@ -387,11 +491,12 @@ function printSearchPlan(run) {
   const searchQueries = assertNonEmptyArray(debug.searchQueries, `${run.label} data.debug.searchQueries`);
   const searchQueryResults = Array.isArray(debug.searchQueryResults) ? debug.searchQueryResults : [];
   const focusTags = Array.isArray(run.data.analysis?.focusTags) ? run.data.analysis.focusTags.join(",") : "";
+  const topicSignals = Array.isArray(debug.topicSignals) ? debug.topicSignals.join(",") : "";
   console.log(
-    `searchPlan ${run.label} originalQuery="${debug.originalQuery || run.query}" intent="${run.data.analysis?.intent || ""}" focusTags="${focusTags}" searchQueries=${searchQueries.length}`
+    `searchPlan ${run.label} originalQuery="${debug.originalQuery || run.query}" userCoreQuestion="${debug.userCoreQuestion || ""}" intent="${run.data.analysis?.intent || ""}" focusTags="${focusTags}" topicSignals="${topicSignals}" searchQueries=${searchQueries.length}`
   );
   console.log(
-    `  counts merged=${formatNumber(debug.mergedCandidateCount)} deduped=${formatNumber(debug.dedupedCandidateCount)} valid=${formatNumber(debug.validCandidateCount)} fallbackReason=${debug.fallbackReason || ""}`
+    `  counts raw=${formatNumber(debug.rawCandidateCount)} merged=${formatNumber(debug.mergedCandidateCount)} deduped=${formatNumber(debug.dedupedCandidateCount)} valid=${formatNumber(debug.validCandidateCount)} fallbackReason=${debug.fallbackReason || ""}`
   );
 
   searchQueries.forEach((plan, index) => {
@@ -405,6 +510,46 @@ function printSearchPlan(run) {
     const error = isRecord(result) && typeof result.error === "string" ? ` error=${result.error}` : "";
     console.log(
       `  query[${index + 1}] priority=${priority} type=${type} returned=${returnedCount} query=${query} purpose=${purpose}${error}`
+    );
+  });
+}
+
+function printCandidatePipeline(run) {
+  const debug = readRecord(run.data.debug, `${run.label} debug`);
+  const rough = isRecord(debug.roughTierDistribution) ? debug.roughTierDistribution : {};
+  console.log(
+    `candidatePipeline ${run.label} query="${run.query}" rerankEnabled=${debug.rerankEnabled === true} rerankUsed=${debug.rerankUsed === true} rerankDurationMs=${formatNumber(debug.rerankDurationMs)} rerankFailedReason=${debug.rerankFailedReason || ""}`
+  );
+  console.log(
+    `  rough strong=${formatNumber(rough.strong)} usable=${formatNumber(rough.usable)} backup=${formatNumber(rough.backup)} drop=${formatNumber(rough.drop)} rerankCandidates=${formatNumber(debug.rerankCandidatesCount)} selected=${formatNumber(debug.selectedCandidatesCount)} dropped=${formatNumber(debug.droppedCandidatesCount)} final=${formatNumber(debug.finalCandidateCount)}`
+  );
+  console.log(
+    `  refill triggered=${debug.refillTriggered === true} reason=${debug.refillReason || ""} refillCandidates=${formatNumber(debug.refillCandidateCount)}`
+  );
+  const refillQueries = Array.isArray(debug.refillQueries) ? debug.refillQueries : [];
+  refillQueries.forEach((query, index) => {
+    if (!isRecord(query)) return;
+    console.log(
+      `    refillQuery[${index + 1}] type=${query.type || ""} query=${query.query || ""} purpose=${query.purpose || ""}`
+    );
+  });
+
+  const finalCandidates = Array.isArray(debug.finalCandidates) ? debug.finalCandidates : [];
+  finalCandidates.slice(0, 10).forEach((candidate, index) => {
+    if (!isRecord(candidate)) return;
+    console.log(
+      `    final[${index + 1}] title=${candidate.title || ""} author=${candidate.author || ""} matchedQuery=${candidate.matchedQuery || ""} queryType=${candidate.queryType || ""} roughScore=${formatNumber(candidate.roughScore)} relevanceScore=${formatNumber(candidate.relevanceScore)} contentRole=${candidate.contentRole || ""} diversityKey=${candidate.diversityKey || ""} sourceRefs=${Array.isArray(candidate.sourceRefs) ? candidate.sourceRefs.length : 0}`
+    );
+    console.log(`      relation=${candidate.relationToUserIntent || ""}`);
+    console.log(`      summaryAngle=${candidate.summaryAngle || ""}`);
+    console.log(`      keepReason=${candidate.keepReason || ""}`);
+  });
+
+  const dropped = Array.isArray(debug.droppedCandidates) ? debug.droppedCandidates : [];
+  dropped.slice(0, 3).forEach((candidate, index) => {
+    if (!isRecord(candidate)) return;
+    console.log(
+      `    dropped[${index + 1}] title=${candidate.title || ""} roughScore=${formatNumber(candidate.roughScore)} dropReason=${candidate.dropReason || ""}`
     );
   });
 }

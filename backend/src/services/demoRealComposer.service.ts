@@ -3,6 +3,7 @@ import {
   DEMO_SCHEMA_VERSION,
   type DemoArticle,
   type DemoCandidateQuality,
+  type DemoContentRole,
   type DemoDataMode,
   type DemoEvidence,
   type DemoPath,
@@ -21,6 +22,7 @@ import {
 } from "./demoPathBuilder.service.js";
 import { scoreSearchCandidate, type CandidateAssessment } from "./demoCandidateQuality.service.js";
 import { createDemoSearchIdentity } from "./demoQueryIdentity.service.js";
+import { enforceDemoPathDiversity } from "./demoPathDiversity.service.js";
 import { buildContextFitReason, createDemoContextUsed } from "./userContext.service.js";
 
 interface ComposeRealInput {
@@ -37,6 +39,11 @@ interface PathBucket {
   id: string;
   title: string;
   summary: string;
+  whyRelevant: string;
+  tradeoff: string;
+  diversityKey: string;
+  summaryAngle?: string;
+  contentRole?: DemoContentRole;
   keywords: string[];
   variables: string[];
   stance: DemoPath["stance"];
@@ -44,13 +51,11 @@ interface PathBucket {
 }
 
 export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSearchResponse {
-  const limitedItems = input.items.slice(0, Math.min(Math.max(input.count, 1), 12));
+  const limitedItems = input.items.slice(0, Math.min(Math.max(input.count, 10), 12));
   const identity = createDemoSearchIdentity(input.query, {
     count: input.count,
     dataMode: input.dataMode
   });
-  const pathCandidates = limitedItems.map(toPathCandidate);
-  const buckets = groupItemsByPath(input.query, limitedItems, pathCandidates);
   const sourceRefs = limitedItems.map(toSourceRef);
   const sourceByItemId = new Map(limitedItems.map((item, index) => [item.id, sourceRefs[index]]));
   const candidateQuality = attachSourceRefsToCandidateQuality(
@@ -59,7 +64,14 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     input.candidateQuality,
     sourceByItemId
   );
+  const qualityByItemId = new Map(candidateQuality.map((candidate) => [candidate.candidateId, candidate]));
+  const pathCandidates = limitedItems.map((item) => toPathCandidate(item, qualityByItemId.get(item.id)));
+  const buckets = groupItemsByPath(input.query, limitedItems, pathCandidates, candidateQuality);
   const paths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
+  const pathDiversityCheck = enforceDemoPathDiversity(paths, {
+    mergeCount: buckets.reduce((total, bucket) => total + Math.max(0, bucket.matchedItems.length - 1), 0),
+    notes: ["real composer clustered final candidates by contentRole, diversityKey, and summaryAngle"]
+  });
   const pathByItemId = new Map<string, string>();
 
   for (const bucket of buckets) {
@@ -75,6 +87,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       item,
       index,
       pathByItemId.get(item.id) ?? paths[0].id,
+      paths.find((path) => path.id === (pathByItemId.get(item.id) ?? paths[0].id)) ?? paths[0],
       sourceByItemId.get(item.id)!,
       input.query,
       input.userContext,
@@ -179,6 +192,9 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       enhancedPathCount: 0,
       partialFallbackUsed: false,
       pathSource: "rule",
+      composerFallbackTriggered: false,
+      pathDuplicateFound: pathDiversityCheck.duplicateFound,
+      pathDiversityCheck,
       intentStage: {
         mode: "rule",
         llmUsed: false,
@@ -203,13 +219,25 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
 function groupItemsByPath(
   query: string,
   items: SearchItem[],
-  candidates: DemoPathCandidate[]
+  candidates: DemoPathCandidate[],
+  candidateQuality: DemoCandidateQuality[]
 ): PathBucket[] {
-  const pathPlans = buildQueryAwarePathPlans(query, candidates, 4);
-  const buckets = pathPlans.map(toPathBucket);
+  const qualityByItemId = new Map(candidateQuality.map((candidate) => [candidate.candidateId, candidate]));
+  const metadataBuckets = buildMetadataPathBuckets(query, items, qualityByItemId);
+
+  if (metadataBuckets.length >= 3) {
+    return metadataBuckets.slice(0, 5);
+  }
+
+  const pathPlans = buildQueryAwarePathPlans(query, candidates, 5);
+  const buckets = pathPlans.map((plan) => toPathBucket(plan, query));
 
   let fallbackIndex = 0;
   for (const item of items) {
+    if (metadataBuckets.some((bucket) => bucket.matchedItems.includes(item))) {
+      continue;
+    }
+
     const text = `${item.title}\n${item.text}`.toLowerCase();
     const scoredBuckets = buckets
       .map((bucket) => ({
@@ -232,16 +260,117 @@ function groupItemsByPath(
     }
   }
 
-  return buckets
+  const combined = [...metadataBuckets, ...buckets]
     .filter((bucket) => bucket.matchedItems.length > 0)
-    .slice(0, 4);
+    .reduce<PathBucket[]>((result, bucket) => {
+      const existing = result.find(
+        (item) => normalizeBucketKey(item.diversityKey) === normalizeBucketKey(bucket.diversityKey)
+      );
+      if (existing) {
+        existing.matchedItems.push(...bucket.matchedItems);
+        existing.keywords = unique([...existing.keywords, ...bucket.keywords]);
+        existing.variables = unique([...existing.variables, ...bucket.variables]).slice(0, 6);
+        return result;
+      }
+
+      result.push(bucket);
+      return result;
+    }, []);
+
+  return ensureMinimumPathBuckets(combined, buckets, items).slice(0, 5);
 }
 
-function toPathBucket(plan: DemoPathPlan): PathBucket {
+function buildMetadataPathBuckets(
+  query: string,
+  items: SearchItem[],
+  qualityByItemId: Map<string, DemoCandidateQuality>
+): PathBucket[] {
+  const buckets = new Map<string, PathBucket>();
+
+  for (const [index, item] of items.entries()) {
+    const quality = qualityByItemId.get(item.id);
+    const hasTaskTwoSignals = Boolean(
+      quality?.diversityKey ||
+        quality?.summaryAngle ||
+        quality?.relationToUserIntent ||
+        quality?.keepReason ||
+        item.diversityKey ||
+        item.summaryAngle ||
+        item.relationToUserIntent ||
+        item.keepReason
+    );
+    if (!hasTaskTwoSignals) {
+      continue;
+    }
+
+    const bucket = toMetadataPathBucket(query, item, index, quality);
+    const key = normalizeBucketKey(bucket.diversityKey || bucket.summaryAngle || bucket.title);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.matchedItems.push(item);
+      existing.keywords = unique([...existing.keywords, ...bucket.keywords]);
+      existing.variables = unique([...existing.variables, ...bucket.variables]).slice(0, 6);
+      continue;
+    }
+
+    buckets.set(key, bucket);
+  }
+
+  return Array.from(buckets.values()).sort(comparePathBuckets);
+}
+
+function toMetadataPathBucket(
+  query: string,
+  item: SearchItem,
+  index: number,
+  quality?: DemoCandidateQuality
+): PathBucket {
+  const role = readContentRole(quality?.contentRole ?? item.contentRole);
+  const diversityKey =
+    quality?.diversityKey ||
+    item.diversityKey ||
+    quality?.summaryAngle ||
+    item.summaryAngle ||
+    quality?.queryType ||
+    item.queryType ||
+    `candidate_${index + 1}`;
+  const variables = inferPathVariables(item, quality, query);
+  const summaryAngle = quality?.summaryAngle || item.summaryAngle || `提炼「${variables[0]}」里的选择和代价`;
+  const title = buildPathTitle(role, diversityKey, variables, query);
+  const tradeoff = buildPathTradeoff(role, variables, item, quality);
+
+  return {
+    id: `path_${hashId(`${normalizeBucketKey(diversityKey)}:${index}:${item.id || item.url}`)}`,
+    title,
+    summary: buildPathSummary(title, summaryAngle, variables, item),
+    whyRelevant:
+      quality?.relationToUserIntent ||
+      item.relationToUserIntent ||
+      `它回应的是「${truncateText(query, 28)}」里真正卡住的部分：${variables
+        .slice(0, 2)
+        .join("、") || "下一步怎么判断"}。`,
+    tradeoff,
+    diversityKey,
+    summaryAngle,
+    contentRole: role,
+    keywords: unique([diversityKey, summaryAngle, ...variables, item.title, item.matchedQuery ?? ""]),
+    variables,
+    stance: role === "viewpoint" ? "viewpoint" : role === "decision_conflict" ? "mixed" : "experience",
+    matchedItems: [item]
+  };
+}
+
+function toPathBucket(plan: DemoPathPlan, query: string): PathBucket {
   return {
     id: plan.id,
     title: plan.title,
     summary: plan.summary,
+    whyRelevant: `它回应的是「${truncateText(query, 28)}」里关于${plan.variables
+      .slice(0, 2)
+      .join("、")}的困惑，而不是把一篇回答重新摘要一遍。`,
+    tradeoff: buildPlanTradeoff(plan),
+    diversityKey: plan.variables[0] ?? plan.id,
+    summaryAngle: plan.summary,
     keywords: plan.keywords,
     variables: plan.variables,
     stance: plan.stance,
@@ -255,24 +384,30 @@ function toPath(
   query: string,
   userContext?: UserContext
 ): DemoPath {
+  const sourceItems = bucket.matchedItems.slice(0, 3);
   const sourceRefs = unique(
-    bucket.matchedItems
+    sourceItems
       .map((item) => sourceByItemId.get(item.id)?.id)
       .filter((sourceRef): sourceRef is string => Boolean(sourceRef))
   );
   const evidenceIds = unique(
-    bucket.matchedItems.flatMap((item) => sourceByItemId.get(item.id)?.evidenceIds ?? [])
+    sourceItems.flatMap((item) => sourceByItemId.get(item.id)?.evidenceIds ?? [])
   );
-  const personRefs = bucket.matchedItems.map((item, index) =>
+  const personRefs = sourceItems.map((item, index) =>
     toPersonId(item, `${bucket.id}_${index}`)
   );
+  const whyRelevant = bucket.whyRelevant || buildContextFitReason(query, userContext, bucket.title);
+  const tradeoff = bucket.tradeoff || buildFallbackTradeoff(bucket.variables);
 
   return {
     id: bucket.id,
     title: bucket.title,
-    summary: `${bucket.summary} 该路径来自 ${bucket.matchedItems.length} 条知乎公开内容的聚合。`,
+    summary: bucket.summary,
+    whyRelevant,
+    tradeoff,
     fitReason: buildContextFitReason(query, userContext, bucket.title),
-    stance: bucket.matchedItems.some((item) => classifySampleType(item) === "experience_sample")
+    diversityKey: bucket.diversityKey,
+    stance: sourceItems.some((item) => classifySampleType(item) === "experience_sample")
       ? "mixed"
       : bucket.stance,
     personRefs,
@@ -281,11 +416,19 @@ function toPath(
   };
 }
 
-function toPathCandidate(item: SearchItem): DemoPathCandidate {
+function toPathCandidate(item: SearchItem, quality?: DemoCandidateQuality): DemoPathCandidate {
   return {
     id: item.id,
     title: item.title,
-    text: item.text || item.evidence.text || ""
+    text: [
+      item.text || item.evidence.text || "",
+      quality?.contentRole ?? item.contentRole ?? "",
+      quality?.relationToUserIntent ?? item.relationToUserIntent ?? "",
+      quality?.summaryAngle ?? item.summaryAngle ?? "",
+      quality?.diversityKey ?? item.diversityKey ?? "",
+      quality?.matchedQuery ?? item.matchedQuery ?? "",
+      quality?.queryType ?? item.queryType ?? ""
+    ].join("\n")
   };
 }
 
@@ -293,6 +436,7 @@ function toPerson(
   item: SearchItem,
   index: number,
   pathId: string,
+  path: DemoPath,
   sourceRef: DemoSourceRef,
   query: string,
   userContext?: UserContext,
@@ -304,42 +448,49 @@ function toPerson(
   const personId = toPersonId(item, String(index));
   const personaId = `persona_${hashId(personId)}`;
   const displayName = item.author.name || "知乎用户";
-  const summary = toHumanSummary(item.text || item.title);
+  const variables = inferMatchedVariables(item, quality);
+  const summary = buildPersonOneLine(path, item, quality);
+  const roleLabel = toRole(sampleType, item.type, path);
+  const relevanceReason = buildPersonRelevanceReason(query, path, item, quality);
+  const contextFitReason = buildContextFitReason(
+    query,
+    userContext,
+    variables.slice(0, 2).join("、") || path.title || item.title || "公开内容主题"
+  );
 
   return {
     id: personId,
     name: displayName,
     sampleType,
     pathId,
-    role: toRole(sampleType, item.type),
-    badge: toBadge(sampleType),
+    role: roleLabel,
+    roleLabel,
+    badge: toBadge(sampleType, path),
     avatar: item.author.avatar,
     oneLine: summary,
     experienceSummary: null,
     experienceSummarySource: "none",
     experienceSummaryStatus: "pending",
-    fitReason: buildContextFitReason(
-      query,
-      userContext,
-      inferMatchedVariables(item).slice(0, 2).join("、") || item.title || "公开内容主题"
-    ),
+    matchedPathTitle: path.title,
+    relevanceReason,
+    fitReason: `${relevanceReason} ${contextFitReason}`,
     who: toWho(sampleType),
-    overlaps: toOverlaps(item),
+    overlaps: toOverlaps(item, quality, path),
     timeline: [
       {
         date: item.editTime > 0 ? "知乎公开内容更新时间" : "公开内容片段",
-        event: summary,
+        event: buildTimelineEvent(path, item, summary),
         evidenceIds: sourceRef.evidenceIds,
         sourceRefs: [sourceRef.id]
       }
     ],
-    lesson: toLesson(sampleType),
+    lesson: toLesson(sampleType, path),
     articles: [article],
     match: {
       score: toMatchScore(quality, index),
       level: toMatchLevel(toMatchScore(quality, index)),
-      reasons: toMatchReasons(item, sampleType, quality),
-      matchedVariables: inferMatchedVariables(item),
+      reasons: toMatchReasons(item, sampleType, quality, path),
+      matchedVariables: variables,
       riskNotes: ["该样本只代表知乎公开内容片段，不能代表作者完整人生或长期结果"],
       contentRelevance: quality.relevanceScore,
       experienceSimilarity: quality.experienceSignalScore,
@@ -353,8 +504,8 @@ function toPerson(
       personaId,
       displayName: `${displayName}的经验回声`,
       label: "基于公开内容生成",
-      openingLine: "你可以继续问这段公开内容里的选择、代价和边界。",
-      suggestedQuestions: toSuggestedQuestions(sampleType),
+      openingLine: toPersonaOpeningLine(path, sampleType),
+      suggestedQuestions: toSuggestedQuestions(sampleType, path),
       boundary: DEMO_PERSONA_BOUNDARY_NOTICE,
       grounding: {
         personId,
@@ -457,6 +608,179 @@ function attachSourceRefsToCandidateQuality(
   });
 }
 
+function comparePathBuckets(left: PathBucket, right: PathBucket): number {
+  return right.matchedItems.length - left.matchedItems.length || left.title.localeCompare(right.title);
+}
+
+function ensureMinimumPathBuckets(
+  buckets: PathBucket[],
+  fallbackBuckets: PathBucket[],
+  items: SearchItem[]
+): PathBucket[] {
+  const result = [...buckets];
+  const seenIds = new Set(result.map((bucket) => bucket.id));
+
+  for (const fallbackBucket of fallbackBuckets) {
+    if (result.length >= 3 || seenIds.has(fallbackBucket.id)) {
+      continue;
+    }
+
+    result.push({
+      ...fallbackBucket,
+      matchedItems:
+        fallbackBucket.matchedItems.length > 0
+          ? fallbackBucket.matchedItems
+          : items.length > 0
+            ? [items[result.length % items.length]]
+            : []
+    });
+    seenIds.add(fallbackBucket.id);
+  }
+
+  return result.filter((bucket) => bucket.matchedItems.length > 0);
+}
+
+function readContentRole(value: unknown): DemoContentRole {
+  if (
+    value === "real_experience" ||
+    value === "life_path" ||
+    value === "failure_review" ||
+    value === "decision_conflict" ||
+    value === "alternative_solution" ||
+    value === "viewpoint"
+  ) {
+    return value;
+  }
+
+  return "life_path";
+}
+
+function inferPathVariables(
+  item: SearchItem,
+  quality: DemoCandidateQuality | undefined,
+  query: string
+): string[] {
+  const variables = unique([
+    ...(quality?.relevanceSignals ?? []),
+    ...(quality?.specificitySignals ?? []),
+    ...(quality?.matchedQueries?.map((entry) => entry.query) ?? []),
+    quality?.diversityKey ?? item.diversityKey ?? "",
+    quality?.summaryAngle ?? item.summaryAngle ?? "",
+    item.matchedQuery ?? "",
+    query
+  ]
+    .flatMap(splitSignalText)
+    .map((signal) => signal.replace(/(真实经历|失败复盘|怎么选|怎么办|后来怎么样)$/g, "").trim())
+    .filter((signal) => signal.length >= 2 && signal.length <= 12));
+
+  return variables.length > 0 ? variables.slice(0, 6) : ["当前问题", "代价边界", "下一步"];
+}
+
+function buildPathTitle(
+  role: DemoContentRole,
+  diversityKey: string,
+  variables: string[],
+  query: string
+): string {
+  const first = variables[0] || truncateText(diversityKey || query, 8);
+  const second = variables.find((variable) => variable !== first) ?? "现实代价";
+  const titleByRole: Record<DemoContentRole, string> = {
+    real_experience: `有人把${first}先过了一遍`,
+    life_path: `有人把${first}变成一段过渡`,
+    failure_review: `有人走过${first}后回头复盘`,
+    decision_conflict: `有人在${first}和${second}之间拉扯`,
+    alternative_solution: `有人绕开原路先试${first}`,
+    viewpoint: `有人把${first}拆成现实账本`
+  };
+
+  return truncateText(titleByRole[role], 34);
+}
+
+function buildPathSummary(
+  title: string,
+  summaryAngle: string,
+  variables: string[],
+  item: SearchItem
+): string {
+  const first = variables[0] ?? "当前问题";
+  const second = variables[1] ?? "现实约束";
+  const sourceHint = item.title ? `来源内容的切口是「${truncateText(item.title, 18)}」` : "来源内容只提供片段";
+
+  return truncateText(
+    `${title}。这条路围绕${summaryAngle}，先处理${first}，同时把${second}摆到台面上；${sourceHint}。`,
+    150
+  );
+}
+
+function buildPathTradeoff(
+  role: DemoContentRole,
+  variables: string[],
+  item: SearchItem,
+  quality?: DemoCandidateQuality
+): string {
+  const first = variables[0] ?? "这条路";
+  const second = variables[1] ?? "现实成本";
+  const roleCost: Record<DemoContentRole, string> = {
+    real_experience: `代价是${second}会变得更具体，公开内容也只支撑到这段经历片段`,
+    life_path: `限制是${first}不能自动解决后续收入、关系或秩序问题`,
+    failure_review: `风险是复盘能提醒坑在哪里，但不能保证换个人照做就得到同样结果`,
+    decision_conflict: `代价是两个方向都要放弃一部分确定性，冲突不会因为命名成路径就消失`,
+    alternative_solution: `风险是绕路会降低原有稳定性，也可能让试错成本被低估`,
+    viewpoint: `限制是它更像变量拆解，不等同于作者亲历过完整过程`
+  };
+  const keepReason = quality?.keepReason || item.keepReason;
+
+  return truncateText([roleCost[role], keepReason].filter(Boolean).join("；"), 150);
+}
+
+function buildPlanTradeoff(plan: DemoPathPlan): string {
+  const variables = plan.variables;
+  return buildFallbackTradeoff(variables);
+}
+
+function buildFallbackTradeoff(variables: string[]): string {
+  const first = variables[0] ?? "这条路";
+  const second = variables[1] ?? "现实成本";
+  return `代价是${first}不会单独给出答案，仍要面对${second}和证据不足带来的不确定性。`;
+}
+
+function buildPersonOneLine(
+  path: DemoPath,
+  item: SearchItem,
+  quality: DemoCandidateQuality
+): string {
+  const variables = inferMatchedVariables(item, quality);
+  const focus = variables[0] ?? path.diversityKey ?? "这条路";
+  return truncateText(
+    `这个人提供的是「${path.title}」的样本，价值在于把${focus}和${truncateText(
+      path.tradeoff ?? "代价边界",
+      24
+    )}放在一起看。`,
+    90
+  );
+}
+
+function buildPersonRelevanceReason(
+  query: string,
+  path: DemoPath,
+  item: SearchItem,
+  quality: DemoCandidateQuality
+): string {
+  return truncateText(
+    quality.relationToUserIntent ||
+      item.relationToUserIntent ||
+      `这个样本适合出现在「${truncateText(query, 24)}」下，是因为它代表「${path.title}」这条路径里的一个可追溯片段。`,
+    120
+  );
+}
+
+function buildTimelineEvent(path: DemoPath, item: SearchItem, summary: string): string {
+  return truncateText(
+    `${summary} 原文入口是「${item.title || "知乎公开内容"}」，当前只把它用作「${path.title}」的证据片段。`,
+    120
+  );
+}
+
 function classifySampleType(
   item: SearchItem,
   quality?: Pick<DemoCandidateQuality, "experienceSignalScore"> &
@@ -495,19 +819,25 @@ function classifySampleType(
   return "content_sample";
 }
 
-function toRole(sampleType: DemoPerson["sampleType"], contentType: string): string {
+function toRole(sampleType: DemoPerson["sampleType"], contentType: string, path: DemoPath): string {
+  const pathLabel = path.diversityKey || path.title;
   if (sampleType === "experience_sample") {
-    return "亲历线索较强的公开样本";
+    return truncateText(`代表「${pathLabel}」的经历样本`, 40);
   }
 
   if (sampleType === "viewpoint_author") {
-    return "观点分析型公开样本";
+    return truncateText(`代表「${pathLabel}」的观点样本`, 40);
   }
 
-  return `${contentType || "知乎内容"}公开样本`;
+  return truncateText(`代表「${pathLabel}」的${contentType || "知乎内容"}样本`, 40);
 }
 
-function toBadge(sampleType: DemoPerson["sampleType"]): string {
+function toBadge(sampleType: DemoPerson["sampleType"], path: DemoPath): string {
+  const pathBadge = truncateText(path.diversityKey || path.title, 12);
+  if (pathBadge) {
+    return pathBadge;
+  }
+
   if (sampleType === "experience_sample") {
     return "更像亲历经验";
   }
@@ -531,33 +861,43 @@ function toWho(sampleType: DemoPerson["sampleType"]): string {
   return "基于知乎公开内容整理出的内容样本，真实性只限于公开内容片段。";
 }
 
-function toOverlaps(item: SearchItem): string[] {
-  const variables = inferMatchedVariables(item).slice(0, 3);
-  return variables.map((variable) => `都涉及「${variable}」这个选择变量`);
+function toOverlaps(item: SearchItem, quality: DemoCandidateQuality | undefined, path: DemoPath): string[] {
+  const variables = inferMatchedVariables(item, quality).slice(0, 3);
+  return unique([
+    `都在回应「${path.title}」这条路径`,
+    ...(path.whyRelevant ? [truncateText(path.whyRelevant, 42)] : []),
+    ...variables.map((variable) => `都涉及「${variable}」这个选择变量`)
+  ]).slice(0, 4);
 }
 
-function inferMatchedVariables(item: SearchItem): string[] {
-  const text = `${item.title}\n${item.text}`;
-  const variables = [
-    ["生活节奏", ["生活", "每天", "做饭", "散步", "户外", "休息"]],
-    ["现金流", ["收入", "副业", "赚钱", "存款", "现金流", "自由职业"]],
-    ["地点选择", ["小城市", "回老家", "旅行", "城市", "县城", "海边"]],
-    ["风险兜底", ["社保", "医保", "失业保险", "预算", "低保", "保障"]],
-    ["工作回流", ["找工作", "面试", "上班", "就业", "考公", "岗位"]]
-  ];
-  const matched = variables
-    .filter(([, keywords]) => (keywords as string[]).some((keyword) => text.includes(keyword)))
-    .map(([label]) => label as string);
+function inferMatchedVariables(item: SearchItem, quality?: DemoCandidateQuality): string[] {
+  const dynamicSignals = [
+    ...(quality?.relevanceSignals ?? []),
+    ...(quality?.specificitySignals ?? []),
+    ...(quality?.matchedQueries?.map((query) => query.query) ?? []),
+    item.matchedQuery ?? "",
+    item.diversityKey ?? "",
+    item.summaryAngle ?? ""
+  ]
+    .flatMap(splitSignalText)
+    .map((signal) => signal.replace(/(真实经历|失败复盘|怎么选|怎么办|后来怎么样)$/g, "").trim())
+    .filter((signal) => signal.length >= 2 && signal.length <= 12);
 
-  return matched.length > 0 ? matched : ["公开内容主题"];
+  return unique(dynamicSignals).slice(0, 6).length > 0
+    ? unique(dynamicSignals).slice(0, 6)
+    : ["公开内容主题"];
 }
 
 function toMatchReasons(
   item: SearchItem,
   sampleType: DemoPerson["sampleType"],
-  quality: Pick<DemoCandidateQuality, "filterReason" | "contentLength">
+  quality: Pick<
+    DemoCandidateQuality,
+    "filterReason" | "contentLength" | "relationToUserIntent" | "keepReason"
+  >,
+  path: DemoPath
 ): string[] {
-  const variables = inferMatchedVariables(item).slice(0, 2);
+  const variables = inferMatchedVariables(item, quality as DemoCandidateQuality).slice(0, 2);
   const prefix =
     sampleType === "experience_sample"
       ? "公开内容中出现了第一人称经历线索"
@@ -565,11 +905,14 @@ function toMatchReasons(
         ? "公开内容更像对选择路径的观点分析"
         : "公开内容提供了与问题相关的片段";
 
-  return [
+  return unique([
+    `它被放入「${path.title}」，不是普通作者列表`,
+    quality.relationToUserIntent ?? "",
+    quality.keepReason ?? "",
     prefix,
     `与当前问题共同涉及：${variables.join("、")}`,
     `候选质量判断：${quality.filterReason}，正文长度 ${quality.contentLength} 字`
-  ];
+  ].filter(Boolean)).slice(0, 4);
 }
 
 function toMatchScore(
@@ -617,28 +960,50 @@ function shouldEnablePersona(
   );
 }
 
-function toLesson(sampleType: DemoPerson["sampleType"]): string {
+function toLesson(sampleType: DemoPerson["sampleType"], path: DemoPath): string {
+  const tradeoff = truncateText(path.tradeoff || "代价边界", 42);
   if (sampleType === "experience_sample") {
-    return "可以先看这段公开经历里真实发生了什么，再判断是否可迁移。";
+    return `真正有价值的不是选择本身，而是这段内容把「${tradeoff}」说了出来。`;
   }
 
   if (sampleType === "viewpoint_author") {
-    return "可以参考观点中的变量，但不要把它当作作者亲历结果。";
+    return `它能提供变量拆解，但不能被包装成作者完整亲历；重点仍是「${tradeoff}」。`;
   }
 
-  return "这条内容只能作为线索，需要更多证据才能形成稳定判断。";
+  return `这条内容只能作为「${path.title}」的线索，仍需要更多证据才能形成稳定判断。`;
 }
 
-function toSuggestedQuestions(sampleType: DemoPerson["sampleType"]): string[] {
+function toPersonaOpeningLine(path: DemoPath, sampleType: DemoPerson["sampleType"]): string {
+  const focus = path.diversityKey || path.title;
+  const cost = truncateText(path.tradeoff || "代价和边界", 30);
+
   if (sampleType === "experience_sample") {
-    return ["这段公开内容里，最明确的行动是什么？", "从这个公开样本看，最大的代价可能是什么？"];
+    return truncateText(`我只能沿着这段公开内容聊：这条路先碰到的是${focus}，后来绕不开${cost}。`, 88);
   }
 
   if (sampleType === "viewpoint_author") {
-    return ["这段公开内容里，哪些判断有原文依据？", "从这个公开样本看，哪些建议需要谨慎？"];
+    return truncateText(`我会把它当成公开观点样本来聊：它能拆开${focus}，但不能替代真实亲历。`, 88);
   }
 
-  return ["这段公开内容里，可以确定的信息有哪些？", "从这个公开样本看，还缺哪些证据？"];
+  return truncateText(`我只能基于这段内容片段聊：先看${focus}能被证据支撑到哪里。`, 88);
+}
+
+function toSuggestedQuestions(sampleType: DemoPerson["sampleType"], path: DemoPath): string[] {
+  const focus = truncateText(path.diversityKey || path.title, 14);
+  const baseQuestions = [
+    `这条路解决了什么问题？`,
+    `它把什么代价放大了？`
+  ];
+
+  if (sampleType === "experience_sample") {
+    return [`这段经历里，${focus}怎么发生的？`, ...baseQuestions].slice(0, 3);
+  }
+
+  if (sampleType === "viewpoint_author") {
+    return [`这段观点里，${focus}有哪些证据？`, `哪些判断不能当成亲历？`, baseQuestions[1]];
+  }
+
+  return [`这段内容能支撑${focus}到哪一步？`, "还缺哪些关键证据？", baseQuestions[1]];
 }
 
 function toHumanSummary(text: string): string {
@@ -661,6 +1026,35 @@ function toEvidenceQuote(text: string): string {
 
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function truncateText(text: string, maxLength: number): string {
+  const normalized = normalizeText(text);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function normalizeBucketKey(text: string): string {
+  return normalizeText(text)
+    .replace(/[，。！？、,.!?\s/|:：；;（）()《》"“”]+/g, "")
+    .toLowerCase();
+}
+
+function splitSignalText(value: string): string[] {
+  const normalized = normalizeText(value).replace(/\s+/g, "");
+  if (!normalized) {
+    return [];
+  }
+
+  const parts = normalized
+    .split(/[，。！？、,.!?\s/|:：；;（）()《》"“”]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return unique([normalized, ...parts]);
 }
 
 function countIncludes(text: string, keyword: string): number {

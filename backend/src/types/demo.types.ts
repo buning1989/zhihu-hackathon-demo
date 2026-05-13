@@ -1,5 +1,8 @@
 export const DEMO_SCHEMA_VERSION = "demo.v1" as const;
-export const DEMO_PERSONA_BOUNDARY_NOTICE = "该 AI 分身基于公开内容生成，不代表作者本人。";
+export const DEMO_PERSONA_BOUNDARY_NOTICE =
+  "这个分身基于作者公开内容生成，只能作为阅读辅助，不代表作者本人实时回应。";
+export const PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE =
+  "当前回复基于有限公开内容生成，只能作为阅读辅助，不代表作者本人实时回应。";
 
 export type DemoSchemaVersion = typeof DEMO_SCHEMA_VERSION;
 export type DemoDataMode = "mock" | "cache_first" | "real";
@@ -13,6 +16,14 @@ export type DemoSearchQueryType =
   | "failure_review"
   | "decision_conflict"
   | "alternative_solution";
+export type DemoRoughTier = "strong" | "usable" | "backup" | "drop";
+export type DemoContentRole =
+  | "real_experience"
+  | "life_path"
+  | "failure_review"
+  | "decision_conflict"
+  | "alternative_solution"
+  | "viewpoint";
 export type DemoDebugFallbackKind =
   | ""
   | "no_llm_config"
@@ -78,7 +89,10 @@ export interface DemoPath {
   id: string;
   title: string;
   summary: string;
+  whyRelevant?: string;
+  tradeoff?: string;
   fitReason?: string;
+  diversityKey?: string;
   stance: "experience" | "viewpoint" | "mixed";
   personRefs?: string[];
   evidenceIds: string[];
@@ -91,6 +105,7 @@ export interface DemoPerson {
   sampleType?: "experience_sample" | "viewpoint_author" | "content_sample";
   pathId: string;
   role: string;
+  roleLabel?: string;
   badge: string;
   avatar: string;
   oneLine: string;
@@ -98,6 +113,8 @@ export interface DemoPerson {
   experienceSummarySource: DemoExperienceSummarySource;
   experienceSummaryStatus: DemoExperienceSummaryStatus;
   experienceSummaryConfidence?: number;
+  matchedPathTitle?: string;
+  relevanceReason?: string;
   fitReason?: string;
   who: string;
   overlaps: string[];
@@ -251,18 +268,52 @@ export interface DemoDebug {
   enhancedPathCount?: number;
   partialFallbackUsed?: boolean;
   pathSource: DemoDebugPathSource;
+  composerFallbackTriggered?: boolean;
+  pathDuplicateFound?: boolean;
+  pathDiversityCheck?: DemoPathDiversityCheck;
   intentStage: DemoDebugIntentStage;
   fallbackKind: DemoDebugFallbackKind;
   fallbackReason: string;
   guardWarnings: string[];
+  userCoreQuestion?: string;
+  topicSignals?: string[];
   searchQueries?: DemoSearchQueryPlan[];
   searchQueryResults?: DemoSearchQueryResultDebug[];
+  rawCandidateCount?: number;
   mergedCandidateCount?: number;
   dedupedCandidateCount?: number;
   validCandidateCount?: number;
+  roughTierDistribution?: DemoRoughTierDistribution;
+  rerankEnabled?: boolean;
+  rerankUsed?: boolean;
+  rerankDurationMs?: number;
+  rerankFailedReason?: string;
+  rerankCandidatesCount?: number;
+  selectedCandidatesCount?: number;
+  droppedCandidatesCount?: number;
+  refillTriggered?: boolean;
+  refillReason?: string;
+  refillQueries?: DemoSearchQueryPlan[];
+  refillCandidateCount?: number;
+  finalCandidateCount?: number;
+  finalCandidates?: DemoFinalCandidateDebug[];
+  droppedCandidates?: DemoDroppedCandidateDebug[];
   candidateQuality?: DemoCandidateQuality[];
   experienceSummaryDebug?: DemoExperienceSummaryDebug[];
   notes: string[];
+}
+
+export interface DemoMatchedQueryDebug {
+  query: string;
+  type?: DemoSearchQueryType;
+  purpose?: string;
+}
+
+export interface DemoRoughTierDistribution {
+  strong: number;
+  usable: number;
+  backup: number;
+  drop: number;
 }
 
 export interface DemoCandidateQuality {
@@ -270,6 +321,7 @@ export interface DemoCandidateQuality {
   sourceRefId?: string;
   title: string;
   matchedQuery?: string;
+  matchedQueries?: DemoMatchedQueryDebug[];
   queryType?: DemoSearchQueryType;
   queryPurpose?: string;
   relevanceScore: number;
@@ -278,11 +330,63 @@ export interface DemoCandidateQuality {
   contentLength: number;
   filterReason: string;
   usedAsEvidence: boolean;
+  roughScore?: number;
+  topicHitScore?: number;
+  narrativeScore?: number;
+  specificityScore?: number;
+  basicQualityScore?: number;
+  penaltyScore?: number;
+  roughTier?: DemoRoughTier;
+  relevanceSignals?: string[];
+  narrativeSignals?: string[];
+  specificitySignals?: string[];
+  penaltySignals?: string[];
+  roughReason?: string;
+  contentRole?: DemoContentRole;
+  relationToUserIntent?: string;
+  summaryAngle?: string;
+  diversityKey?: string;
+  keepReason?: string;
+  dropReason?: string;
+}
+
+export interface DemoFinalCandidateDebug {
+  candidateId: string;
+  title: string;
+  author: string;
+  matchedQuery?: string;
+  queryType?: DemoSearchQueryType;
+  roughScore: number;
+  relevanceScore?: number;
+  contentRole?: DemoContentRole;
+  relationToUserIntent?: string;
+  summaryAngle?: string;
+  diversityKey?: string;
+  keepReason?: string;
+  sourceRefs?: string[];
+}
+
+export interface DemoPathDiversityCheck {
+  duplicateFound: boolean;
+  duplicateTitleCount: number;
+  duplicateSummaryPrefixCount: number;
+  duplicateDiversityKeys: string[];
+  rewriteCount: number;
+  mergeCount: number;
+  notes: string[];
+}
+
+export interface DemoDroppedCandidateDebug {
+  candidateId: string;
+  title: string;
+  roughScore: number;
+  dropReason: string;
 }
 
 export interface DemoDebugTiming {
   stageName:
     | "intent_expand"
+    | "candidate_rerank"
     | "evidence_extract"
     | "demo_response_compose"
     | "experience_summary"
@@ -310,6 +414,7 @@ export interface DemoDebugIntentStage {
 export interface DemoDebugLlmStageResult {
   stage:
     | "intent_expand"
+    | "candidate_rerank"
     | "evidence_extract"
     | "demo_response_compose"
     | "experience_summary"

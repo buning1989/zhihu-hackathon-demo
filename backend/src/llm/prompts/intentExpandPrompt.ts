@@ -5,7 +5,7 @@ export const INTENT_EXPAND_SYSTEM_PROMPT = String.raw`
 1. 读懂用户的模糊人生问题。
 2. 基于用户原始问题，生成一组适合知乎搜索的中文自然语言 query。
 3. 这些 query 用于召回真实经历、路径选择、失败复盘、决策讨论和替代方案。
-4. 生成简短的 intent、userCoreQuestion、focusTags。
+4. 生成简短的 intent、userCoreQuestion、focusTags、topicSignals。
 
 输入会包含：
 - query：用户原始问题。
@@ -21,6 +21,12 @@ searchQueries 硬性约束：
 7. 禁止过度脑补用户没说过的信息，例如：年龄、城市、职业、疾病、财务状况、家庭关系。
 8. searchQueries 需要去重、去空，最多 12 条。
 
+topicSignals 硬性约束：
+1. topicSignals 必须从 query、userCoreQuestion、focusTags、searchQueries 中动态提炼。
+2. 每个问题输出 6-12 个，代表当前问题的核心场景词、关键对象、约束、选择关系或相关概念。
+3. 不要依赖固定测试样本，不要输出“人生、选择、成长、努力、问题、建议”这类空泛词。
+4. topicSignals 用于后续候选内容相关性判断，所以必须贴近当前用户问题，而不是通用分类标签。
+
 边界：
 1. 不要输出用户原文之外的隐私推断。
 2. 不要给人生建议。
@@ -32,65 +38,66 @@ searchQueries 硬性约束：
 输出结构：
 {
   "intent": "life_path_exploration",
-  "userCoreQuestion": "不工作后，还有哪些可行的人生去向和生活方式？",
-  "focusTags": ["离开职场后的生活路径", "自由职业或副业过渡", "裸辞后的代价与复盘"],
+  "userCoreQuestion": "用户真正想判断的核心选择或困境是什么？",
+  "focusTags": ["当前选择的真实经历", "行动代价与结果", "替代路径"],
+  "topicSignals": ["从原问题提炼的核心词A", "关键对象B", "约束C", "选择关系D", "相关概念E", "结果变量F"],
   "searchQueries": [
     {
-      "query": "不工作了能去哪儿",
+      "query": "用户原始问题",
       "type": "original",
       "purpose": "保留用户原始表达",
       "priority": 1
     },
     {
-      "query": "裸辞后去了哪里",
+      "query": "核心词A 真实经历",
       "type": "real_experience",
       "purpose": "召回真实经历",
       "priority": 2
     },
     {
-      "query": "不上班以后怎么生活",
+      "query": "关键对象B 后来怎么样",
       "type": "real_experience",
-      "purpose": "召回不上班后的生活状态",
+      "purpose": "召回后续状态",
       "priority": 2
     },
     {
-      "query": "自由职业生活真实体验",
+      "query": "核心词A 有哪些路径",
       "type": "life_path",
-      "purpose": "召回自由职业路径",
+      "purpose": "召回可行路径",
       "priority": 3
     },
     {
-      "query": "辞职后回小城市生活",
+      "query": "关键对象B 怎么开始",
       "type": "life_path",
-      "purpose": "召回回小城市生活路径",
+      "purpose": "召回行动路径",
       "priority": 3
     },
     {
-      "query": "裸辞失败复盘",
+      "query": "核心词A 失败复盘",
       "type": "failure_review",
       "purpose": "召回失败和代价",
       "priority": 4
     },
     {
-      "query": "gap year 后悔吗",
+      "query": "关键对象B 后悔吗",
       "type": "failure_review",
       "purpose": "召回后悔与风险讨论",
       "priority": 4
     },
     {
-      "query": "不想上班怎么办",
+      "query": "核心词A 怎么选",
       "type": "decision_conflict",
       "purpose": "召回决策困境",
       "priority": 5
     },
     {
-      "query": "要不要裸辞",
+      "query": "要不要 关键对象B",
       "type": "decision_conflict",
       "purpose": "召回是否行动的讨论",
       "priority": 5
     },
     {
-      "query": "不工作怎么养活自己",
+      "query": "核心词A 还有什么选择",
       "type": "alternative_solution",
       "purpose": "召回替代方案",
       "priority": 6

@@ -1,8 +1,13 @@
-import type { DemoPath, DemoSearchQueryPlan } from "../../types/demo.types.js";
+import type {
+  DemoContentRole,
+  DemoPath,
+  DemoSearchQueryPlan
+} from "../../types/demo.types.js";
 import { normalizeSearchQueryPlans } from "../searchQueryPlan.js";
 
 export type LlmTaskSchemaName =
   | "intent_expand"
+  | "candidate_rerank"
   | "evidence_extract"
   | "demo_response_compose"
   | "experience_summary"
@@ -19,9 +24,32 @@ export interface IntentExpandOutput {
   intent: string;
   userCoreQuestion: string;
   focusTags: string[];
+  topicSignals: string[];
   searchQueries: DemoSearchQueryPlan[];
   intentTags: string[];
   userNeedSummary: string;
+}
+
+export interface CandidateRerankSelectedItem {
+  candidateId: string;
+  keep: true;
+  relevanceScore: number;
+  contentRole: DemoContentRole;
+  relationToUserIntent: string;
+  summaryAngle: string;
+  diversityKey: string;
+  keepReason: string;
+}
+
+export interface CandidateRerankDroppedItem {
+  candidateId: string;
+  keep: false;
+  dropReason: string;
+}
+
+export interface CandidateRerankOutput {
+  selected: CandidateRerankSelectedItem[];
+  dropped: CandidateRerankDroppedItem[];
 }
 
 export interface EvidenceRefSeed {
@@ -73,7 +101,10 @@ export interface DemoComposePathOutput {
   id: string;
   title: string;
   summary: string;
+  whyRelevant?: string;
+  tradeoff?: string;
   fitReason?: string;
+  diversityKey?: string;
   stance: DemoPath["stance"];
 }
 
@@ -170,9 +201,52 @@ export function parseIntentExpandOutput(content: string, fallbackQuery: string):
     intent: truncateText(readString(record.intent) || "life_path_exploration", 48),
     userCoreQuestion,
     focusTags,
+    topicSignals: buildTopicSignals({
+      originalQuery: fallbackQuery,
+      userCoreQuestion,
+      focusTags,
+      searchQueries,
+      rawTopicSignals: readStringArray(record.topicSignals)
+    }),
     searchQueries,
     intentTags: focusTags,
     userNeedSummary
+  };
+}
+
+export function parseCandidateRerankOutput(
+  content: string,
+  allowedCandidateIds: Set<string>
+): CandidateRerankOutput {
+  const record = parseJsonObject(content);
+  const selected: CandidateRerankSelectedItem[] = [];
+  const dropped: CandidateRerankDroppedItem[] = [];
+  const seenSelected = new Set<string>();
+  const seenDropped = new Set<string>();
+
+  for (const item of readRecordArray(record.selected)) {
+    const parsed = readCandidateRerankSelected(item, allowedCandidateIds);
+    if (!parsed || seenSelected.has(parsed.candidateId)) {
+      continue;
+    }
+
+    seenSelected.add(parsed.candidateId);
+    selected.push(parsed);
+  }
+
+  for (const item of readRecordArray(record.dropped)) {
+    const parsed = readCandidateRerankDropped(item, allowedCandidateIds);
+    if (!parsed || seenDropped.has(parsed.candidateId) || seenSelected.has(parsed.candidateId)) {
+      continue;
+    }
+
+    seenDropped.add(parsed.candidateId);
+    dropped.push(parsed);
+  }
+
+  return {
+    selected: selected.slice(0, 10),
+    dropped: dropped.slice(0, allowedCandidateIds.size)
   };
 }
 
@@ -300,7 +374,7 @@ export function parsePersonaChatTaskOutput(
     citedArticleIds,
     evidence,
     followupQuestions: readStringArray(record.followupQuestions).slice(0, 3),
-    boundary: readRequiredString(record.boundary, "boundary")
+    boundary: readString(record.boundary)
   };
 }
 
@@ -393,9 +467,12 @@ function readDemoComposePath(
 
   return {
     id,
-    title: truncateText(readRequiredString(record.title, `paths[${index}].title`), 30),
-    summary: truncateText(readRequiredString(record.summary, `paths[${index}].summary`), 110),
+    title: truncateText(readRequiredString(record.title, `paths[${index}].title`), 42),
+    summary: truncateText(readRequiredString(record.summary, `paths[${index}].summary`), 150),
+    whyRelevant: truncateOptionalString(record.whyRelevant, 140),
+    tradeoff: truncateOptionalString(record.tradeoff, 140),
     fitReason: truncateOptionalString(record.fitReason, 120),
+    diversityKey: truncateOptionalString(record.diversityKey, 40),
     stance: readStance(record.stance)
   };
 }
@@ -496,6 +573,123 @@ function readPersonaChatEvidence(
     articleId,
     text
   };
+}
+
+function readCandidateRerankSelected(
+  record: Record<string, unknown>,
+  allowedCandidateIds: Set<string>
+): CandidateRerankSelectedItem | undefined {
+  const candidateId = readString(record.candidateId);
+  if (!allowedCandidateIds.has(candidateId)) {
+    return undefined;
+  }
+
+  const relationToUserIntent = truncateText(readRequiredString(record.relationToUserIntent, "relationToUserIntent"), 120);
+  const summaryAngle = truncateText(readRequiredString(record.summaryAngle, "summaryAngle"), 80);
+  const keepReason = truncateText(readRequiredString(record.keepReason, "keepReason"), 120);
+
+  return {
+    candidateId,
+    keep: true,
+    relevanceScore: clampPercentScore(readNumber(record.relevanceScore, 60)),
+    contentRole: readContentRole(record.contentRole),
+    relationToUserIntent,
+    summaryAngle,
+    diversityKey: truncateText(readString(record.diversityKey) || summaryAngle, 40),
+    keepReason
+  };
+}
+
+function readCandidateRerankDropped(
+  record: Record<string, unknown>,
+  allowedCandidateIds: Set<string>
+): CandidateRerankDroppedItem | undefined {
+  const candidateId = readString(record.candidateId);
+  if (!allowedCandidateIds.has(candidateId)) {
+    return undefined;
+  }
+
+  return {
+    candidateId,
+    keep: false,
+    dropReason: truncateText(readString(record.dropReason) || "LLM judged this candidate weakly related to the user intent", 120)
+  };
+}
+
+function readContentRole(value: unknown): DemoContentRole {
+  if (
+    value === "real_experience" ||
+    value === "life_path" ||
+    value === "failure_review" ||
+    value === "decision_conflict" ||
+    value === "alternative_solution" ||
+    value === "viewpoint"
+  ) {
+    return value;
+  }
+
+  return "viewpoint";
+}
+
+function buildTopicSignals(input: {
+  originalQuery: string;
+  userCoreQuestion: string;
+  focusTags: string[];
+  searchQueries: DemoSearchQueryPlan[];
+  rawTopicSignals: string[];
+}): string[] {
+  const fromModel = input.rawTopicSignals
+    .map((item) => normalizeSignal(item))
+    .filter(isTopicSignal);
+  const fromFocusTags = input.focusTags
+    .flatMap(splitSignalText)
+    .map(normalizeSignal)
+    .filter(isTopicSignal);
+  const fromQueries = input.searchQueries
+    .map((item) => item.query)
+    .flatMap(splitSignalText)
+    .map(normalizeSignal)
+    .filter(isTopicSignal);
+  const fromCore = [input.originalQuery, input.userCoreQuestion]
+    .flatMap(splitSignalText)
+    .map(normalizeSignal)
+    .filter(isTopicSignal);
+
+  return unique([...fromModel, ...fromFocusTags, ...fromCore, ...fromQueries]).slice(0, 12);
+}
+
+function splitSignalText(value: string): string[] {
+  const normalized = normalizeSignal(value);
+  if (!normalized) {
+    return [];
+  }
+
+  const fragments = normalized
+    .split(/[，。！？、,.!?\s/|:：；;（）()《》"“”]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return unique([normalized, ...fragments]);
+}
+
+function normalizeSignal(value: string): string {
+  return value.replace(/\s+/g, "").replace(/^关于|相关$|真实经历$|怎么办$/g, "").trim();
+}
+
+function isTopicSignal(value: string): boolean {
+  if (value.length < 2 || value.length > 12) {
+    return false;
+  }
+
+  if (/^(用户|问题|公开内容|真实经历|相关|如何|怎么|怎么办|要不要|是否)$/.test(value)) {
+    return false;
+  }
+
+  if (/^(召回|保留用户|基于|当前选择|行动代价|替代路径)/.test(value)) {
+    return false;
+  }
+
+  return true;
 }
 
 function parseJsonObject(content: string): Record<string, unknown> {
@@ -649,6 +843,10 @@ function truncateText(value: string, maxLength: number): string {
 
 function clampScore(value: number): number {
   return Math.min(Math.max(Number(value.toFixed(2)), 0), 1);
+}
+
+function clampPercentScore(value: number): number {
+  return Math.min(Math.max(Math.round(value), 0), 100);
 }
 
 function unique(values: string[]): string[] {

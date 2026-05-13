@@ -41,6 +41,12 @@ export interface SearchEvidence {
   source: SearchSource;
 }
 
+export interface SearchMatchedQuery {
+  query: string;
+  type?: string;
+  purpose?: string;
+}
+
 export interface SearchItem {
   id: string;
   type: string;
@@ -50,6 +56,14 @@ export interface SearchItem {
   matchedQuery?: string;
   queryType?: string;
   queryPurpose?: string;
+  matchedQueries?: SearchMatchedQuery[];
+  roughScore?: number;
+  relevanceScore?: number;
+  contentRole?: string;
+  relationToUserIntent?: string;
+  summaryAngle?: string;
+  diversityKey?: string;
+  keepReason?: string;
   author: SearchAuthor;
   stats: SearchStats;
   comments: unknown[];
