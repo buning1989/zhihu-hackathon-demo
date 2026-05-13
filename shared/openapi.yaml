@@ -13,6 +13,8 @@ servers:
 tags:
   - name: Health
     description: Implemented health checks.
+  - name: Auth
+    description: Implemented Zhihu OAuth login and session endpoints.
   - name: Search
     description: Implemented search endpoints.
   - name: Zhihu
@@ -63,6 +65,147 @@ paths:
                     data:
                       status: ok
                       service: zhihu-hackathon-backend
+  /auth/zhihu/login:
+    get:
+      tags:
+        - Auth
+      summary: Start Zhihu OAuth login
+      description: >
+        Implemented. Creates a short-lived OAuth state, stores it in an
+        HttpOnly cookie and server memory, then redirects the browser to
+        Zhihu's authorization endpoint. ZHIHU_APP_ID and ZHIHU_APP_KEY are
+        required only when this endpoint is called, so the server can still
+        start without local OAuth credentials.
+      operationId: loginWithZhihu
+      x-implementation-status: implemented
+      responses:
+        "302":
+          description: Redirects to Zhihu authorization page.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Zhihu authorization URL.
+        "500":
+          description: Missing local Zhihu OAuth credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                missingOAuthConfig:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_OAUTH_NOT_CONFIGURED
+                      message: 知乎 OAuth 未配置：ZHIHU_APP_ID, ZHIHU_APP_KEY
+  /auth/zhihu/callback:
+    get:
+      tags:
+        - Auth
+      summary: Finish Zhihu OAuth callback
+      description: >
+        Implemented. Validates OAuth state, exchanges the authorization code
+        for an access token on the backend, optionally loads user info from
+        ZHIHU_USERINFO_PATH, creates an in-memory app session, sets an HttpOnly
+        session cookie, and redirects to FRONTEND_URL.
+      operationId: zhihuOAuthCallback
+      x-implementation-status: implemented
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Login succeeded and browser is redirected to the frontend.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Configured FRONTEND_URL.
+        "400":
+          description: Missing code/state or failed state validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          description: Zhihu OAuth token or configured user-info request failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Get current login session
+      description: >
+        Implemented. Reads the HttpOnly session cookie and returns the current
+        app session user data. Access tokens are never included in this
+        response. If ZHIHU_USERINFO_PATH was not configured during login,
+        userInfoLoaded is false and the user is a temporary demo user.
+      operationId: getCurrentAuthSession
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Current session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMeResponse"
+              examples:
+                temporary:
+                  value:
+                    success: true
+                    data:
+                      provider: zhihu
+                      userInfoLoaded: false
+                      user:
+                        id: zhihu-temp-example
+                        provider: zhihu
+                        displayName: 知乎临时用户
+                        avatar: ""
+                        headline: ""
+                        isTemporary: true
+                        userInfoLoaded: false
+                      session:
+                        createdAt: "2026-05-13T00:00:00.000Z"
+                        expiresAt: "2026-05-20T00:00:00.000Z"
+        "401":
+          description: Missing or expired session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Clear current login session
+      description: Implemented. Deletes the in-memory session and clears the HttpOnly cookie.
+      operationId: logout
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Logout succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+              examples:
+                ok:
+                  value:
+                    success: true
+                    data:
+                      loggedOut: true
   /api/search:
     get:
       tags:
@@ -325,6 +468,90 @@ components:
               type: string
               enum:
                 - zhihu-hackathon-backend
+    AuthMeResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AuthSessionData"
+    AuthSessionData:
+      type: object
+      required:
+        - provider
+        - userInfoLoaded
+        - user
+        - session
+      properties:
+        provider:
+          type: string
+          enum:
+            - zhihu
+        userInfoLoaded:
+          type: boolean
+          description: False when ZHIHU_USERINFO_PATH was not configured during login.
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        session:
+          type: object
+          required:
+            - createdAt
+            - expiresAt
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+            expiresAt:
+              type: string
+              format: date-time
+    AuthUser:
+      type: object
+      required:
+        - id
+        - provider
+        - displayName
+        - avatar
+        - headline
+        - isTemporary
+        - userInfoLoaded
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+          enum:
+            - zhihu
+        displayName:
+          type: string
+        avatar:
+          type: string
+        headline:
+          type: string
+        isTemporary:
+          type: boolean
+        userInfoLoaded:
+          type: boolean
+    LogoutResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - loggedOut
+          properties:
+            loggedOut:
+              type: boolean
+              const: true
     SearchSuccessResponse:
       type: object
       required:

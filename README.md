@@ -23,7 +23,7 @@
 
 已有代码保留说明：
 
-- `backend/src/` 下已有 Express 后端代码，当前接口包括 `/health`、`/api/health`、`/api/zhihu/search` 和 `/api/search`。
+- `backend/src/` 下已有 Express 后端代码，当前接口包括 `/health`、`/api/health`、`/api/zhihu/search`、`/api/search` 和 `/auth/*`。
 - `backend/dist/`、`backend/node_modules/`、`__pycache__/` 等是本地生成内容，已经由 `.gitignore` 忽略，不应提交。
 - 早期 `docs/` 中有 FastAPI 方向设计，当前实际代码是 Node.js 后端。后续如需迁移，应先以 `shared/openapi.yaml` 为契约补齐兼容接口，再分 PR 替换实现。
 
@@ -57,6 +57,7 @@ docker compose -f infra/docker-compose.yml up
 启动后默认地址：
 
 - 后端健康检查：`http://localhost:8000/health`
+- 知乎 OAuth 登录入口：`http://localhost:8000/auth/zhihu/login`
 - 前端占位首页：`http://localhost:3000/`
 - OpenAPI 契约：`shared/openapi.yaml`
 - 前端字段样例：`shared/demo-response.sample.json`

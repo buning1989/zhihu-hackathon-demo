@@ -27,13 +27,16 @@ export class ZhihuProvider {
       });
 
       const body = parseJsonBody(await response.text());
+      const apiCode = readApiCode(body);
 
-      if (!response.ok) {
-        const isAuthError = response.status === 401 || response.status === 403;
+      if (!response.ok || (apiCode !== null && apiCode >= 400)) {
+        const status = apiCode ?? response.status;
+        const isAuthError = status === 401 || status === 403;
         throw new HttpError(
-          isAuthError ? 401 : response.status,
+          isAuthError ? 401 : response.ok ? 502 : response.status,
           isAuthError ? "ZHIHU_AUTH_FAILED" : "ZHIHU_API_ERROR",
-          isAuthError ? "知乎 API 鉴权失败" : "知乎 API 请求失败"
+          readZhihuErrorMessage(body) ||
+            (isAuthError ? "知乎 API 鉴权失败" : "知乎 API 请求失败")
         );
       }
 
@@ -70,4 +73,31 @@ function parseJsonBody(bodyText: string): unknown {
 
 function isRecord(value: unknown): value is ZhihuSearchRawResponse {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readApiCode(body: unknown): number | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const code = body.code ?? body.Code;
+  if (typeof code === "number") {
+    return code;
+  }
+
+  if (typeof code === "string" && code.trim()) {
+    const parsed = Number.parseInt(code, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function readZhihuErrorMessage(body: unknown): string | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const message = body.message ?? body.Message ?? body.data ?? body.Data;
+  return typeof message === "string" && message.trim() ? message : null;
 }
