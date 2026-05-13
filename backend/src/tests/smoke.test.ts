@@ -1,6 +1,13 @@
 import { once } from "node:events";
 import { app } from "../app.js";
+import { llmRouter, type LlmTaskType } from "../llm/llmRouter.js";
+import { createOpenAICompatibleJsonCompletion } from "../llm/clients/openaiCompatible.js";
+import { composeMultiLlmDemoSearchResponse } from "../llm/demoSearchOrchestrator.js";
+import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
+import { demoSessionCacheService } from "../services/demoSessionCache.service.js";
+import { searchService } from "../services/search.service.js";
 import { DEMO_PERSONA_BOUNDARY_NOTICE } from "../types/demo.types.js";
+import type { SearchItem } from "../types/api.types.js";
 
 const server = app.listen(0, "127.0.0.1");
 await once(server, "listening");
@@ -84,6 +91,12 @@ try {
   assertEqual(missingMessage.body.success, false, "missing message success");
   assertEqual(missingMessage.body.error.code, "MESSAGE_REQUIRED", "missing message error code");
 
+  await assertDisabledPersonaFallback(baseUrl);
+  await assertDeepSeekResponseFormatFallback();
+  await assertNoLlmConfigFallbackKind();
+  await assertPartialLlmFallbackKind();
+  await assertGroundingGuardInvalidFallback();
+
   console.log("backend smoke ok");
 } finally {
   server.close();
@@ -119,4 +132,272 @@ function assertNonEmptyArray(value: unknown, label: string): void {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${label}: expected non-empty array`);
   }
+}
+
+function assertIncludes(value: unknown, expected: string, label: string): void {
+  if (typeof value !== "string" || !value.includes(expected)) {
+    throw new Error(`${label}: expected ${String(value)} to include ${expected}`);
+  }
+}
+
+async function assertDisabledPersonaFallback(baseUrl: string): Promise<void> {
+  const response = createMockDemoSearchResponse("禁用分身测试", 1, "mock");
+  response.people[0].aiPersona.enabled = false;
+  demoSessionCacheService.set(response);
+
+  const personaChat = await requestJson(`${baseUrl}/api/personas/chat`, {
+    method: "POST",
+    body: {
+      personaId: response.people[0].aiPersona.personaId,
+      queryId: response.queryId,
+      message: "这个分身禁用后还会调用 LLM 吗？"
+    }
+  });
+
+  assertEqual(personaChat.status, 200, "disabled persona chat status");
+  assertEqual(personaChat.body.success, true, "disabled persona chat success");
+  assertEqual(personaChat.body.data.meta.llmUsed, false, "disabled persona chat llmUsed");
+  assertEqual(
+    personaChat.body.data.debug.chatMode,
+    "mock_fallback",
+    "disabled persona chat fallback mode"
+  );
+  assertIncludes(
+    personaChat.body.data.debug.fallbackReason,
+    "PERSONA_DISABLED",
+    "disabled persona fallback reason"
+  );
+}
+
+async function assertDeepSeekResponseFormatFallback(): Promise<void> {
+  const originalFetch = globalThis.fetch;
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    requestBodies.push(body);
+
+    if (requestBodies.length === 1) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: "response_format json_object is not supported by this model"
+          }
+        }),
+        {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: "{\"ok\":true}"
+            }
+          }
+        ]
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }) as typeof fetch;
+
+  try {
+    const content = await createOpenAICompatibleJsonCompletion(
+      "deepseek",
+      {
+        apiKey: "test-key",
+        baseUrl: "https://example.test/v1",
+        model: "deepseek-chat",
+        timeoutMs: 1000,
+        maxRetry: 0
+      },
+      {
+        taskType: "intent_expand",
+        responseFormat: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: "只输出 JSON"
+          }
+        ]
+      }
+    );
+
+    assertEqual(content, "{\"ok\":true}", "response_format fallback content");
+    assertEqual(requestBodies.length, 2, "response_format fallback retry count");
+    assertEqual(
+      Boolean(requestBodies[0].response_format),
+      true,
+      "first DeepSeek request uses response_format"
+    );
+    assertEqual(
+      Boolean(requestBodies[1].response_format),
+      false,
+      "second DeepSeek request drops response_format"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function assertNoLlmConfigFallbackKind(): Promise<void> {
+  const response = await withStubbedOrchestrator({
+    configuredTasks: new Set(),
+    outputs: {}
+  });
+
+  assertEqual(response.debug.fallbackUsed, true, "no llm fallbackUsed");
+  assertEqual(response.debug.fallbackKind, "no_llm_config", "no llm fallbackKind");
+  assertIncludes(response.debug.fallbackReason, "no_llm_config", "no llm fallbackReason");
+}
+
+async function assertPartialLlmFallbackKind(): Promise<void> {
+  const response = await withStubbedOrchestrator({
+    configuredTasks: new Set(["intent_expand", "demo_response_compose", "grounding_guard"]),
+    outputs: {
+      intent_expand: JSON.stringify({
+        searchQueries: ["不工作了能去哪儿"],
+        intentTags: ["暂停工作"],
+        userNeedSummary: "用户在寻找离开工作轨道后的路径。"
+      }),
+      demo_response_compose: JSON.stringify({
+        analysis: {
+          summary: "基于公开内容整理出几个过渡方向。",
+          focusTags: ["暂停工作", "现金流"]
+        },
+        paths: [],
+        people: [],
+        personas: []
+      }),
+      grounding_guard: JSON.stringify({
+        valid: true,
+        warnings: [],
+        disablePersonaPersonIds: [],
+        disablePersonaIds: []
+      })
+    }
+  });
+
+  assertEqual(response.debug.fallbackUsed, true, "partial llm fallbackUsed");
+  assertEqual(
+    response.debug.fallbackKind,
+    "partial_llm_fallback",
+    "partial llm fallbackKind"
+  );
+  assertIncludes(response.debug.fallbackReason, "evidence_extract", "partial llm fallbackReason");
+}
+
+async function assertGroundingGuardInvalidFallback(): Promise<void> {
+  const response = await withStubbedOrchestrator({
+    configuredTasks: new Set(["grounding_guard"]),
+    outputs: {
+      grounding_guard: JSON.stringify({
+        valid: false,
+        warnings: [],
+        disablePersonaPersonIds: [],
+        disablePersonaIds: []
+      })
+    }
+  });
+
+  assertEqual(response.debug.fallbackUsed, true, "invalid guard fallbackUsed");
+  assertEqual(response.debug.fallbackKind, "all_llm_failed", "invalid guard fallbackKind");
+  assertIncludes(
+    response.debug.guardWarnings.join("\n"),
+    "grounding_guard invalid",
+    "invalid guard warning"
+  );
+  assertEqual(
+    response.people.every((person) => person.aiPersona.enabled === false),
+    true,
+    "invalid guard disables all personas"
+  );
+}
+
+interface StubbedOrchestratorOptions {
+  configuredTasks: Set<LlmTaskType>;
+  outputs: Partial<Record<LlmTaskType, string>>;
+}
+
+async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
+  const originalSearch = searchService.search;
+  const originalIsTaskConfigured = llmRouter.isTaskConfigured;
+  const originalRunJsonTask = llmRouter.runJsonTask;
+
+  searchService.search = async (query, count) => ({
+    query,
+    count,
+    hasMore: false,
+    searchHashId: "stub",
+    items: [createStubSearchItem()]
+  });
+  llmRouter.isTaskConfigured = ((taskType) =>
+    options.configuredTasks.has(taskType)) as typeof llmRouter.isTaskConfigured;
+  llmRouter.runJsonTask = (async (taskType) => {
+    const output = options.outputs[taskType];
+    if (!output) {
+      throw new Error(`missing stub LLM output for ${taskType}`);
+    }
+    return output;
+  }) as typeof llmRouter.runJsonTask;
+
+  try {
+    return await composeMultiLlmDemoSearchResponse({
+      query: "不工作了能去哪儿",
+      count: 1,
+      dataMode: "real",
+      startedAt: Date.now()
+    });
+  } finally {
+    searchService.search = originalSearch;
+    llmRouter.isTaskConfigured = originalIsTaskConfigured;
+    llmRouter.runJsonTask = originalRunJsonTask;
+  }
+}
+
+function createStubSearchItem(): SearchItem {
+  return {
+    id: "stub_answer_1",
+    type: "answer",
+    title: "不工作以后怎么安排生活",
+    text:
+      "我裸辞以后先把每天的生活重新排好，先算存款能撑多久，再考虑要不要找小城市停靠。这个过程里最重要的是现金流和日常节奏。",
+    url: "https://www.zhihu.com/question/stub/answer/1",
+    author: {
+      name: "知乎用户",
+      avatar: "",
+      badge: "",
+      badgeText: ""
+    },
+    stats: {
+      commentCount: 0,
+      voteUpCount: 0,
+      rankingScore: 0
+    },
+    comments: [],
+    editTime: 0,
+    authorityLevel: "",
+    source: {
+      provider: "zhihu",
+      url: "https://www.zhihu.com/question/stub/answer/1"
+    },
+    evidence: {
+      text: "先算存款能撑多久，再考虑要不要找小城市停靠",
+      source: {
+        provider: "zhihu",
+        url: "https://www.zhihu.com/question/stub/answer/1"
+      }
+    }
+  };
 }

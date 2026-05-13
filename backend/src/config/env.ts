@@ -83,7 +83,8 @@ export const config = {
     deepseek: {
       apiKey: deepseekApiKey,
       baseUrl: firstNonEmpty(process.env.DEEPSEEK_BASE_URL) || DEFAULT_DEEPSEEK_BASE_URL,
-      model: firstNonEmpty(process.env.DEEPSEEK_MODEL) || "deepseek-chat"
+      model: firstNonEmpty(process.env.DEEPSEEK_MODEL) || "deepseek-chat",
+      jsonMode: parseBoolean(process.env.DEEPSEEK_JSON_MODE, true)
     }
   }
 };

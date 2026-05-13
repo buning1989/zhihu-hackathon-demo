@@ -25,7 +25,9 @@ export class DeepSeekClient {
       maxRetry: config.llm.maxRetry
     }, {
       ...input,
-      responseFormat: input.responseFormat ?? { type: "json_object" }
+      responseFormat: config.llm.deepseek.jsonMode
+        ? input.responseFormat ?? { type: "json_object" }
+        : undefined
     });
   }
 }

@@ -195,6 +195,7 @@ export function createMockDemoSearchResponse(
       partialFallbackUsed: false,
       intentStage: buildMockIntentStageDebug(dataMode, options),
       fallbackUsed: options.fallbackUsed ?? false,
+      fallbackKind: "",
       fallbackReason: options.fallbackReason ?? "",
       guardWarnings: options.guardWarnings ?? [],
       notes: options.notes ?? ["mock demo data; no LLM or Zhihu API required"]

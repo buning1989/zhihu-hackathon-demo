@@ -30,7 +30,8 @@ export interface OpenAICompatibleClientConfig {
 export class LlmClientError extends Error {
   constructor(
     public readonly code: string,
-    message: string
+    message: string,
+    public readonly responseBody = ""
   ) {
     super(message);
     this.name = "LlmClientError";
@@ -46,11 +47,28 @@ export async function createOpenAICompatibleJsonCompletion(
 
   const attempts = Math.max(config.maxRetry, 0) + 1;
   let lastError: unknown;
+  let responseFormatFallbackUsed = false;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       return await requestJsonCompletion(provider, config, input);
     } catch (error) {
+      if (!responseFormatFallbackUsed && shouldRetryWithoutResponseFormat(error, input)) {
+        responseFormatFallbackUsed = true;
+        try {
+          return await requestJsonCompletion(provider, config, {
+            ...input,
+            responseFormat: undefined
+          });
+        } catch (fallbackError) {
+          lastError = fallbackError;
+          if (attempt >= attempts || !isRetryableError(fallbackError)) {
+            break;
+          }
+          continue;
+        }
+      }
+
       lastError = error;
       if (attempt >= attempts || !isRetryableError(error)) {
         break;
@@ -92,9 +110,11 @@ async function requestJsonCompletion(
     });
 
     if (!response.ok) {
+      const responseBody = truncateText(await response.text(), 500);
       throw new LlmClientError(
         `LLM_HTTP_${response.status}`,
-        `${provider} request failed with HTTP status ${response.status}`
+        `${provider} request failed with HTTP status ${response.status}; responseBody=${responseBody}`,
+        responseBody
       );
     }
 
@@ -188,6 +208,19 @@ function isRetryableError(error: unknown): boolean {
   );
 }
 
+function shouldRetryWithoutResponseFormat(error: unknown, input: JsonCompletionInput): boolean {
+  if (!input.responseFormat || !(error instanceof LlmClientError)) {
+    return false;
+  }
+
+  if (error.code !== "LLM_HTTP_400") {
+    return false;
+  }
+
+  const body = `${error.message}\n${error.responseBody}`.toLowerCase();
+  return body.includes("response_format") || body.includes("json_object");
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
@@ -198,6 +231,15 @@ function toErrorMessage(error: unknown): string {
   }
 
   return "Unknown LLM request error";
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -4,6 +4,11 @@ export const DEMO_PERSONA_BOUNDARY_NOTICE = "该 AI 分身基于公开内容生�
 export type DemoSchemaVersion = typeof DEMO_SCHEMA_VERSION;
 export type DemoDataMode = "mock" | "cache_first" | "real";
 export type DemoPersonaChatMode = "off" | "mock" | "real";
+export type DemoDebugFallbackKind =
+  | ""
+  | "no_llm_config"
+  | "partial_llm_fallback"
+  | "all_llm_failed";
 
 export interface DemoSearchRequestBody {
   query?: unknown;
@@ -203,6 +208,7 @@ export interface DemoDebug {
   enhancedPathCount?: number;
   partialFallbackUsed?: boolean;
   intentStage: DemoDebugIntentStage;
+  fallbackKind: DemoDebugFallbackKind;
   fallbackReason: string;
   guardWarnings: string[];
   notes: string[];

@@ -173,6 +173,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
         focusTagsSource: "rule"
       },
       fallbackUsed: false,
+      fallbackKind: "",
       fallbackReason: "",
       guardWarnings: [],
       notes: [

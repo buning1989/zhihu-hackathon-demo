@@ -1,5 +1,8 @@
 import { llmRouter } from "../llm/llmRouter.js";
-import { parsePersonaChatTaskOutput } from "../llm/schemas/taskSchemas.js";
+import {
+  parsePersonaChatTaskOutput,
+  type PersonaChatTaskOutput
+} from "../llm/schemas/taskSchemas.js";
 import { createMockPersonaChatResponse } from "../mocks/personaChat.mock.js";
 import { buildPersonaChatMessages } from "../prompts/personaPromptBuilder.js";
 import {
@@ -20,12 +23,6 @@ import { demoSessionCacheService } from "./demoSessionCache.service.js";
 
 const INSUFFICIENT_PUBLIC_CONTENT_REPLY = "公开内容不足以回答这个问题";
 const MAX_HISTORY_MESSAGES = 6;
-
-type PersonaChatAnswerType =
-  | "grounded_summary"
-  | "insufficient_evidence"
-  | "clarification"
-  | "safety_boundary";
 
 interface ChatGroundingContext {
   articles: PersonaChatArticleContext[];
@@ -55,20 +52,6 @@ interface PersonaChatEvidenceContext {
   sourceUrl: string;
 }
 
-interface PersonaChatLlmEvidence {
-  articleId: string;
-  text: string;
-}
-
-interface PersonaChatLlmPayload {
-  answer: string;
-  answerType: PersonaChatAnswerType;
-  citedArticleIds: string[];
-  evidence: PersonaChatLlmEvidence[];
-  followupQuestions: string[];
-  boundary: string;
-}
-
 export class PersonaChatService {
   async chat(request: PersonaChatRequest): Promise<PersonaChatResponse> {
     const cachedResponse = demoSessionCacheService.get(request.queryId);
@@ -81,6 +64,15 @@ export class PersonaChatService {
       return createMockFallback(
         request,
         "PERSONA_NOT_FOUND: personaId did not match cached demo search people"
+      );
+    }
+
+    if (!person.aiPersona.enabled) {
+      return createMockFallback(
+        request,
+        "PERSONA_DISABLED: aiPersona.enabled is false; grounded LLM chat skipped",
+        undefined,
+        person
       );
     }
 
@@ -278,73 +270,16 @@ function toPersonPromptContext(person: DemoPerson): Record<string, unknown> {
   };
 }
 
-function parsePersonaChatLlmPayload(
-  content: string,
-  grounding: ChatGroundingContext
-): PersonaChatLlmPayload {
-  const record = parseJsonObject(content);
-  const answerType = readAnswerType(record.answerType);
-  const citedArticleIds = readStringArray(record.citedArticleIds);
-  const evidence = readLlmEvidence(record.evidence, grounding);
-  const normalizedCitedArticleIds = unique([
-    ...citedArticleIds,
-    ...evidence.map((item) => item.articleId)
-  ]);
-  const answer = normalizeAnswer(readRequiredString(record.answer, "answer"), answerType);
-  const followupQuestions = readStringArray(record.followupQuestions).slice(0, 3);
-  const boundary = readRequiredString(record.boundary, "boundary");
-
-  assertAllowedArticleIds(normalizedCitedArticleIds, grounding);
-  if (answerType === "grounded_summary" && evidence.length === 0) {
-    throw new Error("grounded_summary must include at least one grounded evidence item");
-  }
-  assertNoForbiddenClaims([answer, boundary, ...followupQuestions]);
-
-  return {
-    answer,
-    answerType,
-    citedArticleIds: normalizedCitedArticleIds,
-    evidence,
-    followupQuestions,
-    boundary
-  };
-}
-
-function readLlmEvidence(
-  value: unknown,
-  grounding: ChatGroundingContext
-): PersonaChatLlmEvidence[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.map((item, index) => {
-    const record = readRecord(item, `evidence[${index}]`);
-    const articleId = readRequiredString(record.articleId, `evidence[${index}].articleId`);
-    const text = readRequiredString(record.text, `evidence[${index}].text`);
-
-    assertAllowedArticleIds([articleId], grounding);
-    if (!isAllowedEvidenceText(articleId, text, grounding)) {
-      throw new Error(`evidence[${index}].text is not present in persona_context`);
-    }
-
-    return {
-      articleId,
-      text
-    };
-  });
-}
-
 function toRealPersonaChatResponse(
   request: PersonaChatRequest,
   person: DemoPerson,
   grounding: ChatGroundingContext,
-  payload: PersonaChatLlmPayload
+  payload: PersonaChatTaskOutput
 ): PersonaChatResponse {
   return {
     schemaVersion: PERSONA_CHAT_SCHEMA_VERSION,
     personaId: person.aiPersona.personaId,
-    reply: payload.answer,
+    reply: normalizePersonaAnswer(payload.answer, payload.answerType),
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
     sourceRefs: deriveSourceRefs(payload, grounding),
     suggestedQuestions: chooseSuggestedQuestions(payload.followupQuestions, person),
@@ -416,7 +351,7 @@ function createMockFallback(
 }
 
 function deriveSourceRefs(
-  payload: PersonaChatLlmPayload,
+  payload: PersonaChatTaskOutput,
   grounding: ChatGroundingContext
 ): string[] {
   const sourceRefs: string[] = [];
@@ -458,7 +393,7 @@ function chooseSuggestedQuestions(
       ];
 }
 
-function normalizeAnswer(answer: string, answerType: PersonaChatAnswerType): string {
+function normalizePersonaAnswer(answer: string, answerType: PersonaChatTaskOutput["answerType"]): string {
   if (answerType !== "insufficient_evidence") {
     return answer;
   }
@@ -468,52 +403,6 @@ function normalizeAnswer(answer: string, answerType: PersonaChatAnswerType): str
   }
 
   return `${INSUFFICIENT_PUBLIC_CONTENT_REPLY}。${answer}`;
-}
-
-function parseJsonObject(content: string): Record<string, unknown> {
-  const normalized = stripMarkdownFence(content.trim());
-  const start = normalized.indexOf("{");
-  const end = normalized.lastIndexOf("}");
-
-  if (start < 0 || end < start) {
-    throw new Error("LLM response did not contain a JSON object");
-  }
-
-  const parsed: unknown = JSON.parse(normalized.slice(start, end + 1));
-  return readRecord(parsed, "LLM root");
-}
-
-function stripMarkdownFence(value: string): string {
-  if (!value.startsWith("```")) {
-    return value;
-  }
-
-  return value
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-}
-
-function readAnswerType(value: unknown): PersonaChatAnswerType {
-  if (
-    value === "grounded_summary" ||
-    value === "insufficient_evidence" ||
-    value === "clarification" ||
-    value === "safety_boundary"
-  ) {
-    return value;
-  }
-
-  throw new Error("answerType must be grounded_summary, insufficient_evidence, clarification, or safety_boundary");
-}
-
-function assertAllowedArticleIds(articleIds: string[], grounding: ChatGroundingContext): void {
-  const allowedArticleIds = new Set(grounding.articles.map((article) => article.id));
-  for (const articleId of articleIds) {
-    if (!allowedArticleIds.has(articleId)) {
-      throw new Error(`LLM referenced unknown articleId: ${articleId}`);
-    }
-  }
 }
 
 function isAllowedEvidenceText(
@@ -606,23 +495,6 @@ function parseHistory(value: unknown): PersonaChatHistoryMessage[] {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
-function readRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-
-  return value;
-}
-
-function readRequiredString(value: unknown, label: string): string {
-  const text = readString(value).trim();
-  if (!text) {
-    throw new Error(`${label} is required`);
-  }
-
-  return text;
-}
-
 function readString(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -633,14 +505,6 @@ function readString(value: unknown): string {
   }
 
   return "";
-}
-
-function readStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return unique(value.map(readString).map((item) => item.trim()).filter(Boolean));
 }
 
 function logPersonaChatFallback(error: unknown, request: PersonaChatRequest): void {

@@ -1,7 +1,12 @@
 import { config } from "../config/env.js";
 import { deepSeekClient } from "./clients/deepseekClient.js";
 import { kimiClient } from "./clients/kimiClient.js";
-import type { JsonCompletionInput, LlmMessage, LlmModelProvider } from "./clients/openaiCompatible.js";
+import {
+  LlmClientError,
+  type JsonCompletionInput,
+  type LlmMessage,
+  type LlmModelProvider
+} from "./clients/openaiCompatible.js";
 
 export type LlmTaskType =
   | "intent_expand"
@@ -119,11 +124,19 @@ function logLlmCall(
   }
 }
 
-function toSafeError(error: unknown): { code: string; message: string } {
+function toSafeError(error: unknown): { code: string; message: string; responseBody?: string } {
   if (error instanceof LlmRouterError) {
     return {
       code: error.code,
       message: error.message
+    };
+  }
+
+  if (error instanceof LlmClientError) {
+    return {
+      code: error.code,
+      message: truncateText(error.message || "Unknown LLM error", 260),
+      ...(error.responseBody ? { responseBody: truncateText(error.responseBody, 260) } : {})
     };
   }
 

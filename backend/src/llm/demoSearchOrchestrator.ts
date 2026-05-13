@@ -4,6 +4,7 @@ import { searchService } from "../services/search.service.js";
 import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoDataMode,
+  type DemoDebugFallbackKind,
   type DemoDebugIntentStage,
   type DemoDebugLlmStageResult,
   type DemoPerson,
@@ -63,7 +64,7 @@ interface ComposeApplyStats {
 
 interface LlmFallbackSummary {
   used: boolean;
-  kind: "" | "no_llm_config" | "partial_llm_fallback" | "all_llm_failed";
+  kind: DemoDebugFallbackKind;
   reason: string;
 }
 
@@ -150,6 +151,7 @@ export async function composeMultiLlmDemoSearchResponse(
       applyStats.focusTagCount > 0
     ),
     fallbackUsed: fallbackSummary.used,
+    fallbackKind: fallbackSummary.kind,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
     notes:
@@ -354,12 +356,16 @@ async function runGroundingGuardStage(
       ]
     });
 
+    const output = parseGroundingGuardOutput(content, {
+      personIds: new Set(response.people.map((person) => person.id)),
+      personaIds: new Set(response.personas.map((persona) => persona.id))
+    });
+
     return {
-      output: parseGroundingGuardOutput(content, {
-        personIds: new Set(response.people.map((person) => person.id)),
-        personaIds: new Set(response.personas.map((persona) => persona.id))
-      }),
-      stageResult: createSuccessStage("grounding_guard")
+      output,
+      stageResult: output.valid
+        ? createSuccessStage("grounding_guard")
+        : createInvalidGroundingGuardStage(output)
     };
   } catch (error) {
     return {
@@ -636,6 +642,17 @@ function applyGroundingGuardOutput(
   output: GroundingGuardOutput,
   guardWarnings: string[]
 ): void {
+  if (!output.valid) {
+    const warning =
+      output.warnings[0] ??
+      "grounding_guard invalid: valid=false; all personas disabled by conservative rule fallback";
+    guardWarnings.push(warning);
+    for (const person of response.people) {
+      disablePersona(person, "grounding guard returned valid=false");
+    }
+    return;
+  }
+
   guardWarnings.push(...output.warnings);
 
   const disabledPersonIds = new Set(output.disablePersonaPersonIds);
@@ -839,6 +856,21 @@ function createFallbackStage(stage: LlmTaskType, error: unknown): DemoDebugLlmSt
     repairUsed: 0,
     repairFailed: 0,
     fallbackReasons: [formatErrorSummary(error)]
+  };
+}
+
+function createInvalidGroundingGuardStage(output: GroundingGuardOutput): DemoDebugLlmStageResult {
+  return {
+    stage: "grounding_guard",
+    attempted: 1,
+    succeeded: 0,
+    failed: 1,
+    repairUsed: 0,
+    repairFailed: 0,
+    fallbackReasons: [
+      output.warnings[0] ??
+        "grounding_guard returned valid=false; conservative persona disable fallback applied"
+    ]
   };
 }
 
