@@ -50,6 +50,15 @@ function assertPathGrounding(path: DemoPath, index: GroundingIndex): void {
   assertHasRefs("path", path.id, path);
   assertSourceRefsExist("path", path.id, path.sourceRefs, index);
   assertEvidenceIdsResolvable("path", path.id, path.evidenceIds, path.sourceRefs, index);
+
+  for (const personRef of path.personRefs ?? []) {
+    if (!index.personIds.has(personRef)) {
+      throwGroundingError(
+        "DEMO_PATH_PERSON_REF_INVALID",
+        `Path personRef not found: ${path.id} -> ${personRef}`
+      );
+    }
+  }
 }
 
 function assertPersonGrounding(person: DemoPerson, index: GroundingIndex): void {

@@ -483,6 +483,7 @@
         chatResult.textContent = "请先点击上方任意「和这个分身聊聊」。";
 
         const startedAt = performance.now();
+        const selectedDataMode = dataModeSelect.value || "mock";
 
         try {
           const response = await fetch("/api/demo/search", {
@@ -492,8 +493,8 @@
             },
             body: JSON.stringify({
               query: queryInput.value.trim() || "不工作了能去哪儿",
-              count: 3,
-              dataMode: dataModeSelect.value || "mock"
+              count: selectedDataMode === "real" ? 8 : 3,
+              dataMode: selectedDataMode
             })
           });
           const json = await response.json();
@@ -533,7 +534,7 @@
       function renderSearchResult(data) {
         const sourceMap = new Map((data.meta?.sourceRefs || []).map((source) => [source.id, source]));
 
-        analysisSummary.textContent = data.analysis?.summary || "后端没有返回 analysis.summary。";
+        analysisSummary.innerHTML = renderAnalysisSummary(data);
         pathsEl.innerHTML = renderList(data.paths, (path) => renderPath(path, sourceMap));
         peopleEl.innerHTML = renderList(data.people, (person) => renderPerson(person, sourceMap));
         personasEl.innerHTML = renderList(data.personas, (persona) => renderPersona(persona, sourceMap));
@@ -557,6 +558,10 @@
               <p class="small muted">字段：paths</p>
             </div>
             <p>${escapeHtml(path.summary || "暂无路径描述。")}</p>
+            <div class="chips">
+              ${chip(`stance: ${path.stance || "-"}`)}
+              ${renderChips(path.personRefs || [], "person")}
+            </div>
             ${renderSourceSummary(sources, path.evidenceIds)}
           </article>
         `;
@@ -577,6 +582,11 @@
               <p class="small muted">${escapeHtml(person.role || person.badge || "字段：people")}</p>
             </div>
             <p>${escapeHtml(person.oneLine || person.who || "暂无人物摘要。")}</p>
+            <div class="chips">
+              ${chip(`sampleType: ${person.sampleType || "-"}`)}
+              ${chip(`badge: ${person.badge || "-"}`)}
+              ${chip(`path: ${person.pathId || "-"}`)}
+            </div>
             ${renderPointList("与问题的相关点", relatedPoints)}
             <div class="source-box">
               <p class="small muted">来源标题或摘要</p>
@@ -584,6 +594,25 @@
               <p class="small muted">${escapeHtml(article?.summary || sources[0]?.author || "")}</p>
             </div>
           </article>
+        `;
+      }
+
+      function renderAnalysisSummary(data) {
+        const debug = data.debug || {};
+        const meta = data.meta || {};
+
+        return `
+          <p>${escapeHtml(data.analysis?.summary || "后端没有返回 analysis.summary。")}</p>
+          <div class="chips" style="margin-top:8px">
+            ${chip(`composer: ${debug.composer || "-"}`)}
+            ${chip(`mode: ${debug.requestedDataMode || "-"} -> ${debug.resolvedDataMode || "-"}`)}
+            ${chip(`sourceItems: ${debug.sourceItemCount ?? "-"}`)}
+            ${chip(`paths: ${debug.pathCount ?? data.paths?.length ?? 0}`)}
+            ${chip(`people: ${debug.peopleCount ?? data.people?.length ?? 0}`)}
+            ${chip(`personas: ${debug.personaCount ?? data.personas?.length ?? 0}`)}
+            ${chip(`llmUsed: ${Boolean(debug.llmUsed)}`)}
+            ${chip(`fallback: ${Boolean(meta.fallbackUsed || debug.fallbackUsed)}`)}
+          </div>
         `;
       }
 

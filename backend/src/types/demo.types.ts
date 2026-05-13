@@ -55,6 +55,7 @@ export interface DemoPath {
   title: string;
   summary: string;
   stance: "experience" | "viewpoint" | "mixed";
+  personRefs?: string[];
   evidenceIds: string[];
   sourceRefs: string[];
 }
@@ -62,6 +63,7 @@ export interface DemoPath {
 export interface DemoPerson {
   id: string;
   name: string;
+  sampleType?: "experience_sample" | "viewpoint_author" | "content_sample";
   pathId: string;
   role: string;
   badge: string;
@@ -183,9 +185,15 @@ export interface DemoMeta {
 }
 
 export interface DemoDebug {
-  composer: "mock" | "search_items";
+  composer: "mock" | "real_rule_composer" | "real_llm_composer";
   requestedDataMode: DemoDataMode;
   resolvedDataMode: DemoDataMode;
   itemCount: number;
+  sourceItemCount?: number;
+  pathCount?: number;
+  peopleCount?: number;
+  personaCount?: number;
+  llmUsed?: boolean;
+  fallbackUsed?: boolean;
   notes: string[];
 }
