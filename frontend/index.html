@@ -935,6 +935,111 @@
       max-width: 100%;
     }
 
+    .single-person-result {
+      position: relative;
+      z-index: 10;
+      display: grid;
+      gap: 24px;
+      width: min(980px, 100%);
+      margin: 42px auto 0;
+      animation: fadeUp 440ms var(--ease) both;
+    }
+
+    .single-person-result.has-detail {
+      width: min(1180px, 100%);
+      grid-template-columns: minmax(380px, 460px) minmax(0, 1fr);
+      align-items: stretch;
+    }
+
+    .single-person-card {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 32px;
+      padding: 34px 38px;
+      border: 1px solid rgba(42, 36, 28, 0.1);
+      border-radius: 32px;
+      background: #ffffff;
+      box-shadow: 0 18px 54px rgba(52, 43, 32, 0.08);
+    }
+
+    .single-person-result.has-detail .single-person-card {
+      grid-template-columns: 1fr;
+      gap: 24px;
+      padding: 30px;
+    }
+
+    .single-person-profile {
+      border-right: 1px solid rgba(42, 36, 28, 0.08);
+      padding-right: 28px;
+    }
+
+    .single-person-result.has-detail .single-person-profile {
+      border-right: 0;
+      border-bottom: 1px solid rgba(42, 36, 28, 0.08);
+      padding-right: 0;
+      padding-bottom: 22px;
+    }
+
+    .single-person-profile .mini-peep-card {
+      width: 96px;
+      height: 120px;
+      margin-bottom: 18px;
+      border-radius: 22px;
+    }
+
+    .single-person-profile .mini-peep-card img {
+      width: 82px;
+      height: 108px;
+      border-radius: 18px;
+    }
+
+    .single-person-profile h2 {
+      font-size: 32px;
+      line-height: 1.12;
+    }
+
+    .single-person-meta {
+      margin-top: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .single-person-content {
+      display: grid;
+      gap: 20px;
+      min-width: 0;
+    }
+
+    .single-person-content .section-block {
+      margin-top: 0;
+    }
+
+    .single-person-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-top: 4px;
+    }
+
+    .single-person-actions .primary,
+    .single-person-actions .text-button {
+      min-width: 180px;
+    }
+
+    .single-person-panel {
+      min-width: 0;
+    }
+
+    .single-person-panel .inline-reader {
+      height: auto;
+      min-height: 100%;
+    }
+
+    .single-person-panel .inline-ask-panel {
+      min-height: 620px;
+    }
+
     .empty-result-panel {
       position: relative;
       z-index: 10;
@@ -2382,6 +2487,28 @@
       border: 0;
     }
 
+    @media (max-width: 980px) {
+      .single-person-result,
+      .single-person-result.has-detail {
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+
+      .single-person-card,
+      .single-person-result.has-detail .single-person-card {
+        grid-template-columns: 1fr;
+        padding: 28px;
+      }
+
+      .single-person-profile,
+      .single-person-result.has-detail .single-person-profile {
+        border-right: 0;
+        border-bottom: 1px solid rgba(42, 36, 28, 0.08);
+        padding-right: 0;
+        padding-bottom: 22px;
+      }
+    }
+
     @keyframes screenIn {
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
@@ -2745,6 +2872,7 @@
       selectedPersonId: "",
       pathExpanded: false,
       skipPathShowcase: false,
+      singlePersonMode: false,
       readerOpen: false,
       askPanelOpen: false,
       readerArticleIndex: 0,
@@ -3341,6 +3469,7 @@
       state.selectedPersonId = "";
       state.pathExpanded = false;
       state.skipPathShowcase = false;
+      state.singlePersonMode = false;
       state.readerOpen = false;
       state.askPanelOpen = false;
       state.readerArticleIndex = 0;
@@ -3352,15 +3481,27 @@
         state.selectedPersonId = "";
         state.pathExpanded = false;
         state.skipPathShowcase = false;
+        state.singlePersonMode = false;
         setPage("empty");
         return;
       }
 
-      if (people.length === 1 || paths.length <= 1) {
+      if (people.length === 1) {
+        state.selectedPathId = people[0]?.pathId || paths[0]?.id || "";
+        state.pathExpanded = true;
+        state.skipPathShowcase = true;
+        state.singlePersonMode = true;
+        state.selectedPersonId = people[0].id;
+        setPage("paths");
+        return;
+      }
+
+      if (paths.length <= 1) {
         state.selectedPathId = paths[0]?.id || people[0]?.pathId || "";
         state.pathExpanded = true;
         state.skipPathShowcase = true;
-        state.selectedPersonId = people.length === 1 ? people[0].id : "";
+        state.singlePersonMode = false;
+        state.selectedPersonId = "";
         setPage("paths");
         return;
       }
@@ -3369,6 +3510,7 @@
       state.selectedPersonId = "";
       state.pathExpanded = false;
       state.skipPathShowcase = false;
+      state.singlePersonMode = false;
       setPage("paths");
     }
 
@@ -3702,6 +3844,23 @@
     }
 
     function renderPaths() {
+      if (state.singlePersonMode && people.length === 1) {
+        const person = getPerson(people[0].id);
+        return `
+          <section class="screen paths-screen has-expanded is-single-person">
+            <div class="paths-copy">
+              <h1>我们先找到了这位走过相似路的人</h1>
+              <p class="lead">结果还不多，但 TA 的经历和你的问题比较接近。你可以先看看 TA 的经历，也可以把问题发到知乎圈子，等更多人回应。</p>
+            </div>
+            ${renderSinglePersonResult(person)}
+            ${renderCommunityExit({
+              title: "想听更多人的真实经历？",
+              text: "把这个问题发到知乎圈子，等更多走过的人回应。"
+            })}
+          </section>
+        `;
+      }
+
       const visiblePaths = sortPathsByCount(paths).slice(0, 5);
       const pathCount = Math.min(visiblePaths.length, 5);
       const layoutClass = `path-count-${Math.max(pathCount, 1)}`;
@@ -3764,6 +3923,59 @@
       `;
     }
 
+    function renderSinglePersonResult(person) {
+      const articles = getPersonArticles(person);
+      const matchReasons = toArray(person.match?.reasons);
+      const matchedVariables = toArray(person.match?.matchedVariables || person.match?.matched_variables);
+      const matchMeta = [
+        person.match?.level ? `匹配等级：${person.match.level}` : "",
+        person.match?.score !== undefined ? `匹配度：${formatScore(person.match.score)}` : ""
+      ].filter(Boolean).join(" · ");
+      const roleBadge = [cleanGeneratedSampleLabel(person.role), cleanGeneratedSampleLabel(person.badge)].filter(Boolean).join(" · ");
+      const detailPanel = state.readerOpen
+        ? renderInlineReader(person)
+        : state.askPanelOpen
+          ? renderInlineAskPanel(person)
+          : "";
+      return `
+        <section class="single-person-result ${detailPanel ? "has-detail" : ""}">
+          <article class="single-person-card">
+            <aside class="single-person-profile">
+              <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
+              <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
+              ${roleBadge ? `<p class="single-person-meta">${escapeHtml(roleBadge)}</p>` : ""}
+            </aside>
+            <div class="single-person-content">
+              <div class="section-block">
+                <h3>TA 是谁</h3>
+                <p>${escapeHtml(person.who || person.oneLine || "这位知友在公开内容里分享过与当前问题接近的经历。")}</p>
+              </div>
+              <div class="section-block">
+                <h3>为什么匹配到 TA</h3>
+                ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
+                <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+                ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+                ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
+              </div>
+              <div class="section-block">
+                <h3>TA 的经历时间线</h3>
+                <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
+              </div>
+              <div class="section-block">
+                <h3>TA的真实经历</h3>
+                <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
+              </div>
+              <div class="single-person-actions">
+                <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
+                <button class="text-button" type="button" data-action="save-person">存入我的样本库</button>
+              </div>
+            </div>
+          </article>
+          ${detailPanel ? `<div class="single-person-panel">${detailPanel}</div>` : ""}
+        </section>
+      `;
+    }
+
     function renderSamplePerson(person, duplicateIndex = 0) {
       return `
         <button class="sample-person ${person.id === state.selectedPersonId ? "is-selected" : ""}" type="button" data-action="select-person" data-id="${person.id}" data-gender="${person.gender}" style="animation-delay:${duplicateIndex * -0.22}s">
@@ -3789,12 +4001,14 @@
       `;
     }
 
-    function renderCommunityExit() {
+    function renderCommunityExit(copy = {}) {
+      const title = copy.title || "发到知乎圈子问问更多人";
+      const text = copy.text || "生成一条知乎想法，等待更多路过的人。";
       return `
         <section class="community-exit">
           <div>
-            <h3>发到知乎圈子问问更多人</h3>
-            <p>生成一条知乎想法，等待更多路过的人。</p>
+            <h3>${escapeHtml(title)}</h3>
+            <p>${escapeHtml(text)}</p>
           </div>
           <button class="secondary community-outline" type="button" data-action="community">发到知乎圈子问问更多人</button>
         </section>
@@ -4072,6 +4286,10 @@
       state.readerArticleIndex = articleIndex;
       state.readerOpen = true;
       state.askPanelOpen = false;
+      if (state.singlePersonMode && state.page === "paths") {
+        render();
+        return;
+      }
       if (state.page === "paths" && state.pathExpanded) {
         syncSampleView();
         return;
@@ -4086,6 +4304,10 @@
     function closeReader() {
       state.readerOpen = false;
       state.readerArticleIndex = 0;
+      if (state.singlePersonMode && state.page === "paths") {
+        render();
+        return;
+      }
       syncSampleView();
     }
 
@@ -4095,6 +4317,10 @@
       state.readerOpen = false;
       state.askPanelOpen = true;
       state.readerArticleIndex = 0;
+      if (state.singlePersonMode && state.page === "paths") {
+        render();
+        return;
+      }
       if (state.page === "paths" && state.pathExpanded) {
         syncSampleView();
         return;
@@ -4110,6 +4336,10 @@
       const editable = document.getElementById("inlineAskText");
       if (editable) state.questionText = editable.value.trim() || state.questionText;
       state.askPanelOpen = false;
+      if (state.singlePersonMode && state.page === "paths") {
+        render();
+        return;
+      }
       syncSampleView();
     }
 
@@ -4118,6 +4348,10 @@
       state.readerArticleIndex = 0;
       state.readerOpen = false;
       state.askPanelOpen = false;
+      if (state.singlePersonMode && state.page === "paths") {
+        render();
+        return;
+      }
       if (state.page === "samples" || (state.page === "paths" && state.pathExpanded)) {
         syncSampleView();
         return;
@@ -4126,6 +4360,10 @@
     }
 
     function syncSampleView() {
+      if (state.singlePersonMode && state.page === "paths") {
+        render();
+        return;
+      }
       const stage = document.querySelector(".sample-stage");
       if (!stage) return;
       stage.outerHTML = renderSampleStage();
@@ -4276,6 +4514,7 @@
             state.selectedPathId = target.dataset.id;
             state.pathExpanded = true;
             state.skipPathShowcase = false;
+            state.singlePersonMode = false;
             state.selectedPersonId = "";
             state.readerOpen = false;
             state.askPanelOpen = false;
@@ -4335,14 +4574,17 @@
           if (action === "open-saved") {
             state.selectedPersonId = target.dataset.id;
             state.selectedPathId = getPerson(state.selectedPersonId).pathId;
+            state.singlePersonMode = people.length === 1;
+            state.pathExpanded = state.singlePersonMode || state.pathExpanded;
             state.readerOpen = false;
             state.askPanelOpen = false;
             state.readerArticleIndex = 0;
-            setPage("samples");
+            setPage(state.singlePersonMode ? "paths" : "samples");
           }
           if (action === "open-saved-chat") {
             state.selectedPersonId = target.dataset.id;
             state.selectedPathId = getPerson(state.selectedPersonId).pathId;
+            state.singlePersonMode = people.length === 1;
             state.messages = [];
             setPage("chat");
           }
