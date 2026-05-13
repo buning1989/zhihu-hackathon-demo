@@ -16,9 +16,14 @@ for (const envPath of envPaths) {
 const DEFAULT_ZHIHU_SEARCH_API_URL =
   "https://developer.zhihu.com/api/v1/content/zhihu_search";
 const DEFAULT_ZHIHU_OPENAPI_BASE = "https://openapi.zhihu.com";
+const DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1";
+const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
+const kimiApiKey = firstNonEmpty(process.env.KIMI_API_KEY);
+const deepseekApiKey = firstNonEmpty(process.env.DEEPSEEK_API_KEY);
+const legacyLlmApiKey = firstNonEmpty(process.env.LLM_API_KEY);
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -27,6 +32,15 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 export const config = {
@@ -51,11 +65,26 @@ export const config = {
     )
   },
   llm: {
+    enabled: parseBoolean(
+      process.env.LLM_ENABLED,
+      Boolean(kimiApiKey || deepseekApiKey || legacyLlmApiKey)
+    ),
+    maxRetry: parseNonNegativeInteger(process.env.LLM_MAX_RETRY, 1),
     provider: parseLlmProvider(process.env.LLM_PROVIDER),
-    apiKey: firstNonEmpty(process.env.LLM_API_KEY),
+    apiKey: legacyLlmApiKey,
     baseUrl: firstNonEmpty(process.env.LLM_BASE_URL),
     model: firstNonEmpty(process.env.LLM_MODEL),
-    timeoutMs: parsePositiveInteger(process.env.LLM_TIMEOUT_MS, 15000)
+    timeoutMs: parsePositiveInteger(process.env.LLM_TIMEOUT_MS, 15000),
+    kimi: {
+      apiKey: kimiApiKey,
+      baseUrl: firstNonEmpty(process.env.KIMI_BASE_URL) || DEFAULT_KIMI_BASE_URL,
+      model: firstNonEmpty(process.env.KIMI_MODEL) || "moonshot-v1-8k"
+    },
+    deepseek: {
+      apiKey: deepseekApiKey,
+      baseUrl: firstNonEmpty(process.env.DEEPSEEK_BASE_URL) || DEFAULT_DEEPSEEK_BASE_URL,
+      model: firstNonEmpty(process.env.DEEPSEEK_MODEL) || "deepseek-chat"
+    }
   }
 };
 
@@ -68,6 +97,23 @@ function parseDataMode(
 
 function firstNonEmpty(...values: Array<string | undefined>): string {
   return values.find((value) => value?.trim())?.trim() ?? "";
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function parseLlmProvider(value: string | undefined): "openai_compatible" {

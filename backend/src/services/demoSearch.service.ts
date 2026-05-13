@@ -1,13 +1,11 @@
 import { config } from "../config/env.js";
 import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
-import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import {
-  composeLlmDemoSearchResponse,
-  DemoComposerLlmError
-} from "./demoComposer.llm.js";
-import { composeRealDemoSearchResponse } from "./demoRealComposer.service.js";
+  composeMultiLlmDemoSearchResponse,
+  hasPersonaChatLlm
+} from "../llm/demoSearchOrchestrator.js";
+import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import { demoSessionCacheService } from "./demoSessionCache.service.js";
-import { searchService } from "./search.service.js";
 import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
 
@@ -27,46 +25,14 @@ export class DemoSearchService {
 
     if (request.dataMode === "real") {
       try {
-        const searchResult = await searchService.search(request.query, request.count);
-        if (searchResult.items.length === 0) {
-          throw new HttpError(
-            502,
-            "REAL_SEARCH_EMPTY",
-            "real search returned no items for demo composer"
-          );
-        }
-
-        const response = composeRealDemoSearchResponse({
+        const response = await composeMultiLlmDemoSearchResponse({
           query: request.query,
           count: request.count,
           dataMode: request.dataMode,
-          items: searchResult.items,
           startedAt
         });
         assertDemoSearchGrounding(response);
-
-        if (!config.llm.apiKey) {
-          markLlmSkipped(response, "LLM_API_KEY not configured; deterministic composer used");
-          return cacheDemoResponse(response);
-        }
-
-        try {
-          const llmResponse = await composeLlmDemoSearchResponse({
-            query: request.query,
-            count: request.count,
-            dataMode: request.dataMode,
-            items: searchResult.items,
-            startedAt,
-            deterministicResponse: response
-          });
-          assertDemoSearchGrounding(llmResponse);
-          return cacheDemoResponse(llmResponse);
-        } catch (error) {
-          logLlmComposerFallback(error, request, startedAt);
-          markLlmFallback(response, error);
-          assertDemoSearchGrounding(response);
-          return cacheDemoResponse(response);
-        }
+        return cacheDemoResponse(response);
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
 
@@ -169,63 +135,6 @@ function logRealSearchFallback(
   });
 }
 
-function logLlmComposerFallback(
-  error: unknown,
-  request: DemoSearchRequest,
-  startedAt: number
-): void {
-  console.error("[DemoSearch] LLM composer failed; falling back to deterministic composer", {
-    query: request.query,
-    count: request.count,
-    requestedDataMode: request.dataMode,
-    elapsedMs: Date.now() - startedAt,
-    ...toLoggableError(error)
-  });
-}
-
-function markLlmSkipped(response: DemoSearchResponse, reason: string): void {
-  response.debug.llmUsed = false;
-  response.debug.llmComposerUsed = false;
-  response.debug.llmRepairUsed = false;
-  response.debug.llmRepairFailed = false;
-  response.debug.llmStageResults = [];
-  response.debug.enhancedPeopleCount = 0;
-  response.debug.enhancedPathCount = 0;
-  response.debug.partialFallbackUsed = false;
-  response.debug.fallbackUsed = false;
-  response.debug.fallbackReason = reason;
-  response.debug.guardWarnings = [];
-  response.debug.notes = [
-    "real Zhihu items grouped by deterministic composer",
-    reason
-  ];
-}
-
-function markLlmFallback(response: DemoSearchResponse, error: unknown): void {
-  const fallbackReason = formatErrorSummary(error);
-
-  response.meta.fallbackUsed = true;
-  response.debug.llmUsed = false;
-  response.debug.llmComposerUsed = false;
-  response.debug.llmRepairUsed =
-    error instanceof DemoComposerLlmError ? error.llmRepairUsed : false;
-  response.debug.llmRepairFailed =
-    error instanceof DemoComposerLlmError ? error.llmRepairFailed : false;
-  response.debug.llmStageResults =
-    error instanceof DemoComposerLlmError ? error.llmStageResults : [];
-  response.debug.enhancedPeopleCount = 0;
-  response.debug.enhancedPathCount = 0;
-  response.debug.partialFallbackUsed = false;
-  response.debug.fallbackUsed = true;
-  response.debug.fallbackReason = fallbackReason;
-  response.debug.guardWarnings =
-    error instanceof DemoComposerLlmError ? error.guardWarnings : [fallbackReason];
-  response.debug.notes = [
-    "LLM composer failed; deterministic real composer returned",
-    fallbackReason
-  ];
-}
-
 function toLoggableError(error: unknown): {
   code: string;
   statusCode: number | null;
@@ -241,7 +150,7 @@ function toLoggableError(error: unknown): {
 
   if (error instanceof Error) {
     return {
-      code: error instanceof DemoComposerLlmError ? error.code : error.name || "ERROR",
+      code: error.name || "ERROR",
       statusCode: null,
       message: error.message || "Unknown error"
     };
@@ -260,7 +169,7 @@ function formatErrorSummary(error: unknown): string {
 }
 
 function cacheDemoResponse(response: DemoSearchResponse): DemoSearchResponse {
-  response.features.personaChat = config.llm.apiKey ? "real" : "mock";
+  response.features.personaChat = hasPersonaChatLlm() ? "real" : "mock";
   demoSessionCacheService.set(response);
   return response;
 }

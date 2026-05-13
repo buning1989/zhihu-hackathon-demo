@@ -208,7 +208,15 @@ export interface DemoDebug {
 }
 
 export interface DemoDebugLlmStageResult {
-  stage: "path_enhancer" | "people_enhancer" | "persona_enhancer";
+  stage:
+    | "intent_expand"
+    | "evidence_extract"
+    | "demo_response_compose"
+    | "grounding_guard"
+    | "persona_chat"
+    | "path_enhancer"
+    | "people_enhancer"
+    | "persona_enhancer";
   attempted: number;
   succeeded: number;
   failed: number;

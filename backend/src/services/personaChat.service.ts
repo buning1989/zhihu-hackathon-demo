@@ -1,7 +1,7 @@
-import { config } from "../config/env.js";
+import { llmRouter } from "../llm/llmRouter.js";
+import { parsePersonaChatTaskOutput } from "../llm/schemas/taskSchemas.js";
 import { createMockPersonaChatResponse } from "../mocks/personaChat.mock.js";
 import { buildPersonaChatMessages } from "../prompts/personaPromptBuilder.js";
-import { llmClient } from "../providers/llm/openaiCompatible.client.js";
 import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoArticle,
@@ -85,17 +85,26 @@ export class PersonaChatService {
     }
 
     const grounding = buildChatGrounding(cachedResponse, person);
-    if (!config.llm.apiKey) {
+    if (grounding.sourceRefs.length === 0 || grounding.evidence.length === 0) {
       return createMockFallback(
         request,
-        "LLM_API_KEY not configured; mock persona chat fallback used",
+        "SOURCE_REFS_INSUFFICIENT: grounded persona chat requires sourceRefs and evidence",
+        grounding,
+        person
+      );
+    }
+
+    if (!llmRouter.isTaskConfigured("persona_chat")) {
+      return createMockFallback(
+        request,
+        "KIMI_API_KEY not configured; mock persona chat fallback used",
         grounding,
         person
       );
     }
 
     try {
-      const content = await llmClient.createJsonCompletion({
+      const content = await llmRouter.runJsonTask("persona_chat", {
         temperature: 0.1,
         maxTokens: 1600,
         messages: buildPersonaChatMessages({
@@ -108,7 +117,16 @@ export class PersonaChatService {
           userMessage: request.message
         })
       });
-      const payload = parsePersonaChatLlmPayload(content, grounding);
+      const payload = parsePersonaChatTaskOutput(content, {
+        allowedArticleIds: new Set(grounding.articles.map((article) => article.id)),
+        isAllowedEvidenceText: (articleId, text) =>
+          isAllowedEvidenceText(articleId, text, grounding)
+      });
+      assertNoForbiddenClaims([
+        payload.answer,
+        payload.boundary,
+        ...payload.followupQuestions
+      ]);
 
       return toRealPersonaChatResponse(request, person, grounding, payload);
     } catch (error) {
@@ -359,12 +377,26 @@ function createMockFallback(
 ): PersonaChatResponse {
   const response = createMockPersonaChatResponse(request);
 
-  if (grounding?.sourceRefs.length) {
-    response.sourceRefs = grounding.sourceRefs;
+  if (person) {
+    const groundedFocus = grounding?.evidence[0]?.text || person.oneLine;
+    response.personaId = person.aiPersona.personaId;
+    response.reply = [
+      groundedFocus
+        ? `基于已缓存的公开内容，目前只能确认：${groundedFocus}`
+        : INSUFFICIENT_PUBLIC_CONTENT_REPLY,
+      `针对你的问题「${request.message}」，fallback 回复只会提醒你回到原文证据、约束和风险，不补充公开内容之外的新事实。`,
+      "这不是作者本人回应，也不代表作者本人。"
+    ].join("\n");
+    response.sourceRefs =
+      grounding?.sourceRefs.length ? grounding.sourceRefs : person.sourceRefs.slice(0, 6);
   }
 
   if (person?.aiPersona.suggestedQuestions.length) {
     response.suggestedQuestions = person.aiPersona.suggestedQuestions.slice(0, 3);
+  }
+
+  if (!person && grounding) {
+    response.sourceRefs = grounding.sourceRefs;
   }
 
   return {
