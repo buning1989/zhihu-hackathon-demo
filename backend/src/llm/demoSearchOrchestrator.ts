@@ -1787,12 +1787,21 @@ function createFallbackIntent(query: string): IntentExpandOutput {
   const intentTags = inferIntentTags(query);
   const userNeedSummary = `用户正在探索「${truncateText(query, 40)}」相关的公开经验与可行路径。`;
   const searchQueries = buildFallbackSearchQueryPlan(query);
-  const topicSignals = buildDynamicTopicSignals({
+  const dynamicTopicSignals = buildDynamicTopicSignals({
     originalQuery: query,
     userCoreQuestion: userNeedSummary,
     focusTags: intentTags,
     searchQueries
   });
+  const topicSignals = unique([
+    ...dynamicTopicSignals,
+    ...intentTags,
+    ...inferFallbackIntentTagSeeds(query),
+    "公开经验",
+    "可行路径",
+    "代价边界",
+    "下一步"
+  ]).slice(0, 8);
 
   return {
     intent: "life_path_exploration",
@@ -2396,11 +2405,35 @@ function summarizeIntentStageReason(
 }
 
 function inferIntentTags(query: string): string[] {
-  const tags = buildDynamicTopicSignals({
-    originalQuery: query
-  }).slice(0, 4);
+  const tags = unique([
+    ...buildDynamicTopicSignals({
+      originalQuery: query
+    }),
+    ...inferFallbackIntentTagSeeds(query)
+  ]).slice(0, 6);
 
-  return tags.length > 0 ? tags : ["公开经验", "可行路径"];
+  return tags.length > 0 ? tags : ["公开经验", "可行路径", "代价边界", "下一步"];
+}
+
+function inferFallbackIntentTagSeeds(query: string): string[] {
+  const normalized = normalizeText(query);
+  const seeds: string[] = [];
+  const rules: Array<[string[], string[]]> = [
+    [["不工作", "不上班", "裸辞", "失业", "待业"], ["暂停工作", "现金流", "生活节奏", "回流接口"]],
+    [["35岁", "三十五", "裸辞", "转行"], ["年龄压力", "职业回流", "收入波动", "履历解释"]],
+    [["北京", "老家", "大城市", "回家"], ["城市去留", "生活成本", "机会密度", "家庭关系"]],
+    [["读研", "研究生", "考研"], ["读研卡点", "导师课题", "就业接口", "退场成本"]],
+    [["父母", "家人", "不同意", "反对"], ["家庭沟通", "经济独立", "边界成本", "后果承担"]],
+    [["朋友", "断联", "消耗"], ["关系消耗", "边界表达", "情绪空间", "失去成本"]]
+  ];
+
+  for (const [keywords, values] of rules) {
+    if (keywords.some((keyword) => normalized.includes(keyword))) {
+      seeds.push(...values);
+    }
+  }
+
+  return seeds;
 }
 
 function ensurePublicContentBoundary(value: string): string {

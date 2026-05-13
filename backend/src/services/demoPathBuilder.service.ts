@@ -133,6 +133,134 @@ const QUERY_SCENARIOS: QueryScenario[] = [
     ]
   },
   {
+    id: "city_home_choice",
+    intent: "city_home_choice",
+    queryKeywords: ["北京", "大城市", "回老家", "老家", "留在", "回去", "城市", "家乡"],
+    candidateKeywords: ["北京", "上海", "深圳", "大城市", "老家", "家乡", "房租", "机会", "生活成本"],
+    paths: [
+      {
+        id: "stay_for_density",
+        title: "有人留在大城市，先保住机会密度",
+        summary: "这类样本把城市里的岗位、信息、同伴和资源密度当成缓冲，而不是只看房租压力。",
+        keywords: ["北京", "大城市", "机会", "岗位", "资源", "信息", "同伴", "平台"],
+        variables: ["机会密度", "城市成本", "职业接口"],
+        stance: "mixed"
+      },
+      {
+        id: "return_for_cost",
+        title: "有人回老家，用低成本换喘息空间",
+        summary: "这类样本先把租金、通勤和情绪消耗降下来，但要重新面对机会减少和关系压力。",
+        keywords: ["回老家", "低成本", "房租", "生活", "家人", "关系", "喘息"],
+        variables: ["生活成本", "家庭关系", "机会减少"],
+        stance: "experience"
+      },
+      {
+        id: "trial_between_cities",
+        title: "有人先试住一段，再决定城市去留",
+        summary: "这类样本没有马上把城市选择定死，而是用短住、远程和面试结果验证回撤空间。",
+        keywords: ["试住", "短期", "远程", "面试", "回撤", "迁移", "城市"],
+        variables: ["短期试住", "回撤条件", "迁移成本"],
+        stance: "experience"
+      }
+    ]
+  },
+  {
+    id: "graduate_school_exit",
+    intent: "graduate_school_exit",
+    queryKeywords: ["读研", "研究生", "考研", "退学", "不想读研", "导师", "论文", "学校"],
+    candidateKeywords: ["读研", "研究生", "导师", "论文", "课题", "退学", "就业", "转专业"],
+    paths: [
+      {
+        id: "pause_and_diagnose",
+        title: "有人先暂停，把不想读研拆清楚",
+        summary: "这类样本先分清是导师课题、学术生活、就业焦虑还是身体状态在消耗自己。",
+        keywords: ["不想读研", "导师", "课题", "论文", "焦虑", "状态", "原因"],
+        variables: ["真实卡点", "导师课题", "身心状态"],
+        stance: "viewpoint"
+      },
+      {
+        id: "switch_track",
+        title: "有人换课题或实习，把研究生变成过渡",
+        summary: "这类样本没有立刻退出，而是用换方向、实习和作品把学籍变成下一步接口。",
+        keywords: ["换课题", "实习", "转方向", "作品", "就业", "过渡", "学籍"],
+        variables: ["方向调整", "就业接口", "时间成本"],
+        stance: "mixed"
+      },
+      {
+        id: "exit_school",
+        title: "有人认真退场，重新进入工作或备考",
+        summary: "这类样本把退学、延期、工作和重新申请都算作可选项，但要承受履历解释成本。",
+        keywords: ["退学", "延期", "工作", "重新申请", "备考", "履历", "成本"],
+        variables: ["退场成本", "履历解释", "重新开始"],
+        stance: "experience"
+      }
+    ]
+  },
+  {
+    id: "family_choice_conflict",
+    intent: "family_choice_conflict",
+    queryKeywords: ["父母不同意", "父母反对", "家里不同意", "家人反对", "我的选择", "不支持"],
+    candidateKeywords: ["父母", "家人", "反对", "沟通", "经济独立", "边界", "选择", "支持"],
+    paths: [
+      {
+        id: "earn_trust",
+        title: "有人先把选择做小，用结果换信任",
+        summary: "这类样本不是一次说服父母，而是先拿出可见计划、阶段结果和风险兜底。",
+        keywords: ["计划", "结果", "信任", "风险", "沟通", "父母", "选择"],
+        variables: ["阶段结果", "信任成本", "风险兜底"],
+        stance: "mixed"
+      },
+      {
+        id: "financial_boundary",
+        title: "有人先经济独立，再谈边界",
+        summary: "这类样本把是否能承担后果放在沟通前面，因为边界往往需要资源托底。",
+        keywords: ["经济独立", "边界", "承担后果", "资源", "家人", "选择"],
+        variables: ["经济独立", "家庭边界", "后果承担"],
+        stance: "experience"
+      },
+      {
+        id: "keep_relationship",
+        title: "有人不硬碰硬，先保留关系出口",
+        summary: "这类样本把沟通节奏放慢，不急着赢一场辩论，避免选择和亲密关系一起撕裂。",
+        keywords: ["沟通", "关系", "节奏", "冲突", "妥协", "父母", "出口"],
+        variables: ["沟通节奏", "关系出口", "情绪成本"],
+        stance: "viewpoint"
+      }
+    ]
+  },
+  {
+    id: "friendship_boundary",
+    intent: "friendship_boundary",
+    queryKeywords: ["朋友", "断联", "断绝", "消耗", "关系", "长期消耗", "边界"],
+    candidateKeywords: ["朋友", "断联", "关系", "消耗", "边界", "疏远", "沟通", "情绪"],
+    paths: [
+      {
+        id: "soft_distance",
+        title: "有人先拉开距离，观察关系会不会恢复",
+        summary: "这类样本不是立刻断掉，而是降低互动频率，看关系离开惯性后还剩什么。",
+        keywords: ["拉开距离", "频率", "观察", "关系", "恢复", "消耗"],
+        variables: ["互动频率", "关系惯性", "恢复空间"],
+        stance: "experience"
+      },
+      {
+        id: "clear_boundary",
+        title: "有人把边界说清，再看对方是否尊重",
+        summary: "这类样本把长期委屈变成一次明确表达，代价是冲突可能被提前引爆。",
+        keywords: ["边界", "表达", "尊重", "冲突", "沟通", "朋友"],
+        variables: ["边界表达", "冲突成本", "尊重程度"],
+        stance: "mixed"
+      },
+      {
+        id: "clean_break",
+        title: "有人选择断联，把精力从消耗里撤出来",
+        summary: "这类样本承认关系已经无法修复，用断联换回情绪空间，但也要承受失去和愧疚。",
+        keywords: ["断联", "撤出", "情绪空间", "失去", "愧疚", "消耗"],
+        variables: ["情绪空间", "失去成本", "关系修复"],
+        stance: "experience"
+      }
+    ]
+  },
+  {
     id: "career_decision",
     intent: "career_decision",
     queryKeywords: ["工作", "跳槽", "offer", "职业", "岗位", "升职", "加班", "要不要"],
@@ -281,6 +409,12 @@ function extractQueryKeywords(query: string): string[] {
     "学习",
     "收入",
     "家庭",
+    "父母",
+    "朋友",
+    "断联",
+    "读研",
+    "北京",
+    "老家",
     "选择",
     "值得"
   ];
@@ -301,7 +435,12 @@ function extractCandidateKeywords(candidates: DemoPathCandidate[]): string[] {
     "现金流",
     "保障底线",
     "生活成本",
-    "退出条件"
+    "退出条件",
+    "机会密度",
+    "家庭关系",
+    "真实卡点",
+    "经济独立",
+    "边界表达"
   ];
 
   return keywordPool.filter((keyword) => text.includes(keyword)).slice(0, 4);
