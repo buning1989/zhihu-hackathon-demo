@@ -10,6 +10,29 @@ import { zhihuRoutes } from "./routes/zhihu.routes.js";
 
 export const app = express();
 const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
+const allowedCorsOrigins = new Set([
+  "http://127.0.0.1:5173",
+  "http://localhost:5173"
+]);
+
+app.use((req, res, next) => {
+  const origin = req.header("Origin");
+
+  if (origin && allowedCorsOrigins.has(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    res.vary("Origin");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
 
 app.use(express.json());
 app.use("/preview", express.static(publicDir));
