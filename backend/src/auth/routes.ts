@@ -32,7 +32,7 @@ authRoutes.get("/zhihu/login", (_req, res, next) => {
 
 authRoutes.get("/zhihu/callback", async (req, res, next) => {
   try {
-    const code = parseQueryString(req.query.code, "code");
+    const code = parseAuthorizationCode(req.query.code, req.query.authorization_code);
     const state = parseQueryString(req.query.state, "state");
 
     if (!validateOAuthState(req, res, state)) {
@@ -82,14 +82,32 @@ authRoutes.post("/logout", (req, res) => {
   });
 });
 
+function parseAuthorizationCode(codeValue: unknown, authorizationCodeValue: unknown): string {
+  const code = readQueryString(codeValue);
+  if (code) {
+    return code;
+  }
+
+  const authorizationCode = readQueryString(authorizationCodeValue);
+  if (authorizationCode) {
+    return authorizationCode;
+  }
+
+  throw new HttpError(400, "OAUTH_QUERY_REQUIRED", "Missing required query parameter: code");
+}
+
 function parseQueryString(value: unknown, name: string): string {
-  const parsed = typeof value === "string" ? value.trim() : "";
+  const parsed = readQueryString(value);
 
   if (!parsed) {
     throw new HttpError(400, "OAUTH_QUERY_REQUIRED", `Missing required query parameter: ${name}`);
   }
 
   return parsed;
+}
+
+function readQueryString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function buildSessionUser(userInfo: unknown, userInfoLoaded: boolean): AuthSessionUser {
