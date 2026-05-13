@@ -5,10 +5,10 @@ import type { PersonaChatResponse } from "../types/persona.types.js";
 
 export const personasRoutes = Router();
 
-personasRoutes.post("/chat", (req, res, next) => {
+personasRoutes.post("/chat", async (req, res, next) => {
   try {
     const request = parsePersonaChatRequest(req.body);
-    const data = personaChatService.chat(request);
+    const data = await personaChatService.chat(request);
 
     res.json({
       success: true,

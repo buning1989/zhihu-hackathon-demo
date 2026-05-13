@@ -6,6 +6,7 @@ import {
   DemoComposerLlmError
 } from "./demoComposer.llm.js";
 import { composeRealDemoSearchResponse } from "./demoRealComposer.service.js";
+import { demoSessionCacheService } from "./demoSessionCache.service.js";
 import { searchService } from "./search.service.js";
 import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
@@ -46,7 +47,7 @@ export class DemoSearchService {
 
         if (!config.llm.apiKey) {
           markLlmSkipped(response, "LLM_API_KEY not configured; deterministic composer used");
-          return response;
+          return cacheDemoResponse(response);
         }
 
         try {
@@ -59,12 +60,12 @@ export class DemoSearchService {
             deterministicResponse: response
           });
           assertDemoSearchGrounding(llmResponse);
-          return llmResponse;
+          return cacheDemoResponse(llmResponse);
         } catch (error) {
           logLlmComposerFallback(error, request, startedAt);
           markLlmFallback(response, error);
           assertDemoSearchGrounding(response);
-          return response;
+          return cacheDemoResponse(response);
         }
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
@@ -81,7 +82,7 @@ export class DemoSearchService {
         });
         response.meta.latencyMs = Date.now() - startedAt;
         assertDemoSearchGrounding(response);
-        return response;
+        return cacheDemoResponse(response);
       }
     }
 
@@ -93,7 +94,7 @@ export class DemoSearchService {
     });
     response.meta.latencyMs = Date.now() - startedAt;
     assertDemoSearchGrounding(response);
-    return response;
+    return cacheDemoResponse(response);
   }
 }
 
@@ -256,4 +257,10 @@ function toLoggableError(error: unknown): {
 function formatErrorSummary(error: unknown): string {
   const loggableError = toLoggableError(error);
   return `${loggableError.code}: ${loggableError.message}`;
+}
+
+function cacheDemoResponse(response: DemoSearchResponse): DemoSearchResponse {
+  response.features.personaChat = config.llm.apiKey ? "real" : "mock";
+  demoSessionCacheService.set(response);
+  return response;
 }

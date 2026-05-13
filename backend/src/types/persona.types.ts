@@ -9,12 +9,19 @@ export interface PersonaChatRequestBody {
   personaId?: unknown;
   queryId?: unknown;
   message?: unknown;
+  history?: unknown;
 }
 
 export interface PersonaChatRequest {
   personaId: string;
   queryId: string;
   message: string;
+  history: PersonaChatHistoryMessage[];
+}
+
+export interface PersonaChatHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export interface PersonaChatResponse {
@@ -25,13 +32,20 @@ export interface PersonaChatResponse {
   sourceRefs: string[];
   suggestedQuestions: string[];
   meta: PersonaChatMeta;
+  debug?: PersonaChatDebug;
 }
 
 export interface PersonaChatMeta {
-  mode: "mock";
+  mode: "mock" | "real";
   queryId: string;
   generatedAt: string;
   grounded: true;
-  llmUsed: false;
+  llmUsed: boolean;
   safetyNotes: string[];
+}
+
+export interface PersonaChatDebug {
+  chatMode: "real_llm_chat" | "mock_fallback";
+  fallbackReason: string;
+  evidenceCount: number;
 }
