@@ -214,6 +214,17 @@
       object-fit: cover;
     }
 
+    .avatar-initial {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      color: #ffffff;
+      background: var(--blue);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
     .avatar-skeleton {
       width: 16px;
       height: 16px;
@@ -279,6 +290,12 @@
       padding: 92px 52px 42px;
       overflow: hidden;
       animation: screenIn 620ms var(--ease) both;
+    }
+
+    .screen.home {
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .center-stack {
@@ -659,7 +676,8 @@
     }
 
     .home .center-stack {
-      padding-top: 26px;
+      padding-top: 0;
+      transform: translateY(24px);
     }
 
     .home h1 {
@@ -674,7 +692,7 @@
     }
 
     .home .question-card {
-      margin-top: 34px;
+      margin-top: 42px;
     }
 
     .home .question-input {
@@ -895,6 +913,8 @@
 
     .path-card {
       position: relative;
+      display: flex;
+      flex-direction: column;
       min-height: 320px;
       padding: 20px 22px 104px;
       overflow: hidden;
@@ -955,13 +975,17 @@
       box-shadow: 0 24px 66px rgba(52, 43, 32, 0.1);
     }
 
-    .path-card h2 {
+    .path-card-header {
       position: relative;
       z-index: 2;
       display: flex;
-      align-items: center;
-      gap: 10px;
-      min-height: auto;
+      align-items: flex-start;
+      gap: 12px;
+      min-height: 64px;
+    }
+
+    .path-card h2 {
+      min-width: 0;
       margin: 0;
       font-size: 21px;
       line-height: 1.18;
@@ -974,6 +998,7 @@
       flex: 0 0 auto;
       width: 34px;
       height: 34px;
+      margin-top: 1px;
       border-radius: 10px;
       color: #ffffff;
       background: linear-gradient(135deg, rgba(216, 154, 69, 0.72), rgba(63, 138, 113, 0.42));
@@ -983,17 +1008,13 @@
       letter-spacing: 0;
     }
 
-    .path-title-text {
-      min-width: 0;
-    }
-
     .path-count {
       position: relative;
       z-index: 2;
       display: block;
       align-items: center;
       min-height: 0;
-      margin-top: 10px;
+      margin-top: 18px;
       padding: 0;
       border-radius: 0;
       color: var(--accent-warm);
@@ -1002,10 +1023,10 @@
       font-weight: 900;
     }
 
-    .path-card p {
+    .path-desc {
       position: relative;
       z-index: 2;
-      margin-top: 14px;
+      margin-top: 12px;
       color: var(--muted);
       font-size: 15px;
       line-height: 1.68;
@@ -1077,7 +1098,7 @@
       height: 560px;
     }
 
-    .expanded-path-panel .sample-stage.is-reading {
+    .expanded-path-panel .sample-stage.is-detail-open {
       height: 650px;
     }
 
@@ -1153,12 +1174,16 @@
       opacity: 0.68;
     }
 
-    .sample-stage.is-reading {
+    .sample-stage.is-detail-open {
       height: 650px;
     }
 
     .sample-stage.has-card {
       height: 540px;
+    }
+
+    .sample-stage.has-card.is-detail-open {
+      height: 650px;
     }
 
     .sample-rail {
@@ -1180,7 +1205,7 @@
       right: 520px;
     }
 
-    .sample-stage.is-reading .sample-rail {
+    .sample-stage.is-detail-open .sample-rail {
       opacity: 0;
       transform: translateX(-110px) scale(0.96);
       pointer-events: none;
@@ -1352,7 +1377,7 @@
       animation: cardIn 420ms var(--ease) both;
     }
 
-    .sample-stage.is-reading .person-card-shell {
+    .sample-stage.is-detail-open .person-card-shell {
       left: 28px;
       right: auto;
       width: 382px;
@@ -1398,7 +1423,7 @@
       max-width: calc(100% - 104px);
     }
 
-    .sample-stage.is-reading .person-card {
+    .sample-stage.is-detail-open .person-card {
       padding: 22px;
     }
 
@@ -1555,7 +1580,8 @@
       text-align: center;
     }
 
-    .inline-reader-shell {
+    .inline-reader-shell,
+    .inline-ask-shell {
       position: absolute;
       z-index: 15;
       left: 432px;
@@ -1569,6 +1595,12 @@
     }
 
     .sample-stage.is-reading .inline-reader-shell {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    .sample-stage.is-asking .inline-ask-shell {
       opacity: 1;
       pointer-events: auto;
       transform: translateX(0);
@@ -1593,6 +1625,77 @@
 
     .inline-reader .reader-meta {
       margin: 12px 0 26px;
+    }
+
+    .inline-ask-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      height: 100%;
+      overflow: hidden;
+      padding: 34px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      color: var(--text);
+      background: #ffffff;
+      box-shadow: 0 18px 54px rgba(52, 43, 32, 0.08);
+    }
+
+    .inline-ask-head {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .inline-ask-kicker {
+      color: var(--accent-warm);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .inline-ask-boundary {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .inline-ask-text {
+      min-height: 0;
+      height: 100%;
+      resize: none;
+    }
+
+    .inline-ask-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .inline-ask-actions .primary {
+      flex: 1 1 100%;
+    }
+
+    .inline-ask-actions .text-button {
+      flex: 1 1 auto;
+    }
+
+    .ghost-text-button {
+      min-height: 42px;
+      padding: 9px 8px;
+      border: 0;
+      color: var(--faint);
+      background: transparent;
+      font-weight: 800;
+    }
+
+    .ghost-text-button:hover {
+      color: var(--muted);
+      background: transparent;
+      filter: none;
+      transform: none;
     }
 
     .reader {
@@ -1646,44 +1749,6 @@
       grid-template-columns: 1fr;
       gap: 22px;
       align-items: start;
-    }
-
-    .question-modal {
-      position: fixed;
-      inset: 0;
-      z-index: 240;
-      display: grid;
-      place-items: center;
-      padding: 38px;
-      background: rgba(38, 35, 31, 0.36);
-      backdrop-filter: blur(16px) saturate(0.9);
-      animation: fadeIn 180ms ease both;
-    }
-
-    .question-modal-card {
-      width: min(1180px, calc(100vw - 168px));
-      max-height: calc(100vh - 64px);
-      padding: 50px;
-      overflow: auto;
-      border: 1px solid rgba(216, 154, 69, 0.18);
-      border-radius: 34px;
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow: 0 34px 110px rgba(38, 35, 31, 0.24);
-      animation: cardIn 220ms var(--ease) both;
-    }
-
-    .question-modal .editable-text {
-      min-height: 470px;
-      padding: 42px;
-      border: 1px solid var(--line);
-      border-radius: 28px;
-      box-shadow: none;
-      font-size: 26px;
-      line-height: 1.78;
-    }
-
-    .question-modal .action-row {
-      margin-top: 32px;
     }
 
     .editable-card,
@@ -1921,22 +1986,84 @@
       position: relative;
       z-index: 10;
       width: min(1060px, 100%);
-      margin: 36px auto 0;
+      margin: 32px auto 0;
       display: grid;
-      gap: 16px;
+      gap: 18px;
     }
 
-    .saved-card {
-      display: grid;
-      grid-template-columns: 80px 1fr auto;
-      gap: 18px;
-      align-items: center;
-      padding: 20px;
+    .library-group-card,
+    .library-empty {
       border: 1px solid var(--line);
       border-radius: 24px;
       background: #ffffff;
       box-shadow: var(--shadow);
       animation: cardIn 420ms var(--ease) both;
+    }
+
+    .library-group-head {
+      padding: 22px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .library-group-head h2 {
+      font-size: 22px;
+      line-height: 1.36;
+    }
+
+    .library-group-head p {
+      margin-bottom: 8px;
+      color: var(--faint);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .library-sample-list {
+      display: grid;
+    }
+
+    .saved-card {
+      display: grid;
+      grid-template-columns: 68px 1fr auto;
+      gap: 18px;
+      align-items: center;
+      padding: 18px 24px;
+      background: transparent;
+    }
+
+    .saved-card + .saved-card {
+      border-top: 1px solid rgba(38, 35, 31, 0.08);
+    }
+
+    .library-row-actions {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .library-row-actions .secondary,
+    .library-row-actions .text-button {
+      border-color: rgba(216, 154, 69, 0.28);
+      color: #6f5a2b;
+      background: transparent;
+    }
+
+    .library-empty {
+      display: grid;
+      justify-items: center;
+      gap: 12px;
+      padding: 48px 28px;
+      text-align: center;
+    }
+
+    .library-empty h2 {
+      font-size: 28px;
+    }
+
+    .library-empty p {
+      max-width: 460px;
+      color: var(--muted);
+      line-height: 1.72;
     }
 
     .person-name-link {
@@ -2348,7 +2475,7 @@
       dataMode: resolveDataMode(PAGE_PARAMS.get("dataMode")),
       requestTimeoutMs: 12000,
       useMockFallback: true,
-      useMockUserFallback: true
+      useMockUserFallback: PAGE_PARAMS.get("mockAuth") === "1"
     };
 
     const mockZhihuUser = {
@@ -2557,17 +2684,19 @@
       selectedPersonId: "",
       pathExpanded: false,
       readerOpen: false,
+      askPanelOpen: false,
       readerArticleIndex: 0,
       queryId: null,
       analysisSteps: defaultAnalysisSteps("不工作了之后，我想去新西兰生活"),
       focusTags: ["身份周期", "现金流", "工作边界", "回流代价"],
       backendStatus: "idle",
       dataMode: API_CONFIG.dataMode,
-      saved: [],
+      savedQuestionGroups: [],
+      hasSubmittedQuestion: false,
+      submittedQuestion: "",
       questionText: defaultQuestionText(),
       messages: [],
       aiTyping: false,
-      questionModalOpen: false
     };
 
     const previewParams = PAGE_PARAMS;
@@ -2587,7 +2716,13 @@
     if (previewParams.get("reader") === "1") {
       state.page = "samples";
       state.readerOpen = true;
+      state.askPanelOpen = false;
       state.readerArticleIndex = Number(previewParams.get("article") || 0);
+    }
+    if (previewParams.get("ask") === "1") {
+      state.page = "samples";
+      state.readerOpen = false;
+      state.askPanelOpen = true;
     }
 
     let loadingTimers = [];
@@ -3043,15 +3178,43 @@
 
     function normalizeZhihuUser(payload) {
       const body = getResponseBody(payload) || {};
-      const user = body.user || body.profile || body.me || body;
-      const loggedIn = body.loggedIn ?? body.authenticated ?? body.isLoggedIn ?? Boolean(user?.id || user?.name || user?.avatar);
-      if (!loggedIn) return null;
-      return {
-        id: textOf(user.id || user.userId || user.uid || mockZhihuUser.id),
-        name: textOf(user.name || user.username || user.displayName || user.nickname || mockZhihuUser.name),
-        avatar: textOf(user.avatar || user.avatarUrl || user.avatar_url || mockZhihuUser.avatar),
-        profileUrl: textOf(user.profileUrl || user.profile_url || user.url || user.homepage || mockZhihuUser.profileUrl)
+      const nestedUser = body.user || body.profile || body.me || {};
+      const rawProfileUrl = body.profileUrl || nestedUser.profileUrl || body.profile_url || nestedUser.profile_url || body.homepage || nestedUser.homepage;
+      const user = {
+        ...nestedUser,
+        id: body.id || nestedUser.id,
+        name: body.name || nestedUser.name,
+        avatar: body.avatar || nestedUser.avatar,
+        profileUrl: normalizeProfileUrl(rawProfileUrl),
+        userInfoLoaded: body.userInfoLoaded ?? nestedUser.userInfoLoaded,
+        isTemporary: body.isTemporary ?? nestedUser.isTemporary
       };
+      const loggedIn = body.loggedIn ?? body.authenticated ?? body.isLoggedIn ?? payload?.success ?? Boolean(user?.id || user?.name || user?.avatar);
+      if (!loggedIn) return null;
+      const userInfoLoaded = user.userInfoLoaded !== false;
+      const isTemporary = Boolean(user.isTemporary) || !userInfoLoaded;
+      return {
+        id: textOf(user.id || user.userId || user.uid || "zhihu-authorized-user"),
+        name: textOf(user.name || user.username || user.displayName || user.nickname || (isTemporary ? "知乎已授权" : "知乎用户")),
+        avatar: textOf(user.avatar || user.avatarUrl || user.avatar_url),
+        profileUrl: user.profileUrl,
+        userInfoLoaded,
+        isTemporary
+      };
+    }
+
+    function normalizeProfileUrl(value) {
+      const raw = textOf(value).trim();
+      if (!raw) return "";
+      try {
+        const url = new URL(raw);
+        const host = url.hostname.toLowerCase();
+        const isZhihuWebHost = host === "zhihu.com" || host.endsWith(".zhihu.com");
+        const isOpenApiHost = host === "openapi.zhihu.com";
+        return isZhihuWebHost && !isOpenApiHost && url.pathname.startsWith("/people/") ? url.toString() : "";
+      } catch {
+        return "";
+      }
     }
 
     function applyUser(user, source = "real") {
@@ -3102,8 +3265,8 @@
       state.selectedPersonId = "";
       state.pathExpanded = false;
       state.readerOpen = false;
+      state.askPanelOpen = false;
       state.readerArticleIndex = 0;
-      state.questionModalOpen = false;
     }
 
     function escapeHtml(value) {
@@ -3183,8 +3346,8 @@
       }
       if (page !== "samples") {
         state.readerOpen = false;
+        state.askPanelOpen = false;
         state.readerArticleIndex = 0;
-        state.questionModalOpen = false;
       }
       state.page = page;
       render();
@@ -3285,14 +3448,23 @@
         return;
       }
       const user = state.user || mockZhihuUser;
+      const avatar = user.avatar
+        ? `<img src="${escapeHtml(user.avatar)}" alt="">`
+        : `<span class="avatar-initial" aria-hidden="true">${escapeHtml((user.name || "知").slice(0, 1))}</span>`;
+      const profileLabel = user.profileUrl
+        ? "知乎个人主页"
+        : user.isTemporary
+          ? "知乎已授权，资料待同步"
+          : "知乎已授权";
+      const profileAction = user.profileUrl ? ' data-action="profile"' : "";
       authSlot.innerHTML = `
         <span class="auth-avatar-wrap">
-          <button class="avatar-button" type="button" data-action="profile" aria-label="${escapeHtml(user.name)}的知乎主页">
-            <img src="${escapeHtml(user.avatar)}" alt="">
+          <button class="avatar-button" type="button"${profileAction} aria-label="${escapeHtml(profileLabel)}">
+            ${avatar}
           </button>
           <span class="auth-avatar-popover" role="tooltip">
             <strong>${escapeHtml(user.name)}</strong>
-            <span>知乎个人主页</span>
+            <span>${escapeHtml(profileLabel)}</span>
           </span>
         </span>
       `;
@@ -3364,8 +3536,11 @@
       state.backendStatus = "loading";
       try {
         const payload = await postJson(API_CONFIG.demoSearchEndpoint, { query, count: 5, dataMode: state.dataMode });
-        state.backendStatus = "ready";
-        return normalizeSearchResponse(payload, query);
+        const body = getResponseBody(payload) || {};
+        const explicitFailure = payload?.success === false || body?.success === false;
+        const data = normalizeSearchResponse(payload, query);
+        state.backendStatus = explicitFailure ? "mock" : "ready";
+        return data;
       } catch (error) {
         console.warn("Search API unavailable, using mock fallback.", error);
         state.backendStatus = "mock";
@@ -3441,13 +3616,12 @@
     function renderPathCards(sortedPaths) {
       return sortedPaths.map((path, index) => `
         <button class="path-card ${state.pathExpanded && path.id === state.selectedPathId ? "is-current" : ""}" data-action="choose-path" data-id="${path.id}" type="button">
-          <div>
-            <h2><span class="path-index">${String(index + 1).padStart(2, "0")}</span><span class="path-title-text">${escapeHtml(path.name)}</span></h2>
-            <span class="path-count">${path.count} 人走过</span>
-            <p>${escapeHtml(path.desc)}</p>
-            ${path.fitReason ? `<p class="meta-line">${escapeHtml(path.fitReason)}</p>` : ""}
-            ${renderSourceLine(path.sourceRefs)}
+          <div class="path-card-header">
+            <span class="path-index">${String(index + 1).padStart(2, "0")}</span>
+            <h2>${escapeHtml(path.name)}</h2>
           </div>
+          <span class="path-count">${path.count} 人走过</span>
+          <p class="path-desc">${escapeHtml(path.desc)}</p>
           <span class="path-card-peeps" aria-hidden="true">
             ${pathPeople(path.id, 4).map((person) => `<img src="${avatarSrc(person.avatar)}" alt="">`).join("")}
           </span>
@@ -3511,8 +3685,9 @@
     function renderSampleStage() {
       const selectedPerson = state.selectedPersonId ? getPerson() : null;
       const railPeople = getRailPeopleForSelectedPath();
+      const detailOpen = state.readerOpen || state.askPanelOpen;
       return `
-        <div class="sample-stage ${selectedPerson ? "has-card" : ""} ${state.readerOpen ? "is-reading" : ""}">
+        <div class="sample-stage ${selectedPerson ? "has-card" : ""} ${detailOpen ? "is-detail-open" : ""} ${state.readerOpen ? "is-reading" : ""} ${state.askPanelOpen ? "is-asking" : ""}">
           <div class="sample-rail">
             <div class="sample-track">
               ${railPeople.map((person, index) => renderSamplePerson(person, index)).join("")}
@@ -3521,8 +3696,8 @@
           </div>
           ${selectedPerson ? `<div class="person-card-shell" id="personCardShell">${renderPersonCard(selectedPerson)}</div>` : ""}
           <div class="inline-reader-shell" id="inlineReaderShell">${selectedPerson && state.readerOpen ? renderInlineReader(selectedPerson) : ""}</div>
+          <div class="inline-ask-shell" id="inlineAskShell">${selectedPerson && state.askPanelOpen ? renderInlineAskPanel(selectedPerson) : ""}</div>
         </div>
-        ${selectedPerson && state.questionModalOpen ? renderQuestionModal(selectedPerson) : ""}
       `;
     }
 
@@ -3538,7 +3713,7 @@
       return `
         <article class="person-card has-peep">
           <div class="card-peep" aria-hidden="true"><img src="${avatarSrc(person.avatar)}" alt=""></div>
-          <h2><a class="person-name-link" href="${getProfileUrl(person)}" target="_blank" rel="noreferrer">${person.name}</a></h2>
+          <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(person.name)}</a></h2>
           <p class="meta-line">${escapeHtml([person.role, person.badge].filter(Boolean).join(" · "))}</p>
           ${person.oneLine ? `<p class="summary">${escapeHtml(person.oneLine)}</p>` : ""}
           <div class="section-block">
@@ -3584,24 +3759,24 @@
       `;
     }
 
-    function renderQuestionModal(person) {
+    function renderInlineAskPanel(person) {
+      const questionText = state.questionText || buildQuestionText(person);
       return `
-        <div class="question-modal" role="dialog" aria-modal="true" aria-label="向 ${escapeHtml(person.name)} 提问">
-          <section class="question-modal-card">
-            <textarea class="editable-text" id="editableQuestion">${escapeHtml(state.questionText)}</textarea>
-            <div class="side-note-card" style="margin-top:18px">
-              <h3>${escapeHtml(person.personaLabel || "AI 分身边界")}</h3>
-              <p>${escapeHtml(person.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</p>
-              ${person.personaOpeningLine ? `<p>${escapeHtml(person.personaOpeningLine)}</p>` : ""}
-              ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
-              ${renderSourceLine(person.personaSourceRefs)}
-            </div>
-            <div class="action-row">
-              <button class="primary" type="button" data-action="chat">呼叫 TA 的 AI 分身先聊聊</button>
-              <button class="text-button" type="button" data-action="mock-dm">递给 TA 本人</button>
-            </div>
-          </section>
-        </div>
+        <section class="inline-ask-panel" aria-label="向 TA 提问">
+          <div class="inline-ask-head">
+            <span class="inline-ask-kicker">向 TA 提问</span>
+            <p class="inline-ask-boundary">${escapeHtml(person.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</p>
+            ${person.personaOpeningLine ? `<p class="inline-ask-boundary">${escapeHtml(person.personaOpeningLine)}</p>` : ""}
+            ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
+            ${renderSourceLine(person.personaSourceRefs)}
+          </div>
+          <textarea class="editable-text inline-ask-text" id="inlineAskText">${escapeHtml(questionText)}</textarea>
+          <div class="inline-ask-actions">
+            <button class="primary" type="button" data-action="chat-from-inline-ask">呼叫 TA 的 AI 分身先聊聊</button>
+            <button class="text-button" type="button" data-action="mock-dm-from-inline-ask">递给 TA 本人</button>
+            <button class="ghost-text-button" type="button" data-action="close-inline-ask">先不问，我再看看</button>
+          </div>
+        </section>
       `;
     }
 
@@ -3696,37 +3871,62 @@
     }
 
     function renderLibrary() {
-      const saved = state.saved.map(getPerson).filter(Boolean);
+      const groups = state.savedQuestionGroups
+        .map((group) => ({
+          ...group,
+          people: toArray(group.personIds).map((id) => people.find((person) => person.id === id)).filter(Boolean)
+        }))
+        .filter((group) => group.people.length);
       return `
         <section class="screen">
           <div class="paths-copy">
             <h1>我的样本库</h1>
-            <p class="lead">当前问题：${escapeHtml(state.question)}</p>
           </div>
           <div class="library-grid">
-            ${saved.length ? saved.map((person) => `
-              <article class="saved-card">
-                <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
-                <div>
-                  <a class="person-name-link" href="${getProfileUrl(person)}" target="_blank" rel="noreferrer">${person.name}</a>
-                  <p style="color:var(--faint);margin-top:4px">路径：${getPath(person.pathId).name}</p>
-                  <p style="color:var(--muted);margin-top:6px;line-height:1.6">${person.oneLine}</p>
-                </div>
-                <div class="action-row" style="margin:0;justify-content:flex-end">
-                  <button class="secondary" type="button" data-action="open-saved" data-id="${person.id}">回看 TA 的经历</button>
-                  <button class="text-button" type="button" data-action="open-saved-chat" data-id="${person.id}">继续问 AI 分身</button>
-                </div>
-              </article>
-            `).join("") : `
-              <article class="saved-card" style="grid-template-columns:1fr">
-                <div>
-                  <strong>你还没有存入样本。</strong>
-                  <p style="color:var(--muted);margin-top:8px;line-height:1.7">当你遇到一个想继续参考的人，可以把 TA 收进这里。</p>
-                </div>
-              </article>
-            `}
+            ${groups.length ? groups.map(renderLibraryQuestionGroup).join("") : renderLibraryEmptyState()}
           </div>
         </section>
+      `;
+    }
+
+    function renderLibraryQuestionGroup(group) {
+      return `
+        <section class="library-group-card">
+          <div class="library-group-head">
+            <p>问题</p>
+            <h2>${escapeHtml(group.question || "未命名问题")}</h2>
+          </div>
+          <div class="library-sample-list">
+            ${group.people.map(renderSavedSampleCard).join("")}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderSavedSampleCard(person) {
+      return `
+        <article class="saved-card">
+          <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
+          <div>
+            <a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(person.name)}</a>
+            <p style="color:var(--faint);margin-top:4px">路径：${escapeHtml(getPath(person.pathId).name)}</p>
+            <p style="color:var(--muted);margin-top:6px;line-height:1.6">${escapeHtml(person.oneLine)}</p>
+          </div>
+          <div class="library-row-actions">
+            <button class="secondary" type="button" data-action="open-saved" data-id="${escapeHtml(person.id)}">回看 TA 的经历</button>
+            <button class="text-button" type="button" data-action="open-saved-chat" data-id="${escapeHtml(person.id)}">继续问 AI 分身</button>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderLibraryEmptyState() {
+      return `
+        <article class="library-empty">
+          <h2>你还没有保存样本</h2>
+          <p>当你遇到一个想继续参考的人，可以把 TA 收进这里。</p>
+          <button class="secondary" type="button" data-action="go-find-samples">去寻找走过的人</button>
+        </article>
       `;
     }
 
@@ -3769,6 +3969,7 @@
     function openReader(articleIndex) {
       state.readerArticleIndex = articleIndex;
       state.readerOpen = true;
+      state.askPanelOpen = false;
       if (state.page === "paths" && state.pathExpanded) {
         syncSampleView();
         return;
@@ -3786,11 +3987,35 @@
       syncSampleView();
     }
 
+    function openAskPanel(person = getPerson()) {
+      const editable = document.getElementById("inlineAskText");
+      state.questionText = editable ? (editable.value.trim() || state.questionText) : buildQuestionText(person);
+      state.readerOpen = false;
+      state.askPanelOpen = true;
+      state.readerArticleIndex = 0;
+      if (state.page === "paths" && state.pathExpanded) {
+        syncSampleView();
+        return;
+      }
+      if (state.page !== "samples") {
+        setPage("samples");
+        return;
+      }
+      syncSampleView();
+    }
+
+    function closeAskPanel() {
+      const editable = document.getElementById("inlineAskText");
+      if (editable) state.questionText = editable.value.trim() || state.questionText;
+      state.askPanelOpen = false;
+      syncSampleView();
+    }
+
     function selectPerson(id) {
       state.selectedPersonId = id;
       state.readerArticleIndex = 0;
       state.readerOpen = false;
-      state.questionModalOpen = false;
+      state.askPanelOpen = false;
       if (state.page === "samples" || (state.page === "paths" && state.pathExpanded)) {
         syncSampleView();
         return;
@@ -3801,19 +4026,38 @@
     function syncSampleView() {
       const stage = document.querySelector(".sample-stage");
       if (!stage) return;
-      const modal = document.querySelector(".question-modal");
-      if (modal) modal.remove();
       stage.outerHTML = renderSampleStage();
       bindEvents();
+    }
+
+    function currentLibraryQuestion() {
+      return state.hasSubmittedQuestion && state.submittedQuestion ? state.submittedQuestion : state.question;
+    }
+
+    function getOrCreateSavedQuestionGroup() {
+      const query = currentLibraryQuestion();
+      const queryId = state.queryId || "";
+      let group = state.savedQuestionGroups.find((item) => (queryId && item.queryId === queryId) || item.question === query);
+      if (!group) {
+        group = {
+          id: queryId || `local_${Date.now()}`,
+          queryId,
+          question: query,
+          personIds: []
+        };
+        state.savedQuestionGroups.unshift(group);
+      }
+      return group;
     }
 
     function savePerson() {
       const id = state.selectedPersonId;
       const person = getPerson(id);
       const saveId = id || person.id;
-      if (saveId && !state.saved.includes(saveId)) state.saved.push(saveId);
+      const group = getOrCreateSavedQuestionGroup();
+      if (saveId && !group.personIds.includes(saveId)) group.personIds.push(saveId);
       if (!window.LIFE_PATH_FORCE_MOCK) {
-        postJson(API_CONFIG.saveEndpoint, { queryId: state.queryId, query: state.question, personId: saveId }).catch(() => {});
+        postJson(API_CONFIG.saveEndpoint, { queryId: group.queryId || state.queryId, query: group.question, personId: saveId }).catch(() => {});
       }
       const el = document.createElement("div");
       el.className = "save-animation";
@@ -3834,7 +4078,7 @@
     }
 
     function readEditableQuestion() {
-      const editable = document.getElementById("editableQuestion");
+      const editable = document.getElementById("inlineAskText");
       if (!editable) return state.questionText;
       return "value" in editable ? editable.value : editable.innerText;
     }
@@ -3892,15 +4136,6 @@
         homeInput.addEventListener("input", updateInputState);
         updateInputState();
       }
-      document.querySelectorAll(".question-modal").forEach((node) => {
-        if (node.dataset.modalBound === "true") return;
-        node.dataset.modalBound = "true";
-        node.addEventListener("click", (event) => {
-          if (event.target !== node) return;
-          state.questionModalOpen = false;
-          syncSampleView();
-        });
-      });
       document.querySelectorAll(".sample-person[data-action='select-person']").forEach((node) => {
         if (node.dataset.pointerBound === "true") return;
         node.dataset.pointerBound = "true";
@@ -3917,7 +4152,11 @@
           if (action === "home") setPage("home");
           if (action === "profile") {
             const user = state.user || mockZhihuUser;
-            window.open(user.profileUrl, "_blank", "noopener");
+            if (user.profileUrl) {
+              window.open(user.profileUrl, "_blank", "noopener");
+            } else {
+              showToast("知乎已授权，但用户资料接口暂未返回个人主页。");
+            }
           }
           if (action === "paths") setPage("paths");
           if (action === "library") setPage("library");
@@ -3930,6 +4169,8 @@
             const input = document.getElementById("questionInput");
             const activePrompt = input?.dataset.prompt || queryPrompts[state.promptIndex % queryPrompts.length];
             state.question = input ? input.value.trim() || activePrompt : activePrompt;
+            state.hasSubmittedQuestion = true;
+            state.submittedQuestion = state.question;
             state.homeInputTouched = false;
             startLoading();
           }
@@ -3940,8 +4181,8 @@
             state.pathExpanded = true;
             state.selectedPersonId = "";
             state.readerOpen = false;
+            state.askPanelOpen = false;
             state.readerArticleIndex = 0;
-            state.questionModalOpen = false;
             if (card && showcase) {
               card.classList.add("is-selected");
               showcase.classList.add("is-transitioning");
@@ -3964,29 +4205,26 @@
           if (action === "continue-people") {
             state.selectedPersonId = "";
             state.readerOpen = false;
-            state.questionModalOpen = false;
+            state.askPanelOpen = false;
             syncSampleView();
           }
           if (action === "open-reader") openReader(Number(target.dataset.index || 0));
           if (action === "close-reader") closeReader();
           if (action === "ask-person" || action === "question-from-reader") {
-            const editable = document.getElementById("editableQuestion");
-            if (editable) state.questionText = readEditableQuestion();
-            else state.questionText = buildQuestionText(getPerson());
-            state.questionModalOpen = true;
-            if (state.page === "paths" && state.pathExpanded) syncSampleView();
-            else if (state.page !== "samples") setPage("samples");
-            else syncSampleView();
+            openAskPanel(getPerson());
           }
-          if (action === "mock-dm") showToast("Demo 不发送真实私信。正式版会等待 TA 愿意接收提问。");
-          if (action === "chat") {
-            const editable = document.getElementById("editableQuestion");
-            if (editable) state.questionText = readEditableQuestion().trim() || state.questionText;
+          if (action === "chat-from-inline-ask") {
+            state.questionText = readEditableQuestion().trim() || state.questionText;
             const firstMessage = state.questionText;
             state.messages = [];
             setPage("chat");
             addChat(firstMessage);
           }
+          if (action === "mock-dm-from-inline-ask") {
+            state.questionText = readEditableQuestion().trim() || state.questionText;
+            showToast("Demo 不发送真实私信。正式版会等待 TA 愿意接收提问。");
+          }
+          if (action === "close-inline-ask") closeAskPanel();
           if (action === "quick-chat") addChat(target.dataset.text || "");
           if (action === "send-chat") {
             const input = document.getElementById("chatInput");
@@ -3997,6 +4235,7 @@
             state.selectedPersonId = target.dataset.id;
             state.selectedPathId = getPerson(state.selectedPersonId).pathId;
             state.readerOpen = false;
+            state.askPanelOpen = false;
             state.readerArticleIndex = 0;
             setPage("samples");
           }
@@ -4005,6 +4244,9 @@
             state.selectedPathId = getPerson(state.selectedPersonId).pathId;
             state.messages = [];
             setPage("chat");
+          }
+          if (action === "go-find-samples") {
+            setPage(state.hasSubmittedQuestion ? "paths" : "home");
           }
           if (action === "publish-community") {
             if (!state.loggedIn) {
