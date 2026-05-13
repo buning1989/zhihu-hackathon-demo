@@ -16,6 +16,7 @@ for (const envPath of envPaths) {
 const DEFAULT_ZHIHU_SEARCH_API_URL =
   "https://developer.zhihu.com/api/v1/content/zhihu_search";
 const DEFAULT_ZHIHU_OPENAPI_BASE = "https://openapi.zhihu.com";
+const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -28,6 +29,7 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 
 export const config = {
   nodeEnv: process.env.NODE_ENV || process.env.APP_ENV || "development",
+  dataMode: parseDataMode(process.env.DATA_MODE),
   host: process.env.HOST || "127.0.0.1",
   port: parsePositiveInteger(process.env.PORT ?? process.env.BACKEND_PORT, 8000),
   frontendUrl: process.env.FRONTEND_URL || "http://127.0.0.1:5173",
@@ -47,3 +49,7 @@ export const config = {
     )
   }
 };
+
+function parseDataMode(value: string | undefined): "mock" | "cache_first" | "real" {
+  return value && DATA_MODES.has(value) ? (value as "mock" | "cache_first" | "real") : "mock";
+}
