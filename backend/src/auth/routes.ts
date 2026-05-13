@@ -33,9 +33,11 @@ authRoutes.get("/zhihu/login", (_req, res, next) => {
 authRoutes.get("/zhihu/callback", async (req, res, next) => {
   try {
     const code = parseAuthorizationCode(req.query.code, req.query.authorization_code);
-    const state = parseQueryString(req.query.state, "state");
+    const state = readQueryString(req.query.state);
 
-    if (!validateOAuthState(req, res, state)) {
+    // Zhihu's current callback does not echo state in this demo flow. For demo compatibility,
+    // allow missing state; production should require provider state support or stricter login protection.
+    if (state && !validateOAuthState(req, res, state)) {
       throw new HttpError(400, "INVALID_OAUTH_STATE", "知乎 OAuth state 校验失败");
     }
 
@@ -94,16 +96,6 @@ function parseAuthorizationCode(codeValue: unknown, authorizationCodeValue: unkn
   }
 
   throw new HttpError(400, "OAUTH_QUERY_REQUIRED", "Missing required query parameter: code");
-}
-
-function parseQueryString(value: unknown, name: string): string {
-  const parsed = readQueryString(value);
-
-  if (!parsed) {
-    throw new HttpError(400, "OAUTH_QUERY_REQUIRED", `Missing required query parameter: ${name}`);
-  }
-
-  return parsed;
 }
 
 function readQueryString(value: unknown): string {
