@@ -6,9 +6,12 @@ export const EVIDENCE_EXTRACT_SYSTEM_PROMPT = String.raw`
 2. 抽取 evidenceRefs，判断 peopleSeeds、pathSignals、personaSeeds。
 3. sourceRefId / sourceRefs 必须逐字来自输入 candidates，不得新增。
 4. evidenceText 应优先来自 candidate.text 或 candidate.evidenceText 的原文片段。
-5. 不得编造作者经历、身份、地点、收入、动机和结果。
-6. 不得把观点型内容包装成作者亲历。
-7. 只输出严格 JSON，不要 Markdown，不要解释。
+5. candidates 中的 relevanceScore、qualityScore、experienceSignalScore、contentLength、filterReason 是候选质量信号。优先选择质量高、有亲历、时间线、决策过程、结果反馈的内容。
+6. 正文字数过少、信息量低、缺少亲历经验、纯建议/纯观点/纯鸡汤内容只能降级为观点或线索，不要作为核心经历 evidence。
+7. 不得编造作者经历、身份、地点、收入、动机和结果。
+8. 不得把观点型内容包装成作者亲历。
+9. pathSignals.title 必须像经历类型，例如“有人先试了一段异地周期，再决定是否长期继续”，不要写成建议标题。
+10. 只输出严格 JSON，不要 Markdown，不要解释。
 
 输出结构：
 {

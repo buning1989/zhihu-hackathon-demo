@@ -6,9 +6,11 @@ import {
   buildPromptUserContext,
   createDemoContextUsed
 } from "../services/userContext.service.js";
+import { selectQualitySearchItems } from "../services/demoCandidateQuality.service.js";
 import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoDataMode,
+  type DemoCandidateQuality,
   type DemoDebugFallbackKind,
   type DemoDebugIntentStage,
   type DemoDebugLlmStageResult,
@@ -56,6 +58,11 @@ interface CleanedCandidate {
   author: string;
   sourceUrl: string;
   sampleType: string;
+  relevanceScore: number;
+  qualityScore: number;
+  experienceSignalScore: number;
+  contentLength: number;
+  filterReason: string;
 }
 
 interface StageRunResult<T> {
@@ -107,7 +114,8 @@ export async function composeMultiLlmDemoSearchResponse(
     input.count,
     input.userContext
   );
-  const cleanedSearchItems = cleanSearchItems(searchItems).slice(0, MAX_REAL_ITEMS);
+  const qualitySelection = selectQualitySearchItems(input.query, searchItems, MAX_REAL_ITEMS);
+  const cleanedSearchItems = qualitySelection.items;
   if (cleanedSearchItems.length === 0) {
     throw new HttpError(
       502,
@@ -122,7 +130,8 @@ export async function composeMultiLlmDemoSearchResponse(
     dataMode: input.dataMode,
     items: cleanedSearchItems,
     startedAt: input.startedAt,
-    userContext: input.userContext
+    userContext: input.userContext,
+    candidateQuality: qualitySelection.candidateQuality
   });
 
   const candidates = buildCleanedCandidatesFromResponse(response);
@@ -195,6 +204,7 @@ export async function composeMultiLlmDemoSearchResponse(
     fallbackKind: fallbackSummary.kind,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
+    candidateQuality: response.debug.candidateQuality,
     notes:
       successfulStages > 0
         ? [
@@ -528,14 +538,6 @@ async function searchByExpandedQueries(
   return dedupedItems;
 }
 
-function cleanSearchItems(items: SearchItem[]): SearchItem[] {
-  const dedupedItems = dedupeSearchItems(items);
-  return dedupedItems.filter((item) => {
-    const content = normalizeText(item.text || item.evidence.text || item.title);
-    return content.length >= MIN_CONTENT_LENGTH && Boolean(item.url || item.id);
-  });
-}
-
 function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
   const seen = new Set<string>();
   const result: SearchItem[] = [];
@@ -556,6 +558,13 @@ function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
 function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): CleanedCandidate[] {
   const candidates: CleanedCandidate[] = [];
   const seen = new Set<string>();
+  const qualityBySourceRefId = new Map(
+    (response.debug.candidateQuality ?? [])
+      .filter((item): item is DemoCandidateQuality & { sourceRefId: string } =>
+        Boolean(item.sourceRefId)
+      )
+      .map((item) => [item.sourceRefId, item])
+  );
 
   for (const person of response.people) {
     for (const article of person.articles) {
@@ -565,6 +574,7 @@ function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): Clean
       }
 
       const sourceRef = response.meta.sourceRefs.find((item) => item.id === sourceRefId);
+      const quality = qualityBySourceRefId.get(sourceRefId);
       const text = truncateText(article.text || article.summary || article.title, 1200);
       const evidenceText = truncateText(
         article.evidence.map((item) => item.text).join("\n") || text,
@@ -586,7 +596,12 @@ function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): Clean
         evidenceText,
         author: truncateText(article.author || sourceRef?.author || "知乎用户", 40),
         sourceUrl: article.sourceUrl || article.url || sourceRef?.url || "",
-        sampleType: person.sampleType ?? "content_sample"
+        sampleType: person.sampleType ?? "content_sample",
+        relevanceScore: quality?.relevanceScore ?? person.match.contentRelevance,
+        qualityScore: quality?.qualityScore ?? person.match.evidenceQuality,
+        experienceSignalScore: quality?.experienceSignalScore ?? person.match.experienceSimilarity,
+        contentLength: quality?.contentLength ?? normalizeText(text).length,
+        filterReason: quality?.filterReason ?? "used_as_core_evidence: selected by response composer"
       });
     }
   }
@@ -677,7 +692,11 @@ function applyDemoResponseComposeOutput(
   const pathById = new Map(response.paths.map((path) => [path.id, path]));
   for (const item of output.paths) {
     const path = pathById.get(item.id);
-    if (!path || !areSafeTexts([item.title, item.summary, item.fitReason ?? ""])) {
+    if (
+      !path ||
+      !areSafeTexts([item.title, item.summary, item.fitReason ?? ""]) ||
+      !isExperiencePathTitle(item.title)
+    ) {
       guardWarnings.push(`demo_response_compose path skipped: ${item.id}`);
       continue;
     }
@@ -1195,6 +1214,26 @@ function isSafeFitReason(value: string): boolean {
   ];
 
   return isSafeText(value) && !overclaimFragments.some((fragment) => value.includes(fragment));
+}
+
+function isExperiencePathTitle(value: string): boolean {
+  const adviceTitleFragments = [
+    "比较工作机会",
+    "确认目标岗位",
+    "评估生活",
+    "先拆清",
+    "给异地设",
+    "保留回流",
+    "留一个可回撤",
+    "把现金流",
+    "目标岗位缺口",
+    "可回撤方案"
+  ];
+
+  return (
+    value.includes("有人") &&
+    !adviceTitleFragments.some((fragment) => value.includes(fragment))
+  );
 }
 
 function formatErrorSummary(error: unknown): string {

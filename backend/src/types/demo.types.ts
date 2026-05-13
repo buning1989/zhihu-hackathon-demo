@@ -230,7 +230,20 @@ export interface DemoDebug {
   fallbackKind: DemoDebugFallbackKind;
   fallbackReason: string;
   guardWarnings: string[];
+  candidateQuality?: DemoCandidateQuality[];
   notes: string[];
+}
+
+export interface DemoCandidateQuality {
+  candidateId: string;
+  sourceRefId?: string;
+  title: string;
+  relevanceScore: number;
+  qualityScore: number;
+  experienceSignalScore: number;
+  contentLength: number;
+  filterReason: string;
+  usedAsEvidence: boolean;
 }
 
 export interface DemoDebugTiming {

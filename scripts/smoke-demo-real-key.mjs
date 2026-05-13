@@ -10,6 +10,9 @@ const DEFAULT_QUERY = decodeURIComponent(
 const RELATIONSHIP_QUERY = decodeURIComponent(
   "%E4%B8%BA%E4%BA%86%E5%B7%A5%E4%BD%9C%EF%BC%8C%E5%BC%82%E5%9C%B0%E6%81%8B%E5%80%BC%E5%BE%97%E5%90%97"
 );
+const CAREER_TRANSITION_QUERY = decodeURIComponent(
+  "%33%35%E5%B2%81%E8%BD%AC%E8%A1%8C%E8%BF%98%E6%9D%A5%E5%BE%97%E5%8F%8A%E5%90%97"
+);
 const DEFAULT_CHAT_MESSAGE = decodeURIComponent(
   "%E8%BF%99%E6%AE%B5%E5%85%AC%E5%BC%80%E5%86%85%E5%AE%B9%E9%87%8C%EF%BC%8C%E7%AC%AC%E4%B8%80%E6%AD%A5%E5%BA%94%E8%AF%A5%E6%83%B3%E6%B8%85%E6%A5%9A%E4%BB%80%E4%B9%88%EF%BC%9F"
 );
@@ -47,11 +50,13 @@ async function main() {
 
     const baseUrl = `http://127.0.0.1:${address.port}`;
     const firstQuery = readEnv("DEMO_SMOKE_QUERY_A", RELATIONSHIP_QUERY);
+    const secondQuery = readEnv("DEMO_SMOKE_QUERY_B", CAREER_TRANSITION_QUERY);
     const cachedQuery = readEnv("DEMO_SMOKE_QUERY", DEFAULT_QUERY);
     const chatMessage = readEnv("DEMO_SMOKE_CHAT_MESSAGE", DEFAULT_CHAT_MESSAGE);
     const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
 
     const firstRun = await runDemoSearch(baseUrl, firstQuery, count, "first query");
+    const secondRun = await runDemoSearch(baseUrl, secondQuery, count, "second query");
     const cacheWarmRun = await runDemoSearch(baseUrl, cachedQuery, count, "cache warm query");
     const cacheHitRun = await runDemoSearch(baseUrl, cachedQuery, count, "cache hit query");
 
@@ -64,6 +69,7 @@ async function main() {
     const demoData = cacheWarmRun.data;
     const personas = assertNonEmptyArray(demoData.personas, "data.personas");
     printDemoTiming(firstRun);
+    printDemoTiming(secondRun);
     printDemoTiming(cacheWarmRun);
     printDemoTiming(cacheHitRun);
 
@@ -129,6 +135,8 @@ async function runDemoSearch(baseUrl, query, count, label) {
     assertStageRecorded(stageResults, stage);
     assertStageTiming(timings, stage);
   }
+  assertExperiencePathTitles(data.paths, `${label} data.paths`);
+  assertCandidateQuality(debug, `${label} data.debug.candidateQuality`);
 
   return {
     label,
@@ -136,6 +144,53 @@ async function runDemoSearch(baseUrl, query, count, label) {
     durationMs,
     data
   };
+}
+
+function assertExperiencePathTitles(paths, label) {
+  const pathItems = assertNonEmptyArray(paths, label);
+  const titles = pathItems.map((item) => readString(readRecord(item, label).title, `${label}.title`));
+  const adviceFragments = [
+    "比较工作机会",
+    "确认目标岗位",
+    "先试一个可逆周期",
+    "先确定停靠",
+    "把现金流和保障算清楚",
+    "小步试错控制"
+  ];
+
+  for (const title of titles) {
+    if (!title.includes("有人")) {
+      throw new Error(`${label} title expected experience-sample wording with 有人; got ${title}.`);
+    }
+
+    for (const fragment of adviceFragments) {
+      if (title.includes(fragment)) {
+        throw new Error(`${label} title should not be advice-style; got ${title}.`);
+      }
+    }
+  }
+}
+
+function assertCandidateQuality(debug, label) {
+  const candidates = assertNonEmptyArray(debug.candidateQuality, label);
+  const used = candidates.filter((candidate) => isRecord(candidate) && candidate.usedAsEvidence === true);
+  if (used.length === 0) {
+    throw new Error(`${label} expected at least one candidate usedAsEvidence=true.`);
+  }
+
+  for (const candidate of candidates) {
+    const item = readRecord(candidate, label);
+    for (const key of ["relevanceScore", "qualityScore", "experienceSignalScore", "contentLength"]) {
+      if (!Number.isFinite(item[key])) {
+        throw new Error(`${label}.${key} expected a finite number.`);
+      }
+    }
+    assertNonEmptyString(item.filterReason, `${label}.filterReason`);
+
+    if (item.contentLength < 30 && item.usedAsEvidence === true) {
+      throw new Error(`${label} short candidate became core evidence: ${item.title || item.candidateId}.`);
+    }
+  }
 }
 
 async function requestJson(url, options) {

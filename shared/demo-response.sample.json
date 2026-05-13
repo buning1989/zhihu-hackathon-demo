@@ -529,6 +529,29 @@
       "warnings": [
         "Mock response only. Replace with real Zhihu search and deterministic composer in P0 implementation.",
         "Persona chat is a grounded stub until a real LLM client is explicitly enabled."
+      ],
+      "candidateQuality": [
+        {
+          "candidateId": "zhihu_answer_sample_001",
+          "sourceRefId": "source_mock_city_walk",
+          "title": "离开工作后的一段低成本休整",
+          "relevanceScore": 0.88,
+          "qualityScore": 0.76,
+          "experienceSignalScore": 0.72,
+          "contentLength": 238,
+          "filterReason": "used_as_core_evidence: ranked_high: concrete experience, decision process, and outcome signals found",
+          "usedAsEvidence": true
+        },
+        {
+          "candidateId": "zhihu_answer_sample_002",
+          "title": "不工作以后应该怎么办",
+          "relevanceScore": 0.64,
+          "qualityScore": 0.24,
+          "experienceSignalScore": 0.08,
+          "contentLength": 18,
+          "filterReason": "downranked: contentLength=18 is too short for core evidence",
+          "usedAsEvidence": false
+        }
       ]
     }
   },

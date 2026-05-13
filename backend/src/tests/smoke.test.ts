@@ -127,6 +127,7 @@ try {
   await assertDisabledPersonaFallback(baseUrl);
   await assertDeepSeekResponseFormatFallback();
   await assertLoggedInUserContextInRealComposer();
+  await assertCandidateQualityPrefersExperience();
   await assertNoLlmConfigFallbackKind();
   await assertPartialLlmFallbackKind();
   await assertGroundingGuardInvalidFallback();
@@ -192,18 +193,18 @@ async function assertQueryAwareDemoPaths(baseUrl: string): Promise<void> {
   const cases = [
     {
       query: "不工作了能去哪儿",
-      expected: ["停靠", "现金流", "回流"],
-      forbidden: []
+      expected: ["低成本地方", "存款", "回流接口"],
+      forbidden: ["先确定", "算清楚", "保留回流"]
     },
     {
       query: "为了工作，异地恋值得吗",
-      expected: ["工作机会", "异地", "可逆"],
-      forbidden: ["自由职业", "Gap", "不工作"]
+      expected: ["接受异地", "见面规则", "异地周期"],
+      forbidden: ["自由职业", "Gap", "不工作", "比较工作机会", "可逆周期"]
     },
     {
       query: "35岁转行还来得及吗",
-      expected: ["目标岗位", "旧经验", "转行"],
-      forbidden: ["自由职业", "Gap", "不工作"]
+      expected: ["35岁后", "旧经验", "项目试水"],
+      forbidden: ["自由职业", "Gap", "不工作", "确认目标岗位", "小步试错"]
     }
   ];
   const titleSets: string[] = [];
@@ -394,6 +395,44 @@ async function assertLoggedInUserContextInRealComposer(): Promise<void> {
   );
 }
 
+async function assertCandidateQualityPrefersExperience(): Promise<void> {
+  const response = await withStubbedOrchestrator({
+    configuredTasks: new Set(),
+    outputs: {},
+    query: "35岁转行还来得及吗",
+    count: 2,
+    searchItems: [
+      createLowQualitySearchItem(),
+      createHighQualityExperienceSearchItem()
+    ]
+  });
+
+  assertEqual(response.people.length, 1, "quality filter returns only core evidence people");
+  assertIncludes(
+    response.people[0].articles[0].title,
+    "35岁转行后",
+    "quality filter keeps experience item"
+  );
+  assertNonEmptyArray(response.debug.candidateQuality, "candidate quality debug");
+  const lowQuality = response.debug.candidateQuality?.find(
+    (candidate) => candidate.candidateId === "low_quality_advice"
+  );
+  if (!lowQuality) {
+    throw new Error("candidate quality debug missing low quality item");
+  }
+  assertEqual(lowQuality.usedAsEvidence, false, "low quality candidate not used as evidence");
+  assertIncludes(lowQuality.filterReason, "too short", "low quality filter reason");
+  const usedQuality = response.debug.candidateQuality?.find((candidate) => candidate.usedAsEvidence);
+  if (!usedQuality) {
+    throw new Error("candidate quality debug missing used item");
+  }
+  assertEqual(
+    usedQuality.experienceSignalScore > lowQuality.experienceSignalScore,
+    true,
+    "experience candidate has stronger experience score"
+  );
+}
+
 async function assertNoLlmConfigFallbackKind(): Promise<void> {
   const response = await withStubbedOrchestrator({
     configuredTasks: new Set(),
@@ -472,6 +511,9 @@ interface StubbedOrchestratorOptions {
   configuredTasks: Set<LlmTaskType>;
   outputs: Partial<Record<LlmTaskType, string>>;
   userContext?: UserContext;
+  query?: string;
+  count?: number;
+  searchItems?: SearchItem[];
 }
 
 async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
@@ -484,7 +526,7 @@ async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
     count,
     hasMore: false,
     searchHashId: "stub",
-    items: [createStubSearchItem()]
+    items: options.searchItems ?? [createStubSearchItem()]
   });
   llmRouter.isTaskConfigured = ((taskType) =>
     options.configuredTasks.has(taskType)) as typeof llmRouter.isTaskConfigured;
@@ -498,8 +540,8 @@ async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
 
   try {
     return await composeMultiLlmDemoSearchResponse({
-      query: "不工作了能去哪儿",
-      count: 1,
+      query: options.query ?? "不工作了能去哪儿",
+      count: options.count ?? 1,
       dataMode: "real",
       startedAt: Date.now(),
       userContext: options.userContext
@@ -585,6 +627,41 @@ function createStubSearchItem(): SearchItem {
       source: {
         provider: "zhihu",
         url: "https://www.zhihu.com/question/stub/answer/1"
+      }
+    }
+  };
+}
+
+function createLowQualitySearchItem(): SearchItem {
+  return {
+    ...createStubSearchItem(),
+    id: "low_quality_advice",
+    title: "35岁转行还来得及吗",
+    text: "建议努力学习，保持心态。",
+    url: "https://www.zhihu.com/question/stub/answer/low",
+    evidence: {
+      text: "建议努力学习，保持心态。",
+      source: {
+        provider: "zhihu",
+        url: "https://www.zhihu.com/question/stub/answer/low"
+      }
+    }
+  };
+}
+
+function createHighQualityExperienceSearchItem(): SearchItem {
+  return {
+    ...createStubSearchItem(),
+    id: "high_quality_experience",
+    title: "35岁转行后，我先做项目再去面试",
+    text:
+      "我35岁那年决定从传统销售转到运营。刚开始没有直接辞职，而是用半年时间做了两个小项目，晚上补作品集，后来拿着项目去面试。结果第一份新工作薪资下降了一点，但三个月后我发现旧行业的客户沟通经验能迁移过来，后面才慢慢稳定。",
+    url: "https://www.zhihu.com/question/stub/answer/high",
+    evidence: {
+      text: "我35岁那年决定从传统销售转到运营，先用半年时间做了两个小项目，后来拿着项目去面试。",
+      source: {
+        provider: "zhihu",
+        url: "https://www.zhihu.com/question/stub/answer/high"
       }
     }
   };

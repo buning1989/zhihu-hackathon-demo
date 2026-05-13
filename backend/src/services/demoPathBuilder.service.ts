@@ -44,24 +44,24 @@ const QUERY_SCENARIOS: QueryScenario[] = [
     paths: [
       {
         id: "work_value",
-        title: "比较工作机会和关系成本",
-        summary: "把岗位成长、城市距离、见面频率和双方底线放到同一张表里权衡。",
+        title: "有人为了工作接受异地，后来靠固定见面维持关系",
+        summary: "这类样本通常把岗位成长、城市距离、见面频率和双方底线一起经历过一轮权衡。",
         keywords: ["工作", "机会", "职业", "岗位", "异地", "距离", "城市", "值得", "成本"],
         variables: ["工作机会", "关系成本", "城市距离"],
         stance: "mixed"
       },
       {
         id: "distance_rules",
-        title: "给异地设期限和见面规则",
-        summary: "重点看异地持续多久、多久见一次、谁承担成本、何时结束异地。",
+        title: "有人在异地前把期限和见面规则谈清楚",
+        summary: "这类样本的关键不只是异地本身，而是异地持续多久、多久见一次、谁承担成本。",
         keywords: ["异地", "见面", "沟通", "期限", "未来", "结婚", "安全感", "伴侣"],
         variables: ["异地期限", "见面成本", "沟通规则"],
         stance: "viewpoint"
       },
       {
         id: "reversible_trial",
-        title: "先试一个可逆周期",
-        summary: "把试用期、短期外派或远程磨合当成验证，不急着一次押上长期关系。",
+        title: "有人先试了一段异地周期，再决定是否长期继续",
+        summary: "这类样本把试用期、短期外派或远程磨合当成验证，没有一开始就押上长期关系。",
         keywords: ["试", "试用", "短期", "回撤", "选择", "取舍", "计划", "磨合"],
         variables: ["试运行", "回撤条件", "长期选择"],
         stance: "experience"
@@ -76,24 +76,24 @@ const QUERY_SCENARIOS: QueryScenario[] = [
     paths: [
       {
         id: "target_gap",
-        title: "确认目标岗位缺口",
-        summary: "先把想去的岗位、能力差距、学习周期和市场门槛查清楚。",
+        title: "有人35岁后补齐目标岗位缺口，再转入新方向",
+        summary: "这类样本先把想去的岗位、能力差距、学习周期和市场门槛查清楚，再进入切换。",
         keywords: ["目标", "岗位", "行业", "门槛", "技能", "要求", "招聘", "缺口"],
         variables: ["目标岗位", "能力差距", "市场门槛"],
         stance: "viewpoint"
       },
       {
         id: "transfer_experience",
-        title: "把旧经验迁移成筹码",
-        summary: "优先寻找原行业经验能迁移到新方向的部分，降低从零开始的成本。",
+        title: "有人把旧经验迁移成新岗位筹码",
+        summary: "这类样本没有完全从零开始，而是把原行业经验里能迁移的部分转成新方向证明。",
         keywords: ["经验", "迁移", "优势", "项目", "管理", "资源", "履历", "作品"],
         variables: ["可迁移经验", "作品证明", "履历表达"],
         stance: "mixed"
       },
       {
         id: "small_trial",
-        title: "小步试错控制转行风险",
-        summary: "用课程、作品、兼职、内转或试岗验证方向，再决定是否大幅切换。",
+        title: "有人先用项目试水，再决定是否正式转行",
+        summary: "这类样本用课程、作品、兼职、内转或试岗验证方向，再决定是否大幅切换。",
         keywords: ["试错", "课程", "作品", "兼职", "内转", "试岗", "风险", "收入"],
         variables: ["试错成本", "收入波动", "回撤方案"],
         stance: "experience"
@@ -108,24 +108,24 @@ const QUERY_SCENARIOS: QueryScenario[] = [
     paths: [
       {
         id: "place_rhythm",
-        title: "先确定停靠和生活半径",
-        summary: "把想去哪里、每天怎么过、低成本资源和身体状态先放在一起看。",
+        title: "有人离开工作后先去低成本地方休整",
+        summary: "这类样本先处理想去哪里、每天怎么过、低成本资源和身体状态，而不是立刻定终局。",
         keywords: ["去哪", "哪里", "城市", "回老家", "生活", "每天", "休息", "节奏"],
         variables: ["停靠地点", "日常节奏", "生活半径"],
         stance: "experience"
       },
       {
         id: "money_safety",
-        title: "把现金流和保障算清楚",
-        summary: "先算存款能撑多久、必要开销多少、社保医保和家庭支持是否兜得住。",
+        title: "有人靠存款和副业撑过一段空窗期",
+        summary: "这类样本的核心是存款能撑多久、必要开销多少、社保医保和家庭支持是否兜得住。",
         keywords: ["钱", "收入", "存款", "预算", "社保", "医保", "保障", "安全垫"],
         variables: ["现金流", "安全垫", "保障底线"],
         stance: "viewpoint"
       },
       {
         id: "return_or_trial",
-        title: "保留回流或低成本试错",
-        summary: "把重新就业、短期项目、学习调整和低成本试错作为后续接口。",
+        title: "有人保留面试和短期项目作为回流接口",
+        summary: "这类样本把重新就业、短期项目、学习调整和低成本试错留在后面，避免选择变成单向门。",
         keywords: ["找工作", "就业", "项目", "学习", "试错", "回流", "面试", "岗位"],
         variables: ["工作回流", "低成本试错", "下一步接口"],
         stance: "mixed"
@@ -140,24 +140,24 @@ const QUERY_SCENARIOS: QueryScenario[] = [
     paths: [
       {
         id: "real_gain",
-        title: "确认这份工作的真实收益",
-        summary: "把成长、收入、平台、城市和长期简历收益拆开，不只看当下情绪。",
+        title: "有人接下新工作后发现成长收益更明显",
+        summary: "这类样本经历过成长、收入、平台、城市和长期简历收益之间的拆分比较。",
         keywords: ["成长", "收入", "平台", "简历", "机会", "长期", "收益"],
         variables: ["工作收益", "成长空间", "长期价值"],
         stance: "viewpoint"
       },
       {
         id: "life_cost",
-        title: "评估生活关系的代价",
-        summary: "把通勤、城市、家庭、关系和休息成本算进去，避免只比较岗位本身。",
+        title: "有人为了生活关系放弃了更高强度机会",
+        summary: "这类样本把通勤、城市、家庭、关系和休息成本算进去，没有只比较岗位本身。",
         keywords: ["生活", "关系", "家庭", "城市", "通勤", "休息", "代价"],
         variables: ["生活成本", "关系代价", "时间消耗"],
         stance: "mixed"
       },
       {
         id: "reversible_plan",
-        title: "留一个可回撤方案",
-        summary: "先设试用期限、退出条件和备选路径，让选择不变成单向门。",
+        title: "有人设了试用期限，再按结果回撤或继续",
+        summary: "这类样本提前设过试用期限、退出条件和备选路径，让选择不变成单向门。",
         keywords: ["试用", "期限", "退出", "备选", "回撤", "计划", "风险"],
         variables: ["试用期限", "退出条件", "备选路径"],
         stance: "experience"
@@ -225,24 +225,24 @@ function buildGenericPathTemplates(
   return [
     {
       id: "variables",
-      title: `先拆清${quotedFocus}的变量`,
-      summary: `围绕${quotedFocus}，先把目标、约束、代价和不能接受的结果拆开。`,
+      title: `有人把${quotedFocus}拆成现实约束后才行动`,
+      summary: `这类样本围绕${quotedFocus}，把目标、约束、代价和不能接受的结果经历过一轮拆分。`,
       keywords: [focus, "目标", "约束", "代价", "变量", evidenceFocus],
       variables: [focus, "关键变量", evidenceFocus],
       stance: "viewpoint"
     },
     {
       id: "evidence_samples",
-      title: `找${quotedFocus}的对照样本`,
-      summary: `优先看公开内容里与${quotedFocus}相近的经历、判断依据和可迁移边界。`,
+      title: `有人留下了和${quotedFocus}相近的公开经历`,
+      summary: `这类样本的价值在于与${quotedFocus}相近的经历、判断依据和可迁移边界。`,
       keywords: [focus, "经历", "样本", "依据", "边界", evidenceFocus],
       variables: [focus, "公开样本", "可迁移边界"],
       stance: "mixed"
     },
     {
       id: "small_step",
-      title: `给${quotedFocus}设小步验证`,
-      summary: `把下一步做成可观察、可回撤的小实验，先验证${riskFocus}再扩大投入。`,
+      title: `有人先用一小段试错验证${quotedFocus}`,
+      summary: `这类样本把下一步做成可观察、可回撤的小实验，先验证${riskFocus}再扩大投入。`,
       keywords: [focus, "验证", "试错", "回撤", "风险", riskFocus],
       variables: [focus, "小步验证", riskFocus],
       stance: "experience"

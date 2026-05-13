@@ -1536,6 +1536,50 @@ components:
           type: array
           items:
             type: string
+        candidateQuality:
+          type: array
+          description: >
+            Debug-only quality assessment for each recalled candidate. Shows
+            why a candidate became core evidence or was downranked.
+          items:
+            $ref: "#/components/schemas/DemoCandidateQuality"
+    DemoCandidateQuality:
+      type: object
+      required:
+        - candidateId
+        - title
+        - relevanceScore
+        - qualityScore
+        - experienceSignalScore
+        - contentLength
+        - filterReason
+        - usedAsEvidence
+      properties:
+        candidateId:
+          type: string
+        sourceRefId:
+          type: string
+        title:
+          type: string
+        relevanceScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        qualityScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        experienceSignalScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        contentLength:
+          type: integer
+          minimum: 0
+        filterReason:
+          type: string
+        usedAsEvidence:
+          type: boolean
     DemoDebugIntentStage:
       type: object
       required:

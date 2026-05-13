@@ -2,6 +2,7 @@ import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   DEMO_SCHEMA_VERSION,
   type DemoArticle,
+  type DemoCandidateQuality,
   type DemoDataMode,
   type DemoEvidence,
   type DemoPath,
@@ -18,6 +19,7 @@ import {
   type DemoPathCandidate,
   type DemoPathPlan
 } from "./demoPathBuilder.service.js";
+import { scoreSearchCandidate, type CandidateAssessment } from "./demoCandidateQuality.service.js";
 import { createDemoSearchIdentity } from "./demoQueryIdentity.service.js";
 import { buildContextFitReason, createDemoContextUsed } from "./userContext.service.js";
 
@@ -28,6 +30,7 @@ interface ComposeRealInput {
   items: SearchItem[];
   startedAt: number;
   userContext?: UserContext;
+  candidateQuality?: DemoCandidateQuality[];
 }
 
 interface PathBucket {
@@ -50,6 +53,12 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
   const buckets = groupItemsByPath(input.query, limitedItems, pathCandidates);
   const sourceRefs = limitedItems.map(toSourceRef);
   const sourceByItemId = new Map(limitedItems.map((item, index) => [item.id, sourceRefs[index]]));
+  const candidateQuality = attachSourceRefsToCandidateQuality(
+    input.query,
+    limitedItems,
+    input.candidateQuality,
+    sourceByItemId
+  );
   const paths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
   const pathByItemId = new Map<string, string>();
 
@@ -68,7 +77,8 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       pathByItemId.get(item.id) ?? paths[0].id,
       sourceByItemId.get(item.id)!,
       input.query,
-      input.userContext
+      input.userContext,
+      candidateQuality.find((candidate) => candidate.candidateId === item.id)
     )
   );
   const personas = people.map(toPersona);
@@ -181,6 +191,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       fallbackKind: "",
       fallbackReason: "",
       guardWarnings: [],
+      candidateQuality,
       notes: [
         "real Zhihu items grouped by rule composer",
         "LLM provider reserved but not used in this run"
@@ -284,9 +295,11 @@ function toPerson(
   pathId: string,
   sourceRef: DemoSourceRef,
   query: string,
-  userContext?: UserContext
+  userContext?: UserContext,
+  candidateQuality?: DemoCandidateQuality
 ): DemoPerson {
-  const sampleType = classifySampleType(item);
+  const quality = candidateQuality ?? scoreSearchCandidate(query, item);
+  const sampleType = classifySampleType(item, quality);
   const article = toArticle(item, sourceRef);
   const personId = toPersonId(item, String(index));
   const personaId = `persona_${hashId(personId)}`;
@@ -320,20 +333,20 @@ function toPerson(
     lesson: toLesson(sampleType),
     articles: [article],
     match: {
-      score: clampScore(0.72 + Math.min(index, 5) * 0.03),
-      level: index < 4 ? "high" : "medium",
-      reasons: toMatchReasons(item, sampleType),
+      score: toMatchScore(quality, index),
+      level: toMatchLevel(toMatchScore(quality, index)),
+      reasons: toMatchReasons(item, sampleType, quality),
       matchedVariables: inferMatchedVariables(item),
       riskNotes: ["该样本只代表知乎公开内容片段，不能代表作者完整人生或长期结果"],
-      contentRelevance: item.text ? 0.84 : 0.62,
-      experienceSimilarity: sampleType === "experience_sample" ? 0.82 : 0.58,
-      evidenceQuality: item.url && item.text ? 0.82 : 0.55,
-      personaReadiness: item.text && item.url ? 0.78 : 0.48,
+      contentRelevance: quality.relevanceScore,
+      experienceSimilarity: quality.experienceSignalScore,
+      evidenceQuality: quality.qualityScore,
+      personaReadiness: toPersonaReadiness(item, quality),
       evidenceIds: sourceRef.evidenceIds,
       sourceRefs: [sourceRef.id]
     },
     aiPersona: {
-      enabled: Boolean(item.text && item.url),
+      enabled: shouldEnablePersona(item, quality),
       personaId,
       displayName: `${displayName}的经验回声`,
       label: "基于公开内容生成",
@@ -417,7 +430,35 @@ function toSourceRef(item: SearchItem, index: number): DemoSourceRef {
   };
 }
 
-function classifySampleType(item: SearchItem): "experience_sample" | "viewpoint_author" | "content_sample" {
+function attachSourceRefsToCandidateQuality(
+  query: string,
+  items: SearchItem[],
+  candidateQuality: DemoCandidateQuality[] | undefined,
+  sourceByItemId: Map<string, DemoSourceRef>
+): DemoCandidateQuality[] {
+  const usedItemIds = new Set(items.map((item) => item.id));
+  const fallbackQuality = items.map((item) => scoreSearchCandidate(query, item));
+
+  return (candidateQuality ?? fallbackQuality).map((candidate) => {
+    const sourceRef = sourceByItemId.get(candidate.candidateId);
+    const usedAsEvidence = usedItemIds.has(candidate.candidateId);
+    return {
+      ...candidate,
+      sourceRefId: sourceRef?.id ?? candidate.sourceRefId,
+      usedAsEvidence,
+      filterReason:
+        usedAsEvidence && !candidate.filterReason.startsWith("used_as_core_evidence")
+          ? `used_as_core_evidence: ${candidate.filterReason}`
+          : candidate.filterReason
+    };
+  });
+}
+
+function classifySampleType(
+  item: SearchItem,
+  quality?: Pick<DemoCandidateQuality, "experienceSignalScore"> &
+    Partial<Pick<CandidateAssessment, "adviceSignalScore">>
+): "experience_sample" | "viewpoint_author" | "content_sample" {
   const text = `${item.title}\n${item.text}`;
   const firstPersonScore = ["我", "本人", "我的", "我们", "我从", "我在", "我当"].reduce(
     (total, keyword) => total + countIncludes(text, keyword),
@@ -428,8 +469,20 @@ function classifySampleType(item: SearchItem): "experience_sample" | "viewpoint_
     0
   );
 
+  if (quality && quality.experienceSignalScore >= 0.42) {
+    return "experience_sample";
+  }
+
   if (firstPersonScore >= 2) {
     return "experience_sample";
+  }
+
+  if (
+    quality &&
+    (quality.adviceSignalScore ?? 0) >= 0.36 &&
+    quality.experienceSignalScore < 0.35
+  ) {
+    return "viewpoint_author";
   }
 
   if (adviceScore >= 2) {
@@ -441,14 +494,14 @@ function classifySampleType(item: SearchItem): "experience_sample" | "viewpoint_
 
 function toRole(sampleType: DemoPerson["sampleType"], contentType: string): string {
   if (sampleType === "experience_sample") {
-    return "公开经历样本";
+    return "亲历线索较强的公开样本";
   }
 
   if (sampleType === "viewpoint_author") {
-    return "公开观点作者";
+    return "观点分析型公开样本";
   }
 
-  return `${contentType || "知乎内容"}样本`;
+  return `${contentType || "知乎内容"}公开样本`;
 }
 
 function toBadge(sampleType: DemoPerson["sampleType"]): string {
@@ -496,7 +549,11 @@ function inferMatchedVariables(item: SearchItem): string[] {
   return matched.length > 0 ? matched : ["公开内容主题"];
 }
 
-function toMatchReasons(item: SearchItem, sampleType: DemoPerson["sampleType"]): string[] {
+function toMatchReasons(
+  item: SearchItem,
+  sampleType: DemoPerson["sampleType"],
+  quality: Pick<DemoCandidateQuality, "filterReason" | "contentLength">
+): string[] {
   const variables = inferMatchedVariables(item).slice(0, 2);
   const prefix =
     sampleType === "experience_sample"
@@ -507,8 +564,54 @@ function toMatchReasons(item: SearchItem, sampleType: DemoPerson["sampleType"]):
 
   return [
     prefix,
-    `与当前问题共同涉及：${variables.join("、")}`
+    `与当前问题共同涉及：${variables.join("、")}`,
+    `候选质量判断：${quality.filterReason}，正文长度 ${quality.contentLength} 字`
   ];
+}
+
+function toMatchScore(
+  quality: Pick<DemoCandidateQuality, "relevanceScore" | "qualityScore" | "experienceSignalScore">,
+  index: number
+): number {
+  return clampScore(
+    0.28 +
+      quality.relevanceScore * 0.28 +
+      quality.qualityScore * 0.26 +
+      quality.experienceSignalScore * 0.22 -
+      Math.min(index, 5) * 0.01
+  );
+}
+
+function toMatchLevel(score: number): "low" | "medium" | "high" {
+  if (score >= 0.72) {
+    return "high";
+  }
+
+  return score >= 0.5 ? "medium" : "low";
+}
+
+function toPersonaReadiness(
+  item: SearchItem,
+  quality: Pick<DemoCandidateQuality, "qualityScore" | "experienceSignalScore">
+): number {
+  if (!item.text || !item.url) {
+    return 0.28;
+  }
+
+  return clampScore(quality.qualityScore * 0.54 + quality.experienceSignalScore * 0.46);
+}
+
+function shouldEnablePersona(
+  item: SearchItem,
+  quality: Pick<DemoCandidateQuality, "qualityScore" | "experienceSignalScore" | "contentLength">
+): boolean {
+  return Boolean(
+    item.text &&
+      item.url &&
+      quality.contentLength >= 50 &&
+      quality.qualityScore >= 0.42 &&
+      quality.experienceSignalScore >= 0.28
+  );
 }
 
 function toLesson(sampleType: DemoPerson["sampleType"]): string {
