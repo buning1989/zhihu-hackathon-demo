@@ -40,6 +40,7 @@ export class DemoSearchService {
       } catch (error) {
         const response = createMockDemoSearchResponse(request.query, request.count, request.dataMode, {
           fallbackUsed: true,
+          resolvedDataMode: "mock",
           notes: [
             "real mode fallback to mock demo data",
             error instanceof Error ? error.message : "unknown real mode error"
@@ -88,6 +89,7 @@ function composeFromSearchItems(
   if (items.length === 0) {
     return createMockDemoSearchResponse(request.query, request.count, request.dataMode, {
       fallbackUsed: true,
+      resolvedDataMode: "mock",
       notes: ["real search returned no items; fallback to mock demo data"]
     });
   }
@@ -227,7 +229,7 @@ function toPerson(item: SearchItem, index: number, path: DemoPath): DemoPerson {
       displayName: `${item.author.name || "知乎用户"}的经验回声`,
       label: "基于公开内容生成",
       openingLine: "你可以继续问这段公开内容里的选择、代价和边界。",
-      suggestedQuestions: ["这段经历里最关键的转折是什么？", "这条路可能有什么代价？"],
+      suggestedQuestions: ["这段公开内容里最关键的转折是什么？", "从这个公开样本看，这条路径可能有什么代价？"],
       boundary: DEMO_PERSONA_BOUNDARY_NOTICE,
       grounding: {
         personId,

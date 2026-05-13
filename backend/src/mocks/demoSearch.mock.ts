@@ -10,6 +10,7 @@ import {
 interface MockOptions {
   fallbackUsed?: boolean;
   notes?: string[];
+  resolvedDataMode?: DemoDataMode;
 }
 
 const MOCK_SOURCES: DemoSourceRef[] = [
@@ -179,7 +180,7 @@ export function createMockDemoSearchResponse(
     debug: {
       composer: "mock",
       requestedDataMode: dataMode,
-      resolvedDataMode: dataMode,
+      resolvedDataMode: options.resolvedDataMode ?? dataMode,
       itemCount: people.length,
       notes: options.notes ?? ["mock demo data; no LLM or Zhihu API required"]
     }
@@ -237,7 +238,7 @@ function buildMockPeople() {
       ],
       lesson: "地点能提供距离，但真正先稳住的是每天的生活节奏。",
       articles: [
-        buildArticle("article_city_walk", MOCK_SOURCES[0], ["ev_city_daily", "ev_city_outdoor"])
+        buildArticle("article_city_pause", MOCK_SOURCES[0], ["ev_city_daily", "ev_city_outdoor"])
       ],
       match: buildMatch(0.88, ["ev_city_daily", "ev_city_outdoor"], ["source_mock_city_walk"]),
       aiPersona: buildPersonPersona(
@@ -245,7 +246,7 @@ function buildMockPeople() {
         "persona_city_pause",
         "城市停靠样本的经验回声",
         ["source_mock_city_walk"],
-        ["你当时怎么让一天重新有节奏？", "低成本生活最先要注意什么？"]
+        ["这段公开内容里，日常节奏是怎么重新建立的？", "从这个公开样本看，低成本生活最先要注意什么？"]
       ),
       evidenceIds: ["ev_city_daily", "ev_city_outdoor"],
       sourceRefs: ["source_mock_city_walk"]
@@ -278,7 +279,7 @@ function buildMockPeople() {
         "persona_side_income",
         "轻量试错样本的经验回声",
         ["source_mock_side_income"],
-        ["怎么判断副业能不能全职？", "安全垫至少要准备多久？"]
+        ["从这个公开样本看，怎么判断副业能不能全职？", "这段公开内容里，安全垫至少要准备多久？"]
       ),
       evidenceIds: ["ev_side_cashflow", "ev_side_content"],
       sourceRefs: ["source_mock_side_income"]
@@ -314,7 +315,7 @@ function buildMockPeople() {
         "persona_safety_net",
         "底线兜住样本的经验回声",
         ["source_mock_safety_net"],
-        ["最坏情况应该先算哪几项？", "找不到工作时怎么降低风险？"]
+        ["从这个公开样本看，最坏情况应该先算哪几项？", "这段公开内容里，找不到工作时怎么降低风险？"]
       ),
       evidenceIds: ["ev_safety_budget", "ev_safety_support"],
       sourceRefs: ["source_mock_safety_net"]
@@ -375,7 +376,7 @@ function buildPersonPersona(
     personaId,
     displayName,
     label: "基于公开内容生成",
-    openingLine: "你可以继续问这段公开经历里的选择、代价和下一步判断。",
+    openingLine: "你可以继续问这段公开内容里的选择、代价和下一步判断。",
     suggestedQuestions,
     boundary: DEMO_PERSONA_BOUNDARY_NOTICE,
     grounding: {
