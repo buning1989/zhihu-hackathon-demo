@@ -11,7 +11,12 @@ export interface JsonCompletionInput {
   messages: LlmMessage[];
   temperature?: number;
   maxTokens?: number;
+  responseFormat?: JsonResponseFormat;
   taskType: string;
+}
+
+export interface JsonResponseFormat {
+  type: "json_object";
 }
 
 export interface OpenAICompatibleClientConfig {
@@ -80,7 +85,8 @@ async function requestJsonCompletion(
         messages: input.messages,
         temperature: input.temperature ?? 0.2,
         max_tokens: input.maxTokens ?? 3000,
-        stream: false
+        stream: false,
+        ...(input.responseFormat ? { response_format: input.responseFormat } : {})
       }),
       signal: controller.signal
     });

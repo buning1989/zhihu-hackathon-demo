@@ -59,6 +59,12 @@ interface ComposeApplyStats {
   personaCount: number;
 }
 
+interface LlmFallbackSummary {
+  used: boolean;
+  kind: "" | "no_llm_config" | "partial_llm_fallback" | "all_llm_failed";
+  reason: string;
+}
+
 const MAX_SEARCH_QUERIES = 4;
 const MAX_REAL_ITEMS = 12;
 const MIN_CONTENT_LENGTH = 8;
@@ -114,11 +120,10 @@ export async function composeMultiLlmDemoSearchResponse(
   assertDemoSearchGrounding(response);
 
   const successfulStages = stageResults.reduce((total, item) => total + item.succeeded, 0);
-  const failedStages = stageResults.reduce((total, item) => total + item.failed, 0);
-  const attemptedStages = stageResults.reduce((total, item) => total + item.attempted, 0);
+  const fallbackSummary = summarizeLlmFallback(stageResults);
 
   response.meta.latencyMs = Date.now() - input.startedAt;
-  response.meta.fallbackUsed = attemptedStages > 0 && successfulStages === 0;
+  response.meta.fallbackUsed = fallbackSummary.used;
   response.debug = {
     ...response.debug,
     composer: successfulStages > 0 ? "real_llm_composer" : "real_rule_composer",
@@ -136,21 +141,20 @@ export async function composeMultiLlmDemoSearchResponse(
     llmStageResults: stageResults,
     enhancedPeopleCount: applyStats.peopleCount + applyStats.personaCount,
     enhancedPathCount: applyStats.pathCount,
-    partialFallbackUsed: failedStages > 0 && successfulStages > 0,
-    fallbackUsed: attemptedStages > 0 && successfulStages === 0,
-    fallbackReason:
-      attemptedStages > 0 && successfulStages === 0
-        ? summarizeStageFailures(stageResults) || "all LLM stages fell back to rules"
-        : "",
+    partialFallbackUsed: fallbackSummary.kind === "partial_llm_fallback",
+    fallbackUsed: fallbackSummary.used,
+    fallbackReason: fallbackSummary.reason,
     guardWarnings,
     notes:
       successfulStages > 0
         ? [
             "real Zhihu items cleaned by rules",
+            fallbackSummary.reason || "all configured LLM stages completed without fallback",
             "Kimi/DeepSeek LLM stages enhanced safe display fields where available"
           ]
         : [
             "real Zhihu items cleaned by rules",
+            fallbackSummary.reason || "all LLM stages used deterministic rules",
             "deterministic rule composer used; no successful LLM stage"
           ]
   };
@@ -841,12 +845,54 @@ function createSkippedStage(stage: LlmTaskType, reason: string): DemoDebugLlmSta
   };
 }
 
-function summarizeStageFailures(stageResults: DemoDebugLlmStageResult[]): string {
-  return stageResults
-    .filter((result) => result.attempted > 0 && result.succeeded === 0)
-    .flatMap((result) => result.fallbackReasons.map((reason) => `${result.stage}: ${reason}`))
-    .slice(0, 3)
+function summarizeLlmFallback(stageResults: DemoDebugLlmStageResult[]): LlmFallbackSummary {
+  const skippedStages = stageResults.filter((result) => result.attempted === 0);
+  const failedStages = stageResults.filter((result) => result.failed > 0);
+  const successfulStages = stageResults.filter((result) => result.succeeded > 0);
+
+  if (skippedStages.length === 0 && failedStages.length === 0) {
+    return {
+      used: false,
+      kind: "",
+      reason: ""
+    };
+  }
+
+  const details = summarizeFallbackDetails([...skippedStages, ...failedStages]);
+  if (successfulStages.length === 0 && failedStages.length === 0) {
+    return {
+      used: true,
+      kind: "no_llm_config",
+      reason: `no_llm_config: rules used because no LLM stage was configured. ${details}`.trim()
+    };
+  }
+
+  if (successfulStages.length === 0) {
+    return {
+      used: true,
+      kind: "all_llm_failed",
+      reason: `all_llm_failed: rules used because configured LLM stages failed. ${details}`.trim()
+    };
+  }
+
+  return {
+    used: true,
+    kind: "partial_llm_fallback",
+    reason: `partial_llm_fallback: rules used for skipped or failed LLM stages. ${details}`.trim()
+  };
+}
+
+function summarizeFallbackDetails(stageResults: DemoDebugLlmStageResult[]): string {
+  const details = stageResults
+    .flatMap((result) =>
+      (result.fallbackReasons.length > 0 ? result.fallbackReasons : ["fallback"]).map(
+        (reason) => `${result.stage}: ${reason}`
+      )
+    )
+    .slice(0, 4)
     .join("; ");
+
+  return details ? `details=${details}` : "";
 }
 
 function inferIntentTags(query: string): string[] {

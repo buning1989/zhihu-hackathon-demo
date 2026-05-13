@@ -23,7 +23,10 @@ export class DeepSeekClient {
       model: config.llm.deepseek.model,
       timeoutMs: config.llm.timeoutMs,
       maxRetry: config.llm.maxRetry
-    }, input);
+    }, {
+      ...input,
+      responseFormat: input.responseFormat ?? { type: "json_object" }
+    });
   }
 }
 
