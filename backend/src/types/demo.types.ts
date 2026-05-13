@@ -4,6 +4,8 @@ export const DEMO_PERSONA_BOUNDARY_NOTICE = "该 AI 分身基于公开内容生�
 export type DemoSchemaVersion = typeof DEMO_SCHEMA_VERSION;
 export type DemoDataMode = "mock" | "cache_first" | "real";
 export type DemoPersonaChatMode = "off" | "mock" | "real";
+export type DemoExperienceSummarySource = "llm" | "fallback" | "none";
+export type DemoExperienceSummaryStatus = "ready" | "pending" | "failed";
 export type DemoDebugFallbackKind =
   | ""
   | "no_llm_config"
@@ -85,6 +87,10 @@ export interface DemoPerson {
   badge: string;
   avatar: string;
   oneLine: string;
+  experienceSummary: string | null;
+  experienceSummarySource: DemoExperienceSummarySource;
+  experienceSummaryStatus: DemoExperienceSummaryStatus;
+  experienceSummaryConfidence?: number;
   fitReason?: string;
   who: string;
   overlaps: string[];
@@ -231,6 +237,7 @@ export interface DemoDebug {
   fallbackReason: string;
   guardWarnings: string[];
   candidateQuality?: DemoCandidateQuality[];
+  experienceSummaryDebug?: DemoExperienceSummaryDebug[];
   notes: string[];
 }
 
@@ -251,6 +258,7 @@ export interface DemoDebugTiming {
     | "intent_expand"
     | "evidence_extract"
     | "demo_response_compose"
+    | "experience_summary"
     | "grounding_guard"
     | "persona_chat"
     | "path_enhancer"
@@ -277,6 +285,7 @@ export interface DemoDebugLlmStageResult {
     | "intent_expand"
     | "evidence_extract"
     | "demo_response_compose"
+    | "experience_summary"
     | "grounding_guard"
     | "persona_chat"
     | "path_enhancer"
@@ -288,4 +297,13 @@ export interface DemoDebugLlmStageResult {
   repairUsed: number;
   repairFailed: number;
   fallbackReasons: string[];
+}
+
+export interface DemoExperienceSummaryDebug {
+  personId: string;
+  status: DemoExperienceSummaryStatus;
+  source: DemoExperienceSummarySource;
+  reason: string;
+  cacheHit: boolean;
+  fallbackSummary?: string;
 }

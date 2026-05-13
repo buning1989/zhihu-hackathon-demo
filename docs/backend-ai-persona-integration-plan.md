@@ -139,6 +139,9 @@ P0 最小字段：
   "badge": "离开工作轨道后短暂停靠",
   "avatar": "",
   "oneLine": "她把去远方当作暂停键，后来发现真正要处理的是工作边界。",
+  "experienceSummary": null,
+  "experienceSummarySource": "none",
+  "experienceSummaryStatus": "pending",
   "who": "基于公开回答整理出的前人样本，不等同于作者完整人生。",
   "overlaps": ["都在重新判断工作和生活的关系"],
   "timeline": [{ "date": "公开内容片段", "event": "离开高压工作后重新整理生活节奏" }],
@@ -154,6 +157,7 @@ P0 最小字段：
 - `people[].pathId` 必须能关联到 `paths[].id`。
 - `people[].articles[]` 必须保留原文入口和 evidence。
 - `people[].match` 解释为什么这个样本匹配当前问题。
+- `people[].experienceSummary` 是作者内容总结 / 前人经历总结主字段，只在 LLM 成功时展示；规则 fallback 只能进入 debug。
 - `people[].aiPersona` 是 AI 分身入口，不是另一套人物数据。
 - 不要把观点作者包装成亲历者。公开内容不足时，应降级为“观点样本”或关闭分身入口。
 

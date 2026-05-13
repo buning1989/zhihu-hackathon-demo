@@ -1206,6 +1206,9 @@ components:
         - badge
         - avatar
         - oneLine
+        - experienceSummary
+        - experienceSummarySource
+        - experienceSummaryStatus
         - who
         - overlaps
         - timeline
@@ -1230,6 +1233,33 @@ components:
           type: string
         oneLine:
           type: string
+        experienceSummary:
+          type:
+            - string
+            - "null"
+          description: >
+            LLM-generated summary of the author's/sample's situation, choice,
+            cost/turning point/result, and relevance to the current query. Null
+            when the LLM did not produce a grounded experience-style summary.
+        experienceSummarySource:
+          type: string
+          enum:
+            - llm
+            - fallback
+            - none
+          description: Main display should use llm only; fallback/none must not be shown as primary summary.
+        experienceSummaryStatus:
+          type: string
+          enum:
+            - ready
+            - pending
+            - failed
+          description: Frontend should display experienceSummary only when status is ready and source is llm.
+        experienceSummaryConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Optional confidence score for LLM-generated experienceSummary.
         fitReason:
           type: string
           description: Optional evidence-aware explanation; user context is not a grounding source.
@@ -1692,6 +1722,13 @@ components:
             why a candidate became core evidence or was downranked.
           items:
             $ref: "#/components/schemas/DemoCandidateQuality"
+        experienceSummaryDebug:
+          type: array
+          description: >
+            Debug-only LLM/fallback state for people[].experienceSummary. The
+            fallbackSummary field is not intended for primary frontend display.
+          items:
+            $ref: "#/components/schemas/DemoExperienceSummaryDebug"
     DemoCandidateQuality:
       type: object
       required:
@@ -1729,6 +1766,36 @@ components:
           type: string
         usedAsEvidence:
           type: boolean
+    DemoExperienceSummaryDebug:
+      type: object
+      required:
+        - personId
+        - status
+        - source
+        - reason
+        - cacheHit
+      properties:
+        personId:
+          type: string
+        status:
+          type: string
+          enum:
+            - ready
+            - pending
+            - failed
+        source:
+          type: string
+          enum:
+            - llm
+            - fallback
+            - none
+        reason:
+          type: string
+        cacheHit:
+          type: boolean
+        fallbackSummary:
+          type: string
+          description: Rule/text fallback kept for debugging only; do not show as primary experienceSummary.
     DemoDebugIntentStage:
       type: object
       required:

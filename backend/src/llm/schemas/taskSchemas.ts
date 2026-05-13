@@ -4,6 +4,7 @@ export type LlmTaskSchemaName =
   | "intent_expand"
   | "evidence_extract"
   | "demo_response_compose"
+  | "experience_summary"
   | "grounding_guard"
   | "persona_chat";
 
@@ -101,6 +102,17 @@ export interface DemoResponseComposeOutput {
   paths: DemoComposePathOutput[];
   people: DemoComposePersonOutput[];
   personas: DemoComposePersonaOutput[];
+}
+
+export interface ExperienceSummaryItemOutput {
+  personId: string;
+  experienceSummary: string | null;
+  confidence: number;
+  reason: string;
+}
+
+export interface ExperienceSummaryOutput {
+  summaries: ExperienceSummaryItemOutput[];
 }
 
 export interface GroundingGuardOutput {
@@ -212,6 +224,20 @@ export function parseDemoResponseComposeOutput(
       .map((item, index) => readDemoComposePersona(item, index, allowedIds.personIds))
       .filter((item): item is DemoComposePersonaOutput => Boolean(item))
       .slice(0, allowedIds.personIds.size)
+  };
+}
+
+export function parseExperienceSummaryOutput(
+  content: string,
+  allowedPersonIds: Set<string>
+): ExperienceSummaryOutput {
+  const record = parseJsonObject(content);
+
+  return {
+    summaries: readRecordArray(record.summaries)
+      .map((item, index) => readExperienceSummaryItem(item, index, allowedPersonIds))
+      .filter((item): item is ExperienceSummaryItemOutput => Boolean(item))
+      .slice(0, allowedPersonIds.size)
   };
 }
 
@@ -410,6 +436,33 @@ function readDemoComposePersona(
     fitReason: truncateOptionalString(record.fitReason, 120),
     openingLine: truncateOptionalString(record.openingLine, 80),
     suggestedQuestions: readStringArray(record.suggestedQuestions).map((item) => truncateText(item, 50)).slice(0, 3)
+  };
+}
+
+function readExperienceSummaryItem(
+  record: Record<string, unknown>,
+  index: number,
+  allowedPersonIds: Set<string>
+): ExperienceSummaryItemOutput | undefined {
+  const personId = readString(record.personId);
+  if (!allowedPersonIds.has(personId)) {
+    return undefined;
+  }
+
+  const rawSummary = readString(record.experienceSummary);
+  const experienceSummary = rawSummary ? truncateText(rawSummary, 180) : null;
+
+  return {
+    personId,
+    experienceSummary,
+    confidence: clampScore(readNumber(record.confidence, experienceSummary ? 0.5 : 0)),
+    reason: truncateText(
+      readString(record.reason) ||
+        (experienceSummary
+          ? "LLM returned an experience-style summary"
+          : `summaries[${index}] did not include enough grounded experience detail`),
+      120
+    )
   };
 }
 

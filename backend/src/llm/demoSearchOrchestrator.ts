@@ -15,6 +15,7 @@ import {
   type DemoDebugIntentStage,
   type DemoDebugLlmStageResult,
   type DemoDebugTiming,
+  type DemoExperienceSummaryDebug,
   type DemoPerson,
   type DemoPersona,
   type DemoSearchResponse,
@@ -26,15 +27,18 @@ import { HttpError } from "../utils/httpError.js";
 import { llmRouter, type LlmTaskType } from "./llmRouter.js";
 import { DEMO_RESPONSE_COMPOSE_SYSTEM_PROMPT } from "./prompts/demoResponseComposePrompt.js";
 import { EVIDENCE_EXTRACT_SYSTEM_PROMPT } from "./prompts/evidenceExtractPrompt.js";
+import { EXPERIENCE_SUMMARY_SYSTEM_PROMPT } from "./prompts/experienceSummaryPrompt.js";
 import { GROUNDING_GUARD_SYSTEM_PROMPT } from "./prompts/groundingGuardPrompt.js";
 import { INTENT_EXPAND_SYSTEM_PROMPT } from "./prompts/intentExpandPrompt.js";
 import {
   type DemoResponseComposeOutput,
   type EvidenceExtractOutput,
+  type ExperienceSummaryOutput,
   type GroundingGuardOutput,
   type IntentExpandOutput,
   parseDemoResponseComposeOutput,
   parseEvidenceExtractOutput,
+  parseExperienceSummaryOutput,
   parseGroundingGuardOutput,
   parseIntentExpandOutput
 } from "./schemas/taskSchemas.js";
@@ -65,6 +69,35 @@ interface CleanedCandidate {
   filterReason: string;
 }
 
+interface ExperienceSummaryCandidate {
+  personId: string;
+  candidateId: string;
+  articleId: string;
+  sourceRefId: string;
+  title: string;
+  content: string;
+  summary: string;
+  evidence: Array<{
+    id: string;
+    label: string;
+    text: string;
+  }>;
+  candidateQuality: {
+    relevanceScore: number;
+    qualityScore: number;
+    experienceSignalScore: number;
+    contentLength: number;
+    filterReason: string;
+  };
+  contentHash: string;
+  fallbackSummary: string;
+}
+
+interface ExperienceSummaryStageOutput {
+  summaries: ExperienceSummaryOutput;
+  debug: DemoExperienceSummaryDebug[];
+}
+
 interface StageRunResult<T> {
   output: T;
   stageResult: DemoDebugLlmStageResult;
@@ -89,13 +122,29 @@ interface LlmFallbackSummary {
 
 const MAX_SEARCH_QUERIES = 4;
 const MAX_REAL_ITEMS = 12;
+const MAX_EXPERIENCE_SUMMARY_PEOPLE = 3;
 const MIN_CONTENT_LENGTH = 8;
+const EXPERIENCE_SUMMARY_MIN_CONTENT_LENGTH = 60;
+const EXPERIENCE_SUMMARY_MIN_QUALITY_SCORE = 0.38;
+const EXPERIENCE_SUMMARY_MIN_EXPERIENCE_SIGNAL_SCORE = 0.26;
+const EXPERIENCE_SUMMARY_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEMO_LLM_STAGE_TIMEOUT_MS: Partial<Record<LlmTaskType, number>> = {
   intent_expand: 3000,
   evidence_extract: 9000,
   demo_response_compose: 7000,
+  experience_summary: 12000,
   grounding_guard: 3000
 };
+
+const experienceSummaryCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    summary: NonNullable<ExperienceSummaryOutput["summaries"][number]["experienceSummary"]>;
+    confidence: number;
+    reason: string;
+  }
+>();
 
 export async function composeMultiLlmDemoSearchResponse(
   input: ComposeMultiLlmDemoSearchInput
@@ -157,6 +206,13 @@ export async function composeMultiLlmDemoSearchResponse(
   const applyStats = applyDemoResponseComposeOutput(response, composeStage.output, guardWarnings);
   syncTopLevelPersonas(response);
 
+  const experienceSummaryStage = await runTimedStage(() =>
+    runExperienceSummaryStage(input.query, response)
+  );
+  stageResults.push(experienceSummaryStage.stageResult);
+  timings.push(createStageTiming(experienceSummaryStage));
+  applyExperienceSummaryOutput(response, experienceSummaryStage.output);
+
   const groundingStage = await runTimedStage(() => runGroundingGuardStage(response));
   stageResults.push(groundingStage.stageResult);
   timings.push(createStageTiming(groundingStage));
@@ -205,6 +261,7 @@ export async function composeMultiLlmDemoSearchResponse(
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
     candidateQuality: response.debug.candidateQuality,
+    experienceSummaryDebug: experienceSummaryStage.output.debug,
     notes:
       successfulStages > 0
         ? [
@@ -452,6 +509,160 @@ async function runDemoResponseComposeStage(
   }
 }
 
+async function runExperienceSummaryStage(
+  query: string,
+  response: DemoSearchResponse
+): Promise<StageRunResult<ExperienceSummaryStageOutput>> {
+  const candidates = buildExperienceSummaryCandidates(query, response);
+  const debug = initializeExperienceSummaryDebug(response, candidates);
+
+  if (candidates.length === 0) {
+    return {
+      output: {
+        summaries: { summaries: [] },
+        debug
+      },
+      stageResult: createSkippedStage(
+        "experience_summary",
+        "no high-quality top people candidates for experienceSummary"
+      )
+    };
+  }
+
+  const cachedSummaries: ExperienceSummaryOutput["summaries"] = [];
+  const uncachedCandidates: ExperienceSummaryCandidate[] = [];
+
+  pruneExpiredExperienceSummaryCache();
+  for (const candidate of candidates) {
+    const cacheKey = buildExperienceSummaryCacheKey(query, candidate);
+    const cached = experienceSummaryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      cachedSummaries.push({
+        personId: candidate.personId,
+        experienceSummary: cached.summary,
+        confidence: cached.confidence,
+        reason: cached.reason
+      });
+      markExperienceSummaryDebug(debug, candidate.personId, {
+        status: "ready",
+        source: "llm",
+        reason: "experienceSummary cache hit",
+        cacheHit: true
+      });
+      continue;
+    }
+
+    uncachedCandidates.push(candidate);
+  }
+
+  if (uncachedCandidates.length === 0) {
+    return {
+      output: {
+        summaries: { summaries: cachedSummaries },
+        debug
+      },
+      stageResult: {
+        stage: "experience_summary",
+        attempted: 1,
+        succeeded: cachedSummaries.length,
+        failed: 0,
+        repairUsed: 0,
+        repairFailed: 0,
+        fallbackReasons: []
+      }
+    };
+  }
+
+  if (!llmRouter.isTaskConfigured("experience_summary")) {
+    for (const candidate of uncachedCandidates) {
+      markExperienceSummaryDebug(debug, candidate.personId, {
+        status: "failed",
+        source: "none",
+        reason: "Kimi not configured; experienceSummary not generated",
+        cacheHit: false
+      });
+    }
+
+    return {
+      output: {
+        summaries: { summaries: cachedSummaries },
+        debug
+      },
+      stageResult: createSkippedStage("experience_summary", "Kimi not configured; experienceSummary not generated")
+    };
+  }
+
+  try {
+    const content = await runJsonTaskWithStageTimeout("experience_summary", {
+      temperature: 0.15,
+      maxTokens: 1800,
+      messages: [
+        {
+          role: "system",
+          content: EXPERIENCE_SUMMARY_SYSTEM_PROMPT
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            query: truncateText(query, 120),
+            people: uncachedCandidates.map(toExperienceSummaryPromptCandidate)
+          })
+        }
+      ]
+    });
+    const parsed = parseExperienceSummaryOutput(
+      content,
+      new Set(uncachedCandidates.map((candidate) => candidate.personId))
+    );
+    const acceptedSummaries = filterAndCacheExperienceSummaries(
+      query,
+      parsed,
+      uncachedCandidates,
+      debug
+    );
+    const missingCount = uncachedCandidates.length - acceptedSummaries.length;
+
+    return {
+      output: {
+        summaries: {
+          summaries: [...cachedSummaries, ...acceptedSummaries]
+        },
+        debug
+      },
+      stageResult: {
+        stage: "experience_summary",
+        attempted: 1,
+        succeeded: acceptedSummaries.length + cachedSummaries.length,
+        failed: missingCount,
+        repairUsed: 0,
+        repairFailed: 0,
+        fallbackReasons:
+          missingCount > 0
+            ? ["some experienceSummary items were missing, null, or advice-style"]
+            : []
+      }
+    };
+  } catch (error) {
+    const reason = formatErrorSummary(error);
+    for (const candidate of uncachedCandidates) {
+      markExperienceSummaryDebug(debug, candidate.personId, {
+        status: "failed",
+        source: "none",
+        reason,
+        cacheHit: false
+      });
+    }
+
+    return {
+      output: {
+        summaries: { summaries: cachedSummaries },
+        debug
+      },
+      stageResult: createFallbackStage("experience_summary", error)
+    };
+  }
+}
+
 async function runGroundingGuardStage(
   response: DemoSearchResponse
 ): Promise<StageRunResult<GroundingGuardOutput>> {
@@ -609,6 +820,251 @@ function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): Clean
   return candidates.slice(0, MAX_REAL_ITEMS);
 }
 
+function buildExperienceSummaryCandidates(
+  query: string,
+  response: DemoSearchResponse
+): ExperienceSummaryCandidate[] {
+  const qualityBySourceRefId = new Map(
+    (response.debug.candidateQuality ?? [])
+      .filter((item): item is DemoCandidateQuality & { sourceRefId: string } =>
+        Boolean(item.sourceRefId)
+      )
+      .map((item) => [item.sourceRefId, item])
+  );
+  const result: ExperienceSummaryCandidate[] = [];
+
+  for (const person of response.people.slice(0, MAX_EXPERIENCE_SUMMARY_PEOPLE)) {
+    const article = person.articles[0];
+    const sourceRefId = article?.sourceRefs[0] || person.sourceRefs[0] || "";
+    const quality = qualityBySourceRefId.get(sourceRefId);
+    const content = normalizeText(article?.text || article?.summary || article?.title || "");
+    const contentLength = quality?.contentLength ?? content.length;
+    const qualityScore = quality?.qualityScore ?? person.match.evidenceQuality;
+    const experienceSignalScore = quality?.experienceSignalScore ?? person.match.experienceSimilarity;
+    const fallbackSummary = buildExperienceFallbackSummary(person);
+
+    if (
+      !article ||
+      !sourceRefId ||
+      contentLength < EXPERIENCE_SUMMARY_MIN_CONTENT_LENGTH ||
+      (qualityScore < EXPERIENCE_SUMMARY_MIN_QUALITY_SCORE &&
+        experienceSignalScore < EXPERIENCE_SUMMARY_MIN_EXPERIENCE_SIGNAL_SCORE)
+    ) {
+      result.push({
+        personId: person.id,
+        candidateId: quality?.candidateId ?? article?.id ?? person.id,
+        articleId: article?.id ?? "",
+        sourceRefId,
+        title: article?.title ?? "",
+        content,
+        summary: article?.summary ?? "",
+        evidence:
+          article?.evidence.map((evidence) => ({
+            id: evidence.id,
+            label: evidence.label,
+            text: evidence.text
+          })) ?? [],
+        candidateQuality: {
+          relevanceScore: quality?.relevanceScore ?? person.match.contentRelevance,
+          qualityScore,
+          experienceSignalScore,
+          contentLength,
+          filterReason:
+            quality?.filterReason ?? "experienceSummary fallback quality derived from person.match"
+        },
+        contentHash: hashString(`${article?.title ?? ""}\n${content}\n${fallbackSummary}`),
+        fallbackSummary
+      });
+      continue;
+    }
+
+    result.push({
+      personId: person.id,
+      candidateId: quality?.candidateId ?? article.id,
+      articleId: article.id,
+      sourceRefId,
+      title: article.title,
+      content,
+      summary: article.summary,
+      evidence: article.evidence.map((evidence) => ({
+        id: evidence.id,
+        label: evidence.label,
+        text: evidence.text
+      })),
+      candidateQuality: {
+        relevanceScore: quality?.relevanceScore ?? person.match.contentRelevance,
+        qualityScore,
+        experienceSignalScore,
+        contentLength,
+        filterReason: quality?.filterReason ?? "experienceSummary candidate selected from person.match"
+      },
+      contentHash: hashString(
+        JSON.stringify({
+          query: truncateText(query, 120),
+          title: article.title,
+          content,
+          summary: article.summary,
+          evidence: article.evidence.map((evidence) => evidence.text),
+          qualityScore,
+          experienceSignalScore
+        })
+      ),
+      fallbackSummary
+    });
+  }
+
+  return result.filter(isHighQualityExperienceSummaryCandidate);
+}
+
+function isHighQualityExperienceSummaryCandidate(candidate: ExperienceSummaryCandidate): boolean {
+  return Boolean(
+    candidate.articleId &&
+      candidate.sourceRefId &&
+      candidate.content.length >= EXPERIENCE_SUMMARY_MIN_CONTENT_LENGTH &&
+      (candidate.candidateQuality.qualityScore >= EXPERIENCE_SUMMARY_MIN_QUALITY_SCORE ||
+        candidate.candidateQuality.experienceSignalScore >=
+          EXPERIENCE_SUMMARY_MIN_EXPERIENCE_SIGNAL_SCORE)
+  );
+}
+
+function initializeExperienceSummaryDebug(
+  response: DemoSearchResponse,
+  candidates: ExperienceSummaryCandidate[]
+): DemoExperienceSummaryDebug[] {
+  const candidateIds = new Set(candidates.map((candidate) => candidate.personId));
+  return response.people.slice(0, MAX_EXPERIENCE_SUMMARY_PEOPLE).map((person) => ({
+    personId: person.id,
+    status: candidateIds.has(person.id) ? "pending" : "failed",
+    source: "none",
+    reason: candidateIds.has(person.id)
+      ? "waiting for LLM experienceSummary batch"
+      : "content or candidate quality was insufficient for LLM experienceSummary",
+    cacheHit: false,
+    fallbackSummary: buildExperienceFallbackSummary(person)
+  }));
+}
+
+function markExperienceSummaryDebug(
+  debug: DemoExperienceSummaryDebug[],
+  personId: string,
+  updates: Omit<Partial<DemoExperienceSummaryDebug>, "personId" | "fallbackSummary">
+): void {
+  const entry = debug.find((item) => item.personId === personId);
+  if (!entry) {
+    return;
+  }
+
+  Object.assign(entry, updates);
+}
+
+function toExperienceSummaryPromptCandidate(
+  candidate: ExperienceSummaryCandidate
+): Record<string, unknown> {
+  return {
+    personId: candidate.personId,
+    candidateId: candidate.candidateId,
+    articleId: candidate.articleId,
+    sourceRefId: candidate.sourceRefId,
+    title: truncateText(candidate.title, 100),
+    content: truncateText(candidate.content, 900),
+    summary: truncateText(candidate.summary, 240),
+    evidence: candidate.evidence.map((evidence) => ({
+      id: evidence.id,
+      label: evidence.label,
+      text: truncateText(evidence.text, 180)
+    })),
+    candidateQuality: candidate.candidateQuality
+  };
+}
+
+function filterAndCacheExperienceSummaries(
+  query: string,
+  output: ExperienceSummaryOutput,
+  candidates: ExperienceSummaryCandidate[],
+  debug: DemoExperienceSummaryDebug[]
+): ExperienceSummaryOutput["summaries"] {
+  const candidateByPersonId = new Map(candidates.map((candidate) => [candidate.personId, candidate]));
+  const accepted: ExperienceSummaryOutput["summaries"] = [];
+
+  for (const item of output.summaries) {
+    const candidate = candidateByPersonId.get(item.personId);
+    if (!candidate) {
+      continue;
+    }
+
+    if (!item.experienceSummary || !isSafeExperienceSummary(item.experienceSummary)) {
+      markExperienceSummaryDebug(debug, item.personId, {
+        status: "failed",
+        source: "none",
+        reason: item.reason || "LLM experienceSummary was empty or advice-style",
+        cacheHit: false
+      });
+      continue;
+    }
+
+    const cacheKey = buildExperienceSummaryCacheKey(query, candidate);
+    experienceSummaryCache.set(cacheKey, {
+      expiresAt: Date.now() + EXPERIENCE_SUMMARY_CACHE_TTL_MS,
+      summary: item.experienceSummary,
+      confidence: item.confidence,
+      reason: item.reason
+    });
+    markExperienceSummaryDebug(debug, item.personId, {
+      status: "ready",
+      source: "llm",
+      reason: item.reason || "LLM generated a grounded experienceSummary",
+      cacheHit: false
+    });
+    accepted.push(item);
+  }
+
+  const acceptedIds = new Set(accepted.map((item) => item.personId));
+  for (const candidate of candidates) {
+    if (!acceptedIds.has(candidate.personId)) {
+      markExperienceSummaryDebug(debug, candidate.personId, {
+        status: "failed",
+        source: "none",
+        reason: "LLM did not return an acceptable experienceSummary for this person",
+        cacheHit: false
+      });
+    }
+  }
+
+  return accepted;
+}
+
+function buildExperienceSummaryCacheKey(
+  query: string,
+  candidate: ExperienceSummaryCandidate
+): string {
+  return [
+    "experience_summary_v1",
+    `q=${normalizeText(query).toLowerCase()}`,
+    `person=${candidate.personId}`,
+    `candidate=${candidate.candidateId}`,
+    `content=${candidate.contentHash}`
+  ].join("|");
+}
+
+function pruneExpiredExperienceSummaryCache(): void {
+  const now = Date.now();
+  for (const [cacheKey, entry] of experienceSummaryCache) {
+    if (entry.expiresAt <= now) {
+      experienceSummaryCache.delete(cacheKey);
+    }
+  }
+}
+
+function buildExperienceFallbackSummary(person: DemoPerson): string {
+  const article = person.articles[0];
+  return truncateText(
+    [person.oneLine, person.lesson, article?.summary, article?.evidence.map((item) => item.text).join(" ")]
+      .filter(Boolean)
+      .join(" "),
+    220
+  );
+}
+
 function createFallbackIntent(query: string): IntentExpandOutput {
   return {
     searchQueries: [query],
@@ -666,6 +1122,32 @@ function createPassingGroundingGuard(): GroundingGuardOutput {
     disablePersonaPersonIds: [],
     disablePersonaIds: []
   };
+}
+
+function applyExperienceSummaryOutput(
+  response: DemoSearchResponse,
+  output: ExperienceSummaryStageOutput
+): void {
+  const summaryByPersonId = new Map(output.summaries.summaries.map((item) => [item.personId, item]));
+
+  for (const person of response.people) {
+    const item = summaryByPersonId.get(person.id);
+    if (!item?.experienceSummary) {
+      const debug = output.debug.find((entry) => entry.personId === person.id);
+      if (debug?.status === "failed") {
+        person.experienceSummary = null;
+        person.experienceSummarySource = "none";
+        person.experienceSummaryStatus = "failed";
+        delete person.experienceSummaryConfidence;
+      }
+      continue;
+    }
+
+    person.experienceSummary = item.experienceSummary;
+    person.experienceSummarySource = "llm";
+    person.experienceSummaryStatus = "ready";
+    person.experienceSummaryConfidence = item.confidence;
+  }
 }
 
 function applyDemoResponseComposeOutput(
@@ -1216,6 +1698,27 @@ function isSafeFitReason(value: string): boolean {
   return isSafeText(value) && !overclaimFragments.some((fragment) => value.includes(fragment));
 }
 
+function isSafeExperienceSummary(value: string): boolean {
+  const adviceFragments = [
+    "你应该",
+    "建议先",
+    "建议你",
+    "可以考虑",
+    "你可以先",
+    "你可以",
+    "应该先",
+    "最好先",
+    "需要先"
+  ];
+  const experienceMarkers = ["这个样本", "这段经历", "作者", "TA", "ta"];
+
+  return (
+    isSafeText(value) &&
+    experienceMarkers.some((marker) => value.includes(marker)) &&
+    !adviceFragments.some((fragment) => value.includes(fragment))
+  );
+}
+
 function isExperiencePathTitle(value: string): boolean {
   const adviceTitleFragments = [
     "比较工作机会",
@@ -1264,4 +1767,14 @@ function normalizeText(value: string): string {
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
+}
+
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16);
 }

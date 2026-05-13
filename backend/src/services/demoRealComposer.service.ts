@@ -315,6 +315,9 @@ function toPerson(
     badge: toBadge(sampleType),
     avatar: item.author.avatar,
     oneLine: summary,
+    experienceSummary: null,
+    experienceSummarySource: "none",
+    experienceSummaryStatus: "pending",
     fitReason: buildContextFitReason(
       query,
       userContext,

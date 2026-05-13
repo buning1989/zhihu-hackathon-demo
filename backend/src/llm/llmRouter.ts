@@ -12,6 +12,7 @@ export type LlmTaskType =
   | "intent_expand"
   | "evidence_extract"
   | "demo_response_compose"
+  | "experience_summary"
   | "grounding_guard"
   | "persona_chat";
 
@@ -94,7 +95,11 @@ export class LlmRouter {
 export const llmRouter = new LlmRouter();
 
 function getClientForTask(taskType: LlmTaskType): RoutedClient {
-  if (taskType === "evidence_extract" || taskType === "persona_chat") {
+  if (
+    taskType === "evidence_extract" ||
+    taskType === "experience_summary" ||
+    taskType === "persona_chat"
+  ) {
     return kimiClient;
   }
 

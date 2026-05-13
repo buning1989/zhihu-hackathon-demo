@@ -11,6 +11,8 @@
     "AI is not a fact source; persona answers must be grounded in public content and evidence.",
     "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
     "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
+    "people[].experienceSummary is the primary author/sample experience summary and should be displayed only when source=llm and status=ready.",
+    "Debug fallbackSummary may exist for troubleshooting, but it is not a frontend primary display field.",
     "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape."
   ],
   "field_levels": {
@@ -25,6 +27,7 @@
       "analysis.focusTags",
       "paths",
       "people",
+      "people[].experienceSummary",
       "people[].articles",
       "people[].match",
       "people[].aiPersona",
@@ -122,6 +125,10 @@
         "badge": "离开工作轨道后短暂停靠",
         "avatar": "https://picx.zhimg.com/mock-avatar-a.jpg",
         "oneLine": "她把去远方当作暂停键，后来发现真正要处理的是工作边界。",
+        "experienceSummary": "这个样本里，作者曾把去远方当作从高压工作里撤出的暂停键；真正停下来后，TA 发现地点只能提供距离，后续仍要面对现金流、回流节奏和重新设定工作边界。",
+        "experienceSummarySource": "llm",
+        "experienceSummaryStatus": "ready",
+        "experienceSummaryConfidence": 0.86,
         "fitReason": "结合你的问题和基础资料里的非敏感线索，这个样本只说明公开回答可用来对照现金流和工作边界，判断仍以来源片段为准。",
         "who": "基于知乎公开回答整理出的前人样本：曾在高压工作后离开原来的城市，尝试用一段远距离生活恢复节奏。",
         "overlaps": [
@@ -213,6 +220,10 @@
         "badge": "从一线城市搬到低成本城市",
         "avatar": "https://picx.zhimg.com/mock-avatar-b.jpg",
         "oneLine": "她没有彻底不上班，而是先把城市成本和工作强度都降下来。",
+        "experienceSummary": "这段经历显示，作者没有把离开一线城市等同于彻底不上班，而是先搬到低成本城市、保留远程收入；TA 的转折在于用更低固定开支换取调整空间。",
+        "experienceSummarySource": "llm",
+        "experienceSummaryStatus": "ready",
+        "experienceSummaryConfidence": 0.82,
         "who": "基于知乎公开回答整理出的前人样本：在职业疲惫期选择搬到生活成本更低的城市，同时保留远程工作收入。",
         "overlaps": [
           "都想离开原来的工作和城市节奏",
@@ -302,6 +313,10 @@
         "badge": "裸辞后接项目过渡",
         "avatar": "https://picx.zhimg.com/mock-avatar-c.jpg",
         "oneLine": "他拿回了时间，也同时发现自由职业需要更强的自我管理。",
+        "experienceSummary": "这个样本里，作者离开固定工作后用项目收入过渡，确实拿回了时间，但代价是收入、节奏和获客都要自己负责；这和用户关心的不工作后如何维持生活直接相关。",
+        "experienceSummarySource": "llm",
+        "experienceSummaryStatus": "ready",
+        "experienceSummaryConfidence": 0.8,
         "who": "基于知乎公开回答整理出的前人样本：从固定工作离开后，用项目制收入过渡，重点复盘了自由和不确定性的交换。",
         "overlaps": [
           "都想知道不上班之后还能靠什么维持生活",
@@ -551,6 +566,24 @@
           "contentLength": 18,
           "filterReason": "downranked: contentLength=18 is too short for core evidence",
           "usedAsEvidence": false
+        }
+      ],
+      "experienceSummaryDebug": [
+        {
+          "personId": "person_return_home",
+          "status": "ready",
+          "source": "llm",
+          "reason": "LLM generated a grounded experience-style summary",
+          "cacheHit": false,
+          "fallbackSummary": "她把去远方当作暂停键，后来发现真正要处理的是工作边界。"
+        },
+        {
+          "personId": "person_small_city",
+          "status": "ready",
+          "source": "llm",
+          "reason": "LLM generated a grounded experience-style summary",
+          "cacheHit": false,
+          "fallbackSummary": "她没有彻底不上班，而是先把城市成本和工作强度都降下来。"
         }
       ]
     }

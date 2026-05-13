@@ -110,6 +110,9 @@
         "badge": "先把日常排稳",
         "avatar": "",
         "oneLine": "这个样本提醒你，去哪里之前，可能先要知道一天怎么过。",
+        "experienceSummary": null,
+        "experienceSummarySource": "none",
+        "experienceSummaryStatus": "pending",
         "fitReason": "结合你的问题，这个样本只说明公开回答可用来对照日常节奏，判断仍以来源片段为准。",
         "who": "基于知乎公开回答整理出的前人样本，不等同于作者完整人生。",
         "overlaps": [
@@ -250,6 +253,9 @@
         "badge": "先验证现金流",
         "avatar": "",
         "oneLine": "这个样本更像一张检查表：安全垫、技能、试错成本，一个个算清楚。",
+        "experienceSummary": null,
+        "experienceSummarySource": "none",
+        "experienceSummaryStatus": "pending",
         "who": "基于知乎公开回答整理出的观点与经验混合样本，不等同于作者完整人生。",
         "overlaps": [
           "都在考虑不上班后的收入来源",
@@ -389,6 +395,9 @@
         "badge": "先处理最坏情况",
         "avatar": "",
         "oneLine": "这个样本不急着讲远方，而是先问：如果暂时没收入，基本盘怎么守住？",
+        "experienceSummary": null,
+        "experienceSummarySource": "none",
+        "experienceSummaryStatus": "pending",
         "who": "基于知乎公开回答整理出的观点样本，不等同于作者完整人生。",
         "overlaps": [
           "都担心不工作后的基本生活",

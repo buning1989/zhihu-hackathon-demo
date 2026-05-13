@@ -100,7 +100,7 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 | `features` | 能力开关，例如 AI 分身、聊天模式、服务端保存和正文可用性。 |
 | `analysis` | 问题理解、焦点标签、处理步骤，可用于顶部理解区或 loading 过程。 |
 | `paths[]` | 路径图数据，按 `id` 被 `people[].pathId` 关联；real 模式可能返回 `personRefs` 表示该路径聚合了哪些人物样本。 |
-| `people[]` | 人物样本主数据，人物卡、文章、匹配理由和 AI 分身入口都从这里读；real 模式会用 `sampleType` 区分 `experience_sample`、`viewpoint_author`、`content_sample`。 |
+| `people[]` | 人物样本主数据，人物卡、LLM 经历总结、文章、匹配理由和 AI 分身入口都从这里读；real 模式会用 `sampleType` 区分 `experience_sample`、`viewpoint_author`、`content_sample`。 |
 | `personas[]` | AI 分身快捷索引，只做入口导航，不是第二套人物数据。 |
 | `sections[]` | 弱绑定布局辅助，可决定页面分区和排序。 |
 | `meta.sourceRefs[]` | 来源索引，配合 `sourceRefs` 和 `evidenceIds` 做溯源。 |
@@ -109,7 +109,7 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 ## 渲染关系
 
 - `paths[]`：渲染路径图或路径 tab。每个 path 的 `evidenceIds` / `sourceRefs` 可用于显示“来自几条公开内容”。
-- `people[]`：渲染人物样本卡。按 `person.pathId` 找到对应 path；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
+- `people[]`：渲染人物样本卡。按 `person.pathId` 找到对应 path；`experienceSummaryStatus=ready` 且 `experienceSummarySource=llm` 时展示 `experienceSummary`；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
 - `people[].aiPersona`：渲染单个人物卡上的 AI 分身入口。展示前检查 `enabled`、`personaId`、`boundary` 和 `grounding.articleIds[]`。
 - `personas[]`：渲染“可追问的经验回声”快捷入口。点击后用 `personId` 回查 `people[]`，不要从 `personas[]` 补全人物信息。
 

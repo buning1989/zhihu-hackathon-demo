@@ -202,6 +202,9 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
   "badge": "先把日常排稳",
   "avatar": "",
   "oneLine": "这个样本提醒你，去哪里之前，可能先要知道一天怎么过。",
+  "experienceSummary": null,
+  "experienceSummarySource": "none",
+  "experienceSummaryStatus": "pending",
   "who": "基于知乎公开回答整理出的前人样本，不等同于作者完整人生。",
   "overlaps": [],
   "timeline": [],
@@ -219,14 +222,17 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 - 主标题：`name`，缺失时显示“知乎用户”。
 - 副信息：`role`、`badge`、所属 path 标题。
 - 核心句：`oneLine`。
+- 经历总结：只有 `experienceSummaryStatus === "ready"` 且 `experienceSummarySource === "llm"` 时展示 `experienceSummary`。
 - 背景说明：`who`，注意它是公开内容整理，不是作者完整传记。
 - 重叠点：`overlaps[]`。
 - 时间线：`timeline[]`，每项都可通过 `evidenceIds/sourceRefs` 溯源。
-- 经验总结：`lesson`，如果证据缺失就降级成“可参考线索”。
+- 谨慎启发：`lesson`，不要把它当作“作者内容总结 / 前人经历总结”主字段。
 - 原文入口：读 `articles[]`，优先使用 `sourceUrl`，再用 `url`。
 - 匹配解释：读 `match.reasons[]`、`matchedVariables[]`、`riskNotes[]` 和分数字段。
 
 不要把 `personas[]` 当人物列表，也不要在前端维护第二套完整人物对象。
+
+`debug.experienceSummaryDebug[].fallbackSummary` 只用于联调排查。LLM 超时、内容不足或状态为 `pending/failed` 时，不要用 `oneLine`、`lesson`、`articles[].summary` 或 debug fallback 拼出经历总结。
 
 ## 8. articles / evidence / source
 

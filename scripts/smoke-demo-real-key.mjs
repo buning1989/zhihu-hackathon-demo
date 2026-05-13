@@ -20,6 +20,7 @@ const REQUIRED_DEMO_STAGES = [
   "intent_expand",
   "evidence_extract",
   "demo_response_compose",
+  "experience_summary",
   "grounding_guard"
 ];
 
@@ -137,6 +138,7 @@ async function runDemoSearch(baseUrl, query, count, label) {
   }
   assertExperiencePathTitles(data.paths, `${label} data.paths`);
   assertCandidateQuality(debug, `${label} data.debug.candidateQuality`);
+  assertExperienceSummaries(data.people, `${label} data.people`);
 
   return {
     label,
@@ -269,8 +271,59 @@ function assertStageTiming(timings, stage) {
 
 function printDemoRunDetails(run) {
   printDemoPaths(run);
+  printExperienceSummaries(run);
   printCandidateQuality(run);
   printDemoTiming(run);
+}
+
+function assertExperienceSummaries(people, label) {
+  const items = assertNonEmptyArray(people, label);
+  let readyCount = 0;
+
+  items.slice(0, 3).forEach((person, index) => {
+    const item = readRecord(person, `${label}[${index}]`);
+    const source = readString(item.experienceSummarySource, `${label}[${index}].experienceSummarySource`);
+    const status = readString(item.experienceSummaryStatus, `${label}[${index}].experienceSummaryStatus`);
+
+    if (!["llm", "fallback", "none"].includes(source)) {
+      throw new Error(`${label}[${index}].experienceSummarySource invalid: ${source}.`);
+    }
+
+    if (!["ready", "pending", "failed"].includes(status)) {
+      throw new Error(`${label}[${index}].experienceSummaryStatus invalid: ${status}.`);
+    }
+
+    if (status === "ready") {
+      readyCount += 1;
+      assertEqual(source, "llm", `${label}[${index}].experienceSummarySource when ready`);
+      assertNonEmptyString(item.experienceSummary, `${label}[${index}].experienceSummary`);
+      assertExperienceSummaryText(item.experienceSummary, `${label}[${index}].experienceSummary`);
+      if (!Number.isFinite(item.experienceSummaryConfidence)) {
+        throw new Error(`${label}[${index}].experienceSummaryConfidence expected number when ready.`);
+      }
+    } else if (item.experienceSummary !== null) {
+      throw new Error(`${label}[${index}].experienceSummary must be null when status=${status}.`);
+    }
+  });
+
+  if (readyCount === 0) {
+    throw new Error(`${label} expected at least one ready LLM experienceSummary.`);
+  }
+}
+
+function assertExperienceSummaryText(value, label) {
+  const adviceFragments = ["你应该", "建议先", "建议你", "可以考虑", "你可以", "应该先", "最好先"];
+  const experienceMarkers = ["这个样本", "这段经历", "作者", "TA", "ta"];
+
+  if (!experienceMarkers.some((marker) => value.includes(marker))) {
+    throw new Error(`${label} should read like an experience summary; got ${value}.`);
+  }
+
+  for (const fragment of adviceFragments) {
+    if (value.includes(fragment)) {
+      throw new Error(`${label} should not be advice-style; got ${value}.`);
+    }
+  }
 }
 
 function printDemoPaths(run) {
@@ -287,6 +340,19 @@ function printDemoPaths(run) {
     console.log(`  path[${index + 1}] title=${title}`);
     console.log(`    summary=${summary}`);
     console.log(`    source=${source}`);
+  });
+}
+
+function printExperienceSummaries(run) {
+  const people = assertNonEmptyArray(run.data.people, `${run.label} data.people`);
+  console.log(`experienceSummary ${run.label} query="${run.query}"`);
+
+  people.slice(0, 3).forEach((person, index) => {
+    const item = readRecord(person, `${run.label} data.people[${index}]`);
+    console.log(
+      `  person[${index + 1}] status=${item.experienceSummaryStatus || ""} source=${item.experienceSummarySource || ""} confidence=${formatNumber(item.experienceSummaryConfidence)}`
+    );
+    console.log(`    summary=${item.experienceSummary || ""}`);
   });
 }
 
