@@ -9,6 +9,8 @@ import {
 
 interface MockOptions {
   fallbackUsed?: boolean;
+  fallbackReason?: string;
+  guardWarnings?: string[];
   notes?: string[];
   requestedDataMode?: DemoDataMode;
   resolvedDataMode?: DemoDataMode;
@@ -183,6 +185,11 @@ export function createMockDemoSearchResponse(
       requestedDataMode: options.requestedDataMode ?? dataMode,
       resolvedDataMode: options.resolvedDataMode ?? dataMode,
       itemCount: people.length,
+      llmUsed: false,
+      llmComposerUsed: false,
+      fallbackUsed: options.fallbackUsed ?? false,
+      fallbackReason: options.fallbackReason ?? "",
+      guardWarnings: options.guardWarnings ?? [],
       notes: options.notes ?? ["mock demo data; no LLM or Zhihu API required"]
     }
   };

@@ -157,7 +157,10 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       peopleCount: people.length,
       personaCount: personas.length,
       llmUsed: false,
+      llmComposerUsed: false,
       fallbackUsed: false,
+      fallbackReason: "",
+      guardWarnings: [],
       notes: [
         "real Zhihu items grouped by rule composer",
         "LLM provider reserved but not used in this run"

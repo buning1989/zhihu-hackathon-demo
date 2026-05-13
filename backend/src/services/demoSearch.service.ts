@@ -1,6 +1,10 @@
 import { config } from "../config/env.js";
 import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
+import {
+  composeLlmDemoSearchResponse,
+  DemoComposerLlmError
+} from "./demoComposer.llm.js";
 import { composeRealDemoSearchResponse } from "./demoRealComposer.service.js";
 import { searchService } from "./search.service.js";
 import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
@@ -39,12 +43,35 @@ export class DemoSearchService {
           startedAt
         });
         assertDemoSearchGrounding(response);
-        return response;
+
+        if (!config.llm.apiKey) {
+          markLlmSkipped(response, "LLM_API_KEY not configured; deterministic composer used");
+          return response;
+        }
+
+        try {
+          const llmResponse = await composeLlmDemoSearchResponse({
+            query: request.query,
+            count: request.count,
+            dataMode: request.dataMode,
+            items: searchResult.items,
+            startedAt,
+            deterministicResponse: response
+          });
+          assertDemoSearchGrounding(llmResponse);
+          return llmResponse;
+        } catch (error) {
+          logLlmComposerFallback(error, request, startedAt);
+          markLlmFallback(response, error);
+          assertDemoSearchGrounding(response);
+          return response;
+        }
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
 
         const response = createMockDemoSearchResponse(request.query, request.count, "mock", {
           fallbackUsed: true,
+          fallbackReason: formatErrorSummary(error),
           requestedDataMode: request.dataMode,
           resolvedDataMode: "mock",
           notes: [
@@ -141,6 +168,48 @@ function logRealSearchFallback(
   });
 }
 
+function logLlmComposerFallback(
+  error: unknown,
+  request: DemoSearchRequest,
+  startedAt: number
+): void {
+  console.error("[DemoSearch] LLM composer failed; falling back to deterministic composer", {
+    query: request.query,
+    count: request.count,
+    requestedDataMode: request.dataMode,
+    elapsedMs: Date.now() - startedAt,
+    ...toLoggableError(error)
+  });
+}
+
+function markLlmSkipped(response: DemoSearchResponse, reason: string): void {
+  response.debug.llmUsed = false;
+  response.debug.llmComposerUsed = false;
+  response.debug.fallbackUsed = false;
+  response.debug.fallbackReason = reason;
+  response.debug.guardWarnings = [];
+  response.debug.notes = [
+    "real Zhihu items grouped by deterministic composer",
+    reason
+  ];
+}
+
+function markLlmFallback(response: DemoSearchResponse, error: unknown): void {
+  const fallbackReason = formatErrorSummary(error);
+
+  response.meta.fallbackUsed = true;
+  response.debug.llmUsed = false;
+  response.debug.llmComposerUsed = false;
+  response.debug.fallbackUsed = true;
+  response.debug.fallbackReason = fallbackReason;
+  response.debug.guardWarnings =
+    error instanceof DemoComposerLlmError ? error.guardWarnings : [fallbackReason];
+  response.debug.notes = [
+    "LLM composer failed; deterministic real composer returned",
+    fallbackReason
+  ];
+}
+
 function toLoggableError(error: unknown): {
   code: string;
   statusCode: number | null;
@@ -156,7 +225,7 @@ function toLoggableError(error: unknown): {
 
   if (error instanceof Error) {
     return {
-      code: error.name || "ERROR",
+      code: error instanceof DemoComposerLlmError ? error.code : error.name || "ERROR",
       statusCode: null,
       message: error.message || "Unknown error"
     };

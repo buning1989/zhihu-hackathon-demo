@@ -17,6 +17,7 @@ const DEFAULT_ZHIHU_SEARCH_API_URL =
   "https://developer.zhihu.com/api/v1/content/zhihu_search";
 const DEFAULT_ZHIHU_OPENAPI_BASE = "https://openapi.zhihu.com";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
+const LLM_PROVIDERS = new Set(["openai_compatible"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
@@ -48,6 +49,13 @@ export const config = {
       process.env.ZH_API_TIMEOUT_MS ?? process.env.ZHIHU_API_TIMEOUT,
       10000
     )
+  },
+  llm: {
+    provider: parseLlmProvider(process.env.LLM_PROVIDER),
+    apiKey: firstNonEmpty(process.env.LLM_API_KEY),
+    baseUrl: firstNonEmpty(process.env.LLM_BASE_URL),
+    model: firstNonEmpty(process.env.LLM_MODEL),
+    timeoutMs: parsePositiveInteger(process.env.LLM_TIMEOUT_MS, 15000)
   }
 };
 
@@ -60,4 +68,8 @@ function parseDataMode(
 
 function firstNonEmpty(...values: Array<string | undefined>): string {
   return values.find((value) => value?.trim())?.trim() ?? "";
+}
+
+function parseLlmProvider(value: string | undefined): "openai_compatible" {
+  return value && LLM_PROVIDERS.has(value) ? (value as "openai_compatible") : "openai_compatible";
 }

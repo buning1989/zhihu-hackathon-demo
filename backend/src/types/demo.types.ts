@@ -194,6 +194,9 @@ export interface DemoDebug {
   peopleCount?: number;
   personaCount?: number;
   llmUsed?: boolean;
-  fallbackUsed?: boolean;
+  fallbackUsed: boolean;
+  llmComposerUsed: boolean;
+  fallbackReason: string;
+  guardWarnings: string[];
   notes: string[];
 }
