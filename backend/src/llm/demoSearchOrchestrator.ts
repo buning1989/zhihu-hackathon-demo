@@ -164,6 +164,7 @@ export async function composeMultiLlmDemoSearchResponse(
     enhancedPeopleCount: applyStats.peopleCount + applyStats.personaCount,
     enhancedPathCount: applyStats.pathCount,
     partialFallbackUsed: fallbackSummary.kind === "partial_llm_fallback",
+    pathSource: applyStats.pathCount > 0 ? "llm" : response.debug.pathSource,
     intentStage: buildIntentStageDebug(
       intentStage.stageResult,
       composeStage.stageResult,

@@ -9,6 +9,7 @@ export type DemoDebugFallbackKind =
   | "no_llm_config"
   | "partial_llm_fallback"
   | "all_llm_failed";
+export type DemoDebugPathSource = "llm" | "rule" | "fallback";
 
 export interface DemoSearchRequestBody {
   query?: unknown;
@@ -203,8 +204,12 @@ export interface DemoMeta {
 
 export interface DemoDebug {
   composer: "mock" | "real_rule_composer" | "real_llm_composer";
+  originalQuery: string;
+  normalizedQuery: string;
   requestedDataMode: DemoDataMode;
   resolvedDataMode: DemoDataMode;
+  cacheHit: boolean;
+  cacheKeyPreview: string;
   itemCount: number;
   sourceItemCount?: number;
   pathCount?: number;
@@ -219,6 +224,7 @@ export interface DemoDebug {
   enhancedPeopleCount?: number;
   enhancedPathCount?: number;
   partialFallbackUsed?: boolean;
+  pathSource: DemoDebugPathSource;
   intentStage: DemoDebugIntentStage;
   fallbackKind: DemoDebugFallbackKind;
   fallbackReason: string;

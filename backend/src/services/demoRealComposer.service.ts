@@ -12,6 +12,13 @@ import {
 } from "../types/demo.types.js";
 import type { UserContext } from "../auth/session.js";
 import type { SearchItem } from "../types/api.types.js";
+import {
+  buildQueryAwarePathPlans,
+  inferQueryIntent,
+  type DemoPathCandidate,
+  type DemoPathPlan
+} from "./demoPathBuilder.service.js";
+import { createDemoSearchIdentity } from "./demoQueryIdentity.service.js";
 import { buildContextFitReason, createDemoContextUsed } from "./userContext.service.js";
 
 interface ComposeRealInput {
@@ -28,43 +35,19 @@ interface PathBucket {
   title: string;
   summary: string;
   keywords: string[];
+  variables: string[];
+  stance: DemoPath["stance"];
   matchedItems: SearchItem[];
 }
 
-const PATH_BUCKETS: PathBucket[] = [
-  {
-    id: "path_rebuild_daily_rhythm",
-    title: "先停下来，重建日常节奏",
-    summary: "这些公开内容更关注不上班后的每天怎么过、如何恢复生活秩序和身心状态。",
-    keywords: ["不上班", "不工作", "失业", "待业", "躺平", "休息", "做饭", "散步", "户外", "生活", "每天"],
-    matchedItems: []
-  },
-  {
-    id: "path_try_side_income",
-    title: "用副业或自由职业试现金流",
-    summary: "这些公开内容集中在副业、接单、内容创作、小生意和轻创业等收入试错方向。",
-    keywords: ["副业", "自由职业", "自媒体", "接单", "创业", "轻创业", "收入", "现金流", "赚钱", "小生意"],
-    matchedItems: []
-  },
-  {
-    id: "path_change_place_or_gap",
-    title: "换个地方或给自己一个 Gap",
-    summary: "这些公开内容指向离开原轨道后的地点选择、旅行、回老家、小城市或阶段性 gap。",
-    keywords: ["裸辞", "gap", "旅行", "小城市", "回老家", "远方", "换个地方", "城市", "海边", "县城"],
-    matchedItems: []
-  },
-  {
-    id: "path_hold_bottom_line",
-    title: "先兜住预算和保障底线",
-    summary: "这些公开内容优先讨论存款、安全垫、社保、失业保险、家庭支持和过渡方案。",
-    keywords: ["存款", "安全垫", "预算", "社保", "医保", "失业保险", "低保", "父母", "回家", "保障", "过渡"],
-    matchedItems: []
-  }
-];
-
 export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSearchResponse {
   const limitedItems = input.items.slice(0, Math.min(Math.max(input.count, 1), 12));
-  const buckets = groupItemsByPath(limitedItems);
+  const identity = createDemoSearchIdentity(input.query, {
+    count: input.count,
+    dataMode: input.dataMode
+  });
+  const pathCandidates = limitedItems.map(toPathCandidate);
+  const buckets = groupItemsByPath(input.query, limitedItems, pathCandidates);
   const sourceRefs = limitedItems.map(toSourceRef);
   const sourceByItemId = new Map(limitedItems.map((item, index) => [item.id, sourceRefs[index]]));
   const paths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
@@ -72,7 +55,9 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
 
   for (const bucket of buckets) {
     for (const item of bucket.matchedItems) {
-      pathByItemId.set(item.id, bucket.id);
+      if (!pathByItemId.has(item.id)) {
+        pathByItemId.set(item.id, bucket.id);
+      }
     }
   }
 
@@ -93,7 +78,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
 
   return {
     schemaVersion: DEMO_SCHEMA_VERSION,
-    queryId: `query_${hashId(input.query)}`,
+    queryId: identity.queryId,
     query: input.query,
     dataMode: input.dataMode,
     contextUsed: createDemoContextUsed(input.userContext, [
@@ -109,9 +94,9 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       sourceEvidenceRequired: true
     },
     analysis: {
-      summary: `从 ${limitedItems.length} 条知乎公开内容中，按主题聚合出 ${paths.length} 条可探索路径和 ${people.length} 个可追溯样本。`,
-      intent: "life_path_exploration",
-      focusTags: paths.map((path) => path.title),
+      summary: `围绕「${identity.normalizedQuery}」，从 ${limitedItems.length} 条知乎公开内容中聚合出 ${paths.length} 条可探索路径和 ${people.length} 个可追溯样本。`,
+      intent: inferQueryIntent(input.query, pathCandidates),
+      focusTags: unique(buckets.flatMap((bucket) => bucket.variables)).slice(0, 8),
       steps: [
         {
           id: "step_fetch_real_zhihu",
@@ -164,8 +149,12 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     },
     debug: {
       composer: "real_rule_composer",
+      originalQuery: identity.originalQuery,
+      normalizedQuery: identity.normalizedQuery,
       requestedDataMode: input.dataMode,
       resolvedDataMode: input.dataMode,
+      cacheHit: false,
+      cacheKeyPreview: identity.cacheKeyPreview,
       itemCount: people.length,
       sourceItemCount: limitedItems.length,
       pathCount: paths.length,
@@ -179,6 +168,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       enhancedPeopleCount: 0,
       enhancedPathCount: 0,
       partialFallbackUsed: false,
+      pathSource: "rule",
       intentStage: {
         mode: "rule",
         llmUsed: false,
@@ -199,12 +189,15 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
   };
 }
 
-function groupItemsByPath(items: SearchItem[]): PathBucket[] {
-  const buckets = PATH_BUCKETS.map((bucket) => ({
-    ...bucket,
-    matchedItems: [] as SearchItem[]
-  }));
+function groupItemsByPath(
+  query: string,
+  items: SearchItem[],
+  candidates: DemoPathCandidate[]
+): PathBucket[] {
+  const pathPlans = buildQueryAwarePathPlans(query, candidates, 4);
+  const buckets = pathPlans.map(toPathBucket);
 
+  let fallbackIndex = 0;
   for (const item of items) {
     const text = `${item.title}\n${item.text}`.toLowerCase();
     const scoredBuckets = buckets
@@ -213,13 +206,36 @@ function groupItemsByPath(items: SearchItem[]): PathBucket[] {
         score: bucket.keywords.reduce((total, keyword) => total + countIncludes(text, keyword), 0)
       }))
       .sort((left, right) => right.score - left.score);
-    const bestBucket = scoredBuckets[0].score > 0 ? scoredBuckets[0].bucket : buckets[0];
+
+    const bestBucket =
+      scoredBuckets[0]?.score > 0
+        ? scoredBuckets[0].bucket
+        : buckets[fallbackIndex++ % buckets.length];
     bestBucket.matchedItems.push(item);
+  }
+
+  const minimumPathCount = Math.min(3, buckets.length);
+  for (let index = 0; index < minimumPathCount; index += 1) {
+    if (buckets[index].matchedItems.length === 0 && items.length > 0) {
+      buckets[index].matchedItems.push(items[index % items.length]);
+    }
   }
 
   return buckets
     .filter((bucket) => bucket.matchedItems.length > 0)
     .slice(0, 4);
+}
+
+function toPathBucket(plan: DemoPathPlan): PathBucket {
+  return {
+    id: plan.id,
+    title: plan.title,
+    summary: plan.summary,
+    keywords: plan.keywords,
+    variables: plan.variables,
+    stance: plan.stance,
+    matchedItems: []
+  };
 }
 
 function toPath(
@@ -247,10 +263,18 @@ function toPath(
     fitReason: buildContextFitReason(query, userContext, bucket.title),
     stance: bucket.matchedItems.some((item) => classifySampleType(item) === "experience_sample")
       ? "mixed"
-      : "viewpoint",
+      : bucket.stance,
     personRefs,
     evidenceIds,
     sourceRefs
+  };
+}
+
+function toPathCandidate(item: SearchItem): DemoPathCandidate {
+  return {
+    id: item.id,
+    title: item.title,
+    text: item.text || item.evidence.text || ""
   };
 }
 

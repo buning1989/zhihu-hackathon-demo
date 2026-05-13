@@ -71,6 +71,7 @@ try {
     false,
     "logged-in demo response does not expose token"
   );
+  await assertQueryAwareDemoPaths(baseUrl);
 
   const personaId = demoSearch.body.data.personas[0].id;
   const queryId = demoSearch.body.data.queryId;
@@ -179,6 +180,76 @@ function assertIncludes(value: unknown, expected: string, label: string): void {
   if (typeof value !== "string" || !value.includes(expected)) {
     throw new Error(`${label}: expected ${String(value)} to include ${expected}`);
   }
+}
+
+function assertNotIncludes(value: unknown, expected: string, label: string): void {
+  if (typeof value === "string" && value.includes(expected)) {
+    throw new Error(`${label}: expected ${String(value)} not to include ${expected}`);
+  }
+}
+
+async function assertQueryAwareDemoPaths(baseUrl: string): Promise<void> {
+  const cases = [
+    {
+      query: "不工作了能去哪儿",
+      expected: ["停靠", "现金流", "回流"],
+      forbidden: []
+    },
+    {
+      query: "为了工作，异地恋值得吗",
+      expected: ["工作机会", "异地", "可逆"],
+      forbidden: ["自由职业", "Gap", "不工作"]
+    },
+    {
+      query: "35岁转行还来得及吗",
+      expected: ["目标岗位", "旧经验", "转行"],
+      forbidden: ["自由职业", "Gap", "不工作"]
+    }
+  ];
+  const titleSets: string[] = [];
+
+  for (const item of cases) {
+    const response = await requestJson(`${baseUrl}/api/demo/search`, {
+      method: "POST",
+      body: {
+        query: item.query,
+        count: 3,
+        dataMode: "mock"
+      }
+    });
+    assertEqual(response.status, 200, `${item.query} demo search status`);
+    assertEqual(response.body.success, true, `${item.query} demo search success`);
+    assertEqual(response.body.data.debug.originalQuery, item.query, `${item.query} originalQuery`);
+    assertEqual(
+      response.body.data.debug.normalizedQuery,
+      item.query,
+      `${item.query} normalizedQuery`
+    );
+    assertEqual(response.body.data.debug.pathSource, "fallback", `${item.query} pathSource`);
+    assertEqual(
+      typeof response.body.data.debug.cacheHit,
+      "boolean",
+      `${item.query} cacheHit`
+    );
+    assertIncludes(
+      response.body.data.debug.cacheKeyPreview,
+      item.query,
+      `${item.query} cacheKeyPreview`
+    );
+
+    const titles = response.body.data.paths.map((path: { title: string }) => path.title).join("|");
+    titleSets.push(titles);
+
+    for (const expected of item.expected) {
+      assertIncludes(titles, expected, `${item.query} path titles`);
+    }
+
+    for (const forbidden of item.forbidden) {
+      assertNotIncludes(titles, forbidden, `${item.query} unrelated path template`);
+    }
+  }
+
+  assertEqual(new Set(titleSets).size, cases.length, "query-aware path title sets differ");
 }
 
 async function assertDisabledPersonaFallback(baseUrl: string): Promise<void> {
