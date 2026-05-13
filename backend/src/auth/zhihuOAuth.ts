@@ -225,7 +225,8 @@ function logTokenExchangeFailure(
 ): void {
   console.error("[ZhihuOAuth] token exchange failed", {
     httpStatus,
-    responseBody: sanitizeForLog(responseBody),
+    hasAccessToken: hasAccessToken(responseBody),
+    zhihuCode: readApiCode(responseBody),
     redirectUri: context.redirectUri,
     appId: context.appId,
     grantType: context.grantType,
@@ -233,46 +234,9 @@ function logTokenExchangeFailure(
   });
 }
 
-function sanitizeForLog(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeForLog(item));
-  }
-
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        shouldRedactLogEntry(key, item) ? "[REDACTED]" : sanitizeForLog(item)
-      ])
-    );
-  }
-
-  if (typeof value === "string") {
-    return value
-      .replace(
-        /("?(?:access_token|app_key|authorization_code)"?\s*[:=]\s*")([^"]*)(")/gi,
-        "$1[REDACTED]$3"
-      )
-      .replace(/((?:access_token|app_key|authorization_code)=)([^&\s]+)/gi, "$1[REDACTED]");
-  }
-
-  return value;
-}
-
-function shouldRedactLogEntry(key: string, value: unknown): boolean {
-  if (["access_token", "accessToken", "app_key", "appKey", "authorization_code"].includes(key)) {
-    return true;
-  }
-
-  if (key !== "code") {
-    return false;
-  }
-
-  if (typeof value === "number") {
-    return false;
-  }
-
-  return !(typeof value === "string" && /^\d{3}$/.test(value));
+function hasAccessToken(body: unknown): boolean {
+  const payload = unwrapData(body);
+  return isRecord(payload) && Boolean(readString(payload, "access_token", "accessToken"));
 }
 
 function parseJsonBody(bodyText: string): unknown {
