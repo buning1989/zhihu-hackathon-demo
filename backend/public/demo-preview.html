@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知乎 Hackathon Demo Preview</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8f4;
+        --panel: #ffffff;
+        --text: #17201b;
+        --muted: #5f6b63;
+        --line: #d9dfd8;
+        --soft: #eef3ee;
+        --accent: #0d766e;
+        --accent-strong: #095d57;
+        --warn-bg: #fff6d8;
+        --warn-text: #6c4b00;
+        --danger-bg: #ffe9e4;
+        --danger-text: #8b2417;
+        --shadow: 0 12px 30px rgba(31, 43, 34, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      header {
+        display: grid;
+        gap: 16px;
+        padding: 20px 0 18px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 760;
+      }
+
+      h2 {
+        font-size: 20px;
+        font-weight: 720;
+      }
+
+      h3 {
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        max-width: 760px;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) 160px auto;
+        gap: 10px;
+        align-items: center;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 12px;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        padding: 9px 11px;
+        outline: none;
+      }
+
+      textarea {
+        min-height: 78px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(13, 118, 110, 0.14);
+      }
+
+      button {
+        min-height: 42px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 10px 16px;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .ghost-button {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--text);
+      }
+
+      .ghost-button:hover {
+        border-color: var(--accent);
+        background: var(--soft);
+      }
+
+      .status {
+        min-height: 24px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status.error {
+        color: var(--danger-text);
+      }
+
+      .summary {
+        margin: 12px 0 20px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .summary p {
+        color: var(--muted);
+        margin-top: 6px;
+      }
+
+      .section {
+        display: grid;
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 14px;
+      }
+
+      .persona-card {
+        text-align: left;
+        color: var(--text);
+      }
+
+      .persona-card:hover {
+        border-color: var(--accent);
+        background: #fbfdfb;
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .avatar {
+        width: 42px;
+        height: 42px;
+        flex: 0 0 42px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background: var(--soft);
+        object-fit: cover;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .small {
+        font-size: 13px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chip {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--soft);
+        color: #31433a;
+        font-size: 12px;
+        padding: 3px 8px;
+      }
+
+      .notice {
+        border-radius: 8px;
+        background: var(--warn-bg);
+        color: var(--warn-text);
+        padding: 9px 10px;
+        font-size: 13px;
+      }
+
+      .evidence-box {
+        display: grid;
+        gap: 8px;
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+      }
+
+      .source-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .source-item {
+        border-left: 3px solid var(--accent);
+        background: #f8fbf9;
+        padding: 8px 9px;
+      }
+
+      .source-item a {
+        color: var(--accent-strong);
+        font-weight: 650;
+        text-decoration: none;
+      }
+
+      .source-item a:hover {
+        text-decoration: underline;
+      }
+
+      .chat-panel {
+        display: none;
+        gap: 10px;
+        margin-top: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 14px;
+      }
+
+      .chat-panel.active {
+        display: grid;
+      }
+
+      .chat-reply {
+        display: none;
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 10px;
+      }
+
+      .chat-reply.active {
+        display: block;
+      }
+
+      pre {
+        max-height: 520px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #141816;
+        color: #e9f1eb;
+        padding: 14px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .empty {
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 14px;
+      }
+
+      @media (max-width: 860px) {
+        main {
+          width: min(100% - 20px, 680px);
+          padding-top: 16px;
+        }
+
+        .toolbar,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Demo Preview</h1>
+          <p class="subtitle">
+            临时后端产品链路预览页。所有卡片只展示可回溯到 source/evidence 的内容，AI 分身不代表作者本人。
+          </p>
+        </div>
+
+        <form class="toolbar" id="search-form">
+          <div class="field">
+            <label for="query">Query</label>
+            <input id="query" name="query" value="不工作了能去哪儿" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="data-mode">Data mode</label>
+            <select id="data-mode" name="dataMode">
+              <option value="mock" selected>mock</option>
+              <option value="cache_first">cache_first</option>
+              <option value="real">real</option>
+            </select>
+          </div>
+          <button id="search-button" type="submit">搜索</button>
+        </form>
+        <div class="status" id="status">Ready.</div>
+      </header>
+
+      <section class="summary" id="analysis"></section>
+
+      <section class="section">
+        <h2>Paths</h2>
+        <div class="grid" id="paths"></div>
+      </section>
+
+      <section class="section">
+        <h2>People</h2>
+        <div class="grid" id="people"></div>
+      </section>
+
+      <section class="section">
+        <h2>Personas</h2>
+        <div class="grid" id="personas"></div>
+        <div class="chat-panel" id="chat-panel">
+          <h3 id="chat-title">Persona chat</h3>
+          <p class="muted small" id="chat-boundary"></p>
+          <textarea id="chat-message">这段公开内容里最值得注意的边界是什么？</textarea>
+          <div class="row">
+            <button type="button" id="chat-send">发送 mock chat</button>
+            <button type="button" class="ghost-button" id="chat-close">关闭</button>
+          </div>
+          <div class="chat-reply" id="chat-reply"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Sources / Evidence</h2>
+        <div class="source-list" id="sources"></div>
+      </section>
+
+      <section class="section">
+        <h2>Raw JSON</h2>
+        <pre id="raw-json">{}</pre>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#search-form");
+      const queryInput = document.querySelector("#query");
+      const dataModeSelect = document.querySelector("#data-mode");
+      const searchButton = document.querySelector("#search-button");
+      const statusEl = document.querySelector("#status");
+      const analysisEl = document.querySelector("#analysis");
+      const pathsEl = document.querySelector("#paths");
+      const peopleEl = document.querySelector("#people");
+      const personasEl = document.querySelector("#personas");
+      const sourcesEl = document.querySelector("#sources");
+      const rawJsonEl = document.querySelector("#raw-json");
+      const chatPanel = document.querySelector("#chat-panel");
+      const chatTitle = document.querySelector("#chat-title");
+      const chatBoundary = document.querySelector("#chat-boundary");
+      const chatMessage = document.querySelector("#chat-message");
+      const chatSend = document.querySelector("#chat-send");
+      const chatClose = document.querySelector("#chat-close");
+      const chatReply = document.querySelector("#chat-reply");
+
+      let currentData = null;
+      let selectedPersona = null;
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runSearch();
+      });
+
+      chatSend.addEventListener("click", () => {
+        if (selectedPersona) {
+          runPersonaChat(selectedPersona);
+        }
+      });
+
+      chatClose.addEventListener("click", () => {
+        selectedPersona = null;
+        chatPanel.classList.remove("active");
+        chatReply.classList.remove("active");
+        chatReply.textContent = "";
+      });
+
+      runSearch();
+
+      async function runSearch() {
+        setStatus("Searching...");
+        searchButton.disabled = true;
+        chatPanel.classList.remove("active");
+
+        try {
+          const response = await fetch("/api/demo/search", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              query: queryInput.value.trim() || "不工作了能去哪儿",
+              count: 3,
+              dataMode: dataModeSelect.value || "mock"
+            })
+          });
+          const json = await response.json();
+
+          if (!response.ok || json.success === false) {
+            throw new Error(json.message || json.error || `HTTP ${response.status}`);
+          }
+
+          currentData = json.data || json;
+          render(currentData, json);
+          setStatus(`Loaded ${currentData.paths?.length || 0} paths, ${currentData.people?.length || 0} people, ${currentData.personas?.length || 0} personas.`);
+        } catch (error) {
+          currentData = null;
+          renderEmpty();
+          setStatus(error instanceof Error ? error.message : "Search failed", true);
+        } finally {
+          searchButton.disabled = false;
+        }
+      }
+
+      function render(data, raw) {
+        const sourceMap = new Map((data.meta?.sourceRefs || []).map((source) => [source.id, source]));
+
+        analysisEl.innerHTML = `
+          <h2>Analysis</h2>
+          <p>${escapeHtml(data.analysis?.summary || "No analysis.summary returned.")}</p>
+          <div class="chips" style="margin-top:10px">
+            ${chip(`queryId: ${data.queryId || "-"}`)}
+            ${chip(`dataMode: ${data.dataMode || "-"}`)}
+            ${chip(`personaChat: ${data.features?.personaChat || "unknown"}`)}
+            ${chip(`evidence: ${data.meta?.evidenceCount ?? 0}`)}
+          </div>
+        `;
+
+        pathsEl.innerHTML = renderList(data.paths, (path) => `
+          <article class="card">
+            <h3>${escapeHtml(path.title)}</h3>
+            <p class="muted">${escapeHtml(path.summary || "")}</p>
+            <div class="chips">${chip(`stance: ${path.stance || "-"}`)}</div>
+            ${renderEvidenceRefs(path.evidenceIds, path.sourceRefs, sourceMap)}
+          </article>
+        `);
+
+        peopleEl.innerHTML = renderList(data.people, (person) => `
+          <article class="card">
+            <div class="row">
+              ${renderAvatar(person.avatar, person.name)}
+              <div>
+                <h3>${escapeHtml(person.name || "知乎用户")}</h3>
+                <p class="muted small">${escapeHtml(person.role || person.badge || "")}</p>
+              </div>
+            </div>
+            <p>${escapeHtml(person.oneLine || person.who || "")}</p>
+            <p class="muted small">${escapeHtml(person.lesson || "")}</p>
+            <div class="chips">
+              ${chip(`match: ${person.match?.score ?? "-"}`)}
+              ${chip(`persona readiness: ${person.match?.personaReadiness ?? "-"}`)}
+            </div>
+            ${renderArray("Overlaps", person.overlaps)}
+            ${renderEvidenceRefs(person.evidenceIds, person.sourceRefs, sourceMap)}
+            ${renderArticles(person.articles, sourceMap)}
+          </article>
+        `);
+
+        personasEl.innerHTML = renderList(data.personas, (persona) => `
+          <button class="card persona-card" type="button" data-persona-id="${escapeAttr(persona.id)}">
+            <div class="row">
+              ${renderAvatar(persona.avatar, persona.displayName)}
+              <div>
+                <h3>${escapeHtml(persona.displayName || persona.id)}</h3>
+                <p class="muted small">${escapeHtml(persona.personaType || "experience_echo")}</p>
+              </div>
+            </div>
+            <p>${escapeHtml(persona.intro || "")}</p>
+            <div class="notice">${escapeHtml(persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</div>
+            ${renderArray("Suggested questions", persona.suggestedQuestions)}
+            ${renderEvidenceRefs([], persona.sourceRefs, sourceMap)}
+          </button>
+        `);
+
+        personasEl.querySelectorAll("[data-persona-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const persona = (data.personas || []).find((item) => item.id === button.dataset.personaId);
+            if (persona) {
+              openPersonaChat(persona);
+            }
+          });
+        });
+
+        sourcesEl.innerHTML = renderSources(data.meta?.sourceRefs || []);
+        rawJsonEl.textContent = JSON.stringify(raw, null, 2);
+      }
+
+      function renderEmpty() {
+        analysisEl.innerHTML = '<p class="muted">No data loaded.</p>';
+        pathsEl.innerHTML = empty("No paths.");
+        peopleEl.innerHTML = empty("No people.");
+        personasEl.innerHTML = empty("No personas.");
+        sourcesEl.innerHTML = empty("No sources.");
+        rawJsonEl.textContent = "{}";
+      }
+
+      function openPersonaChat(persona) {
+        selectedPersona = persona;
+        chatTitle.textContent = persona.displayName || persona.id;
+        chatBoundary.textContent = persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。";
+        chatReply.classList.remove("active");
+        chatReply.textContent = "";
+        chatPanel.classList.add("active");
+        chatPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      async function runPersonaChat(persona) {
+        chatSend.disabled = true;
+        chatReply.classList.add("active");
+        chatReply.textContent = "Sending...";
+
+        try {
+          const response = await fetch("/api/personas/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              personaId: persona.id,
+              queryId: currentData?.queryId || "query_mock",
+              message: chatMessage.value.trim() || "这段公开内容里最值得注意的边界是什么？"
+            })
+          });
+          const json = await response.json();
+
+          if (!response.ok || json.success === false) {
+            throw new Error(json.message || json.error || `HTTP ${response.status}`);
+          }
+
+          const data = json.data || json;
+          chatReply.innerHTML = `
+            <p>${escapeHtml(data.reply || "No reply returned.")}</p>
+            <div class="notice" style="margin-top:8px">${escapeHtml(data.boundaryNotice || persona.boundaryNotice || "")}</div>
+            <div class="chips" style="margin-top:8px">
+              ${(data.sourceRefs || []).map((sourceRef) => chip(`source: ${sourceRef}`)).join("")}
+            </div>
+          `;
+          rawJsonEl.textContent = JSON.stringify({ search: currentData, personaChat: json }, null, 2);
+        } catch (error) {
+          chatReply.textContent = error instanceof Error
+            ? `聊天接口暂不可用：${error.message}`
+            : "聊天接口暂不可用。";
+        } finally {
+          chatSend.disabled = false;
+        }
+      }
+
+      function renderList(items, renderer) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return empty("No items.");
+        }
+
+        return items.map(renderer).join("");
+      }
+
+      function renderEvidenceRefs(evidenceIds = [], sourceRefs = [], sourceMap = new Map()) {
+        const evidenceChips = (evidenceIds || []).map((id) => chip(`evidence: ${id}`)).join("");
+        const sourceChips = (sourceRefs || []).map((id) => chip(`source: ${id}`)).join("");
+        const sources = (sourceRefs || [])
+          .map((id) => sourceMap.get(id))
+          .filter(Boolean);
+
+        return `
+          <div class="evidence-box">
+            <div class="chips">${sourceChips || chip("source: none")}${evidenceChips || ""}</div>
+            ${sources.map(renderSourceItem).join("")}
+          </div>
+        `;
+      }
+
+      function renderArticles(articles = [], sourceMap = new Map()) {
+        if (!Array.isArray(articles) || articles.length === 0) {
+          return "";
+        }
+
+        return articles.map((article) => `
+          <div class="evidence-box">
+            <h3>${escapeHtml(article.title || "Untitled article")}</h3>
+            <p class="muted small">${escapeHtml(article.summary || article.text || "")}</p>
+            ${(article.evidence || []).map((item) => `
+              <div class="source-item">
+                <p class="small"><strong>${escapeHtml(item.label || "Evidence")}</strong></p>
+                <p class="small">${escapeHtml(item.text || "")}</p>
+                <div class="chips" style="margin-top:6px">
+                  ${chip(`evidence: ${item.id}`)}
+                  ${chip(`source: ${item.sourceRefId}`)}
+                </div>
+              </div>
+            `).join("")}
+            ${renderEvidenceRefs([], article.sourceRefs, sourceMap)}
+          </div>
+        `).join("");
+      }
+
+      function renderSources(sources = []) {
+        if (!Array.isArray(sources) || sources.length === 0) {
+          return empty("No sourceRefs.");
+        }
+
+        return sources.map(renderSourceItem).join("");
+      }
+
+      function renderSourceItem(source) {
+        const title = escapeHtml(source.title || source.id || "source");
+        const url = source.url ? escapeAttr(source.url) : "";
+        const titleHtml = url
+          ? `<a href="${url}" target="_blank" rel="noreferrer">${title}</a>`
+          : `<strong>${title}</strong>`;
+
+        return `
+          <div class="source-item">
+            <p>${titleHtml}</p>
+            <p class="muted small">${escapeHtml(source.provider || "mock")} · ${escapeHtml(source.type || "-")} · ${escapeHtml(source.author || "unknown")}</p>
+            <div class="chips" style="margin-top:6px">
+              ${chip(`source: ${source.id || "-"}`)}
+              ${(source.evidenceIds || []).map((id) => chip(`evidence: ${id}`)).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderArray(title, items = []) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return "";
+        }
+
+        return `
+          <div>
+            <p class="muted small">${escapeHtml(title)}</p>
+            <div class="chips">${items.map((item) => chip(item)).join("")}</div>
+          </div>
+        `;
+      }
+
+      function renderAvatar(src, alt) {
+        if (!src) {
+          return '<div class="avatar" aria-hidden="true"></div>';
+        }
+
+        return `<img class="avatar" src="${escapeAttr(src)}" alt="${escapeAttr(alt || "avatar")}" />`;
+      }
+
+      function chip(text) {
+        return `<span class="chip">${escapeHtml(String(text))}</span>`;
+      }
+
+      function empty(text) {
+        return `<div class="empty">${escapeHtml(text)}</div>`;
+      }
+
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle("error", isError);
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value);
+      }
+    </script>
+  </body>
+</html>

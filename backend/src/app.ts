@@ -1,4 +1,5 @@
 import express from "express";
+import { fileURLToPath } from "node:url";
 import { authRoutes } from "./auth/routes.js";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware.js";
 import { demoRoutes } from "./routes/demo.routes.js";
@@ -8,8 +9,10 @@ import { searchRoutes } from "./routes/search.routes.js";
 import { zhihuRoutes } from "./routes/zhihu.routes.js";
 
 export const app = express();
+const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
 
 app.use(express.json());
+app.use("/preview", express.static(publicDir));
 
 app.get("/health", (_req, res) => {
   res.json({
