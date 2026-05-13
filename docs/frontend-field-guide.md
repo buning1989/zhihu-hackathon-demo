@@ -1,78 +1,248 @@
 # 前端字段协作指南
 
+版本：v0.2
+日期：2026-05-13
+适用阶段：产品层接口 + AI 分身兼容层 P0/P0.5
+
 ## 主接口
 
-当前 P0 主接口是：
+当前前端产品层应优先读取：
+
+```http
+POST /api/demo/search
+Content-Type: application/json
+```
+
+请求示例：
+
+```json
+{
+  "query": "不工作了之后，我想去新西兰生活",
+  "count": 20,
+  "mode": "mock"
+}
+```
+
+`GET /api/search?query=...&count=...` 已经实现并继续保留，但它的定位是知乎搜索结果映射接口，主要返回 `items[]`，用于调试、兼容和产品层接口的底层召回。前端 AI 分身页面不要把 `GET /api/search` 当成最终页面数据结构。
+
+`/api/zhihu/search` 是后端调试用的知乎原始响应代理，前端不要直接依赖。
+
+## 当前实现状态
+
+截至 2026-05-13：
+
+- `GET /api/search`：已实现，保留既有契约。
+- `POST /api/demo/search`：P0 目标契约，前端字段应按 `shared/demo-response.sample.json` 对齐，后端实现是下一步开发任务。
+- `POST /api/personas/chat`：P0.5 目标契约，可先 fallback/mock。
+- `POST /api/v1/match/query`：长期 future API，可以保留在设计里，但当前 P0 不作为主接口。
+
+## 产品层响应
+
+`POST /api/demo/search` 的目标响应顶层字段：
+
+```json
+{
+  "schemaVersion": "2026-05-13.ai-persona-v1",
+  "queryId": "query_demo_001",
+  "query": "不工作了之后，我想去新西兰生活",
+  "dataMode": "mock",
+  "features": {},
+  "analysis": {},
+  "paths": [],
+  "people": [],
+  "personas": [],
+  "sections": [],
+  "meta": {},
+  "debug": {}
+}
+```
+
+前端 P0 推荐读取顺序：
+
+1. 用 `analysis.steps` 和 `analysis.focusTags` 支撑 loading / 问题理解区域。
+2. 用 `paths[]` 渲染路径图。
+3. 用 `people[]` 渲染人物样本卡，这是主数据。
+4. 用 `people[].articles[]` 渲染原文入口和证据。
+5. 用 `people[].match` 渲染匹配解释。
+6. 用 `people[].aiPersona` 渲染 AI 分身入口。
+7. 用顶层 `personas[]` 做快捷入口或导航索引。
+8. `sections[]` 只作为弱绑定布局辅助，不替代主数据。
+
+## people[] 是主数据
+
+`people[]` 是唯一人物主数据来源。每个 people 表示一个基于公开知乎内容整理出的前人样本。
+
+前端不要把顶层 `personas[]` 当作人物列表，也不要在本地维护另一套完整人物对象。展示人物卡、文章、匹配理由、头像、路径归属时，都应回到 `people[]`。
+
+关键字段：
+
+- `people[].id`：人物样本 id。
+- `people[].name`：展示名，可来自 `author.name`，缺失时展示“知乎用户”。
+- `people[].pathId`：关联 `paths[].id`。
+- `people[].avatar`：头像，缺失时用默认头像。
+- `people[].oneLine`：人物卡核心句。
+- `people[].who`：TA 是谁的说明。注意这是基于公开内容整理，不等同于作者完整人生。
+- `people[].overlaps[]`：与当前用户问题的重叠点。
+- `people[].timeline[]`：经历线索，P0 可是 mock/rule。
+- `people[].lesson`：可展示的经验总结，必须基于 evidence。
+- `people[].articles[]`：原文入口和证据。
+- `people[].match`：匹配解释。
+- `people[].aiPersona`：AI 分身入口。
+
+## AI 分身入口
+
+AI 分身挂在：
+
+```text
+people[].aiPersona
+```
+
+前端展示聊天入口前应检查：
+
+- `people[].aiPersona.enabled === true`
+- `people[].aiPersona.personaId` 存在
+- `people[].aiPersona.boundary` 存在
+- `people[].aiPersona.grounding.articleIds[]` 至少能关联到一条 `people[].articles[]`
+
+`boundary` 必须对用户可见或在聊天开始处可见。标准含义是：
+
+```text
+这是基于知乎公开内容生成的经验回应，不代表作者本人。
+```
+
+AI 不作为事实来源。AI 分身不代表作者本人，不提供实时回应，不模拟作者本人回复。所有回答必须基于公开内容和 evidence。
+
+## personas[] 是快捷索引
+
+顶层 `personas[]` 只用于快速找到可聊天入口：
+
+```json
+{
+  "personaId": "persona_person_001",
+  "personId": "person_001",
+  "displayName": "阿禾的经验分身",
+  "entryType": "chat"
+}
+```
+
+使用方式：
+
+- 渲染“可追问的经验分身”横向入口时，可以读 `personas[]`。
+- 需要头像、文章、匹配理由、路径等完整信息时，用 `personId` 回查 `people[]`。
+- 不要把 `personas[]` 当成第二套人物主数据。
+
+## articles[] 字段 fallback
+
+每个 `people[].articles[]` 至少应能支撑原文入口和证据展示。
+
+推荐字段：
+
+- `title`：文章/回答标题。
+- `text`：原文摘要或正文片段。
+- `url`：原文链接。
+- `author`：作者展示名。
+- `avatar`：作者头像。
+- `evidence[]`：证据片段数组。
+- `summary`：更适合卡片展示的摘要。
+- `sourceName`：例如“知乎回答”。
+- `sourceUrl`：原文链接，通常等于 `url`。
+- `body[]`：正文块，P0 可以为空数组。
+
+兜底规则：
+
+- `title` 为空：使用 `summary`；仍为空则使用 `text` 的前 24 个字符；再为空展示“未命名内容”。
+- `text` 为空：使用 `summary`；仍为空则只展示标题和 evidence。
+- `url` / `sourceUrl` 为空：隐藏“查看原文”按钮，但保留来源说明。
+- `author` 为空：展示“知乎用户”。
+- `avatar` 为空：使用默认头像。
+- `evidence[]` 为空：优先用 `text` 作为证据展示；仍为空时隐藏证据区，但不要把无证据内容包装成事实。
+
+## features 使用方式
+
+`features` 是后端给前端的能力开关，不是页面文案。
+
+建议字段：
+
+```json
+{
+  "aiPersona": true,
+  "personaChat": "mock",
+  "saveSample": false,
+  "articleBody": false,
+  "sourceEvidenceRequired": true
+}
+```
+
+前端建议：
+
+- `features.aiPersona === true`：允许展示 AI 分身入口，但仍需检查 `people[].aiPersona.enabled`。
+- `features.personaChat === "off"`：隐藏聊天入口或置灰。
+- `features.personaChat === "mock"`：可以进入聊天，但以 mock/stub 体验展示。
+- `features.personaChat === "real"`：允许真实后端聊天。
+- `features.saveSample === false`：P0 保存样本可用本地 mock/localStorage，或隐藏跨端保存入口。
+- `features.articleBody === false`：原文阅读器优先跳转 `sourceUrl`，不要期待后端返回完整正文。
+- `features.sourceEvidenceRequired === true`：无 evidence 的事实性展示必须降级。
+
+## P0 可 fallback/mock 的能力
+
+P0 阶段允许这些能力 fallback/mock：
+
+- 保存样本：可先用前端 localStorage 或禁用。
+- 完整多轮聊天：可先只支持一次 grounded mock answer。
+- 原文正文阅读器：可先展示 `summary + evidence + sourceUrl`。
+- 复杂人物聚合：可先“一条内容包装成一个 people”。
+- LLM 生成：无 LLM Key 时必须用 deterministic stub。
+- 知乎搜索：无知乎 API Key 时必须用 mock 数据完整跑通。
+
+## 兼容 GET /api/search
+
+旧接口仍然有效：
 
 ```http
 GET /api/search?query=不工作了能去哪儿&count=1
 ```
 
-它是已经实现的前端友好搜索接口。`/api/zhihu/search` 是后端调试用的知乎原始响应代理，前端不要直接依赖它。`/api/demo/search` 和 `/api/demo/session/{sessionId}` 仍是 planned / future，不是当前可调用接口。
+成功时返回：
 
-## 前端开发样例
+- `success`
+- `data.query`
+- `data.count`
+- `data.hasMore`
+- `data.searchHashId`
+- `data.items[]`
 
-北陆前端开发先以 `shared/demo-response.sample.json` 作为唯一参考样例。这个样例基于当前 `/api/search` 字段，同时预留了后续 `sections / cards / blocks / actions / meta` 的扩展位置。
+`data.items[]` 字段：
 
-## 字段分级
+- `id`
+- `type`
+- `title`
+- `text`
+- `url`
+- `author.name`
+- `author.avatar`
+- `author.badge`
+- `author.badgeText`
+- `stats.commentCount`
+- `stats.voteUpCount`
+- `stats.rankingScore`
+- `comments`
+- `editTime`
+- `authorityLevel`
+- `source.provider`
+- `source.url`
+- `evidence.text`
+- `evidence.source.provider`
+- `evidence.source.url`
 
-P0 必须字段：
-
-- `success`：请求是否成功。
-- `data.query`：服务端裁剪后的用户 query。
-- `data.count`：服务端归一化后的结果数量，范围是 1 到 20。
-- `data.hasMore`：上游是否还有更多结果。
-- `data.searchHashId`：上游搜索游标，可能为空字符串。
-- `data.items`：搜索结果数组，可能为空。
-- `data.items[].id`：卡片稳定 id；上游缺失时后端会生成 `zhihu_item_1` 这类 id。
-- `data.items[].type`：知乎内容类型，可能为空字符串。
-- `data.items[].title`：标题，可能为空字符串。
-- `data.items[].text`：正文摘要或正文片段，可能为空字符串。
-- `data.items[].url`：知乎原文链接，可能为空字符串。
-- `data.items[].source.provider`：来源供应方，当前固定为 `zhihu`。
-- `data.items[].source.url`：来源链接，可能为空字符串。
-- `data.items[].evidence.text`：证据文本，当前等于 `text`，可能为空字符串。
-- `data.items[].evidence.source`：证据来源，必须随卡片一起传递。
-
-P1 体验字段：
-
-- `data.items[].author.name`：作者昵称，可能为空字符串。
-- `data.items[].author.avatar`：作者头像 URL，可能为空字符串。
-- `data.items[].stats.voteUpCount`：赞同数，缺失时为 `0`。
-- `data.items[].stats.commentCount`：评论数，缺失时为 `0`。
-- `data.items[].comments`：评论数组，P0 通常为空数组。
-- `future.sections / future.cards / future.actions`：后续大模型编排后的结构化展示字段。
-
-P2 装饰字段：
-
-- `data.items[].author.badge`：作者徽章原始值，可能为空字符串。
-- `data.items[].author.badgeText`：作者徽章展示文案，可能为空字符串。
-- `data.items[].stats.rankingScore`：上游排序分，缺失时为 `0`。
-- `data.items[].editTime`：上游编辑时间，缺失时为 `0`。
-- `data.items[].authorityLevel`：上游权威等级，可能为空字符串。
-- `future.blocks / future.meta.traceId`：后续详情页与调试增强字段。
-
-## 可能为空的字段
-
-当前后端为了让前端少做类型判断，会把缺失字段归一成稳定空值：
+旧接口缺失字段归一规则仍然有效：
 
 - 字符串缺失：返回 `""`。
 - 数字缺失：返回 `0`。
 - 数组缺失：返回 `[]`。
 - `items` 无结果：返回 `[]`，不是 `null`。
 
-需要特别注意：`url`、`title`、`text`、`author.name` 都可能为空。前端不能因为这些字段为空而崩溃。
+## 与 OpenAPI 和样例的关系
 
-## 字段缺失兜底
-
-- 如果 `success === false`，展示 `error.message`；如果 `message` 缺失，展示“服务暂时不可用，请稍后再试”。
-- 如果 `data.items` 为空，展示空态，不要渲染空卡片。
-- 如果 `title` 为空，使用 `text` 的前 24 个字符作为标题；如果 `text` 也为空，使用“未命名内容”。
-- 如果 `author.name` 为空，展示“知乎用户”。
-- 如果 `url` 为空，隐藏“查看原文”按钮。
-- 如果 `evidence.text` 为空，优先使用 `text`；仍为空时隐藏证据区，但保留卡片来源字段。
-- 如果统计数字为 `0`，可以隐藏对应统计项，避免误导为真实 0 热度。
-
-## 与 OpenAPI 的关系
-
-`shared/openapi.yaml` 现在以当前真实接口为准，P0 集成看 `GET /api/search`。OpenAPI 中标记 `x-implementation-status: planned` 的接口只代表未来方向，不作为当前前端联调依据。
+- `shared/openapi.yaml` 是契约来源，既保留 `GET /api/search`，也定义 `POST /api/demo/search` 与 `POST /api/personas/chat` 的目标结构。
+- `shared/demo-response.sample.json` 是前端 P0 字段样例，AI 分身页面优先看其中的 `demo_search_success_response`。
+- OpenAPI 中标记为 planned / planned-p0 / planned-p0.5 的接口代表后续实现目标；当前没有实现时，前端开发可以先用 sample json 或 mock server。

@@ -64,8 +64,8 @@ docker compose -f infra/docker-compose.yml up
 
 ## 前后端协作规则
 
-- `shared/openapi.yaml` 是前后端协作的最小契约。当前 P0 主接口是 `GET /api/search`；`/api/demo/search` 和 `/api/demo/session/{sessionId}` 标记为 planned，不是当前可调用接口。
-- 北陆前端开发先以 `shared/demo-response.sample.json` 作为唯一字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
+- `shared/openapi.yaml` 是前后端协作的最小契约。当前已实现接口 `GET /api/search` 继续保留；AI 分身产品层 P0 目标契约统一为 `POST /api/demo/search`。
+- 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
 - 不要把观点作者包装成亲历者，不实现“联系 TA”、私信、模拟作者本人回复等能力。
@@ -108,4 +108,4 @@ curl -i "http://localhost:8000/api/search?query=不工作了能去哪儿&count=1
 curl -i "http://localhost:3000/"
 ```
 
-后续业务 demo 可以沿着 `shared/openapi.yaml` 中 planned 的 `/api/demo/search` 和 `/api/demo/session/{sessionId}` 演进，但当前前端联调以 `GET /api/search` 为准。
+后续业务 demo 沿着 `shared/openapi.yaml` 中的 `POST /api/demo/search` 产品层契约演进；`GET /api/search` 继续作为已实现的底层搜索映射和兼容接口。

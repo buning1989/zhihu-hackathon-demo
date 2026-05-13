@@ -1,5 +1,7 @@
 # 后端下一步开发计划
 
+> 2026-05-13 更新说明：本文记录上一轮围绕 `GET /api/search` 的最小后端计划，仍可作为既有接口链路说明参考。AI 分身产品层的最新 P0 主接口已收敛为 `POST /api/demo/search`，详见 `docs/backend-ai-persona-integration-plan.md`。`GET /api/search` 继续保留为已实现的底层搜索映射和兼容接口。
+
 本轮只梳理当前后端现状和下一步最小开发计划，不做业务实现、不新增复杂接口、不设计 session / 用户系统 / 多接口流程。
 
 ## A. 当前 GET /api/search 完整链路
@@ -157,9 +159,9 @@
 - 当前无真实知乎密钥时，`GET /api/search` 返回明确 JSON 错误，不返回 sample 里的 `success_response`。
 - `future_optional_shape` 是未来预留，不是当前真实后端响应。
 
-## D. 让 /api/search 成为前端可直接使用 demo 主接口的最小能力
+## D. 让 /api/search 成为可复用底层搜索能力的最小补强
 
-下一步最少补这些能力即可，不需要新增复杂接口：
+以下内容是上一轮计划，适用于 `GET /api/search` 作为底层搜索映射能力的补强；AI 分身产品层请以 `POST /api/demo/search` 为 P0 主接口。
 
 1. 无密钥可跑通的 mock / stub 成功模式
    - 当前无密钥返回 `ZHIHU_AUTH_FAILED`，适合暴露错误，但不能让前端直接演示结果页。
@@ -175,9 +177,9 @@
    - 在当前 `SearchItem` 基础上补最少展示字段：`intent / cardTitle / cardSummary / matchedReasons / tags`。
    - 可以先由 deterministic stub 基于 `title / text / author / evidence` 生成，不必接真实大模型。
 
-4. 保持单接口
-   - 仍以 `GET /api/search` 作为 P0 主接口。
-   - 不新增 session，不新增用户系统，不把前端引向 `/api/demo/*` planned 接口。
+4. 保持既有接口兼容
+   - 继续保留 `GET /api/search` 作为已实现的底层搜索映射和兼容接口。
+   - AI 分身产品层新增 `POST /api/demo/search`，不要破坏 `GET /api/search` 既有契约。
 
 5. 更新契约和样例
    - 当真实后端新增字段后，同步更新 `shared/openapi.yaml`、`shared/demo-response.sample.json` 和 `docs/frontend-field-guide.md`。

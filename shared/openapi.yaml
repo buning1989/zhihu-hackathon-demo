@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: Zhihu Hackathon Demo API
-  version: 0.1.1
+  version: 0.2.0
   description: >
-    Shared contract for the current monorepo scaffold. The frontend should
-    treat GET /api/search as the current P0 main interface. Paths marked with
-    x-implementation-status: planned are future contracts and are not available
-    in the backend yet.
+    Shared contract for the current monorepo scaffold. GET /api/search remains
+    the implemented search mapping endpoint and must not be broken. The P0
+    product-layer contract for the AI persona experience is POST
+    /api/demo/search; persona chat is planned for P0.5 at POST
+    /api/personas/chat.
 servers:
   - url: http://localhost:8000
     description: Local backend
@@ -19,6 +20,10 @@ tags:
     description: Implemented search endpoints.
   - name: Zhihu
     description: Implemented raw Zhihu proxy endpoints.
+  - name: Demo
+    description: Product-layer demo contracts for analysis, paths, people and AI personas.
+  - name: Personas
+    description: AI persona chat contracts grounded in public content evidence.
   - name: Planned
     description: Future demo endpoints, not implemented in the backend yet.
 paths:
@@ -212,9 +217,11 @@ paths:
         - Search
       summary: Frontend-friendly search endpoint
       description: >
-        Implemented. This is the current P0 main interface for frontend
-        integration. Without a real Zhihu key, the endpoint returns a clear
-        JSON error instead of crashing.
+        Implemented. This is the existing frontend-friendly Zhihu search
+        mapping endpoint and remains available for compatibility, debugging
+        and product-layer recall. The P0 AI persona product contract is POST
+        /api/demo/search. Without a real Zhihu key, this endpoint returns a
+        clear JSON error instead of crashing.
       operationId: getSearch
       x-implementation-status: implemented
       parameters:
@@ -361,14 +368,17 @@ paths:
   /api/demo/search:
     post:
       tags:
-        - Planned
-      summary: "[planned] Create a demo search session"
+        - Demo
+      summary: Create an AI-persona-ready demo search result
       description: >
-        Planned/future endpoint. It is kept here to show the intended richer
-        demo contract, but it is not implemented in the current backend.
-        Frontend should not call this endpoint for P0 integration.
+        P0 product-layer target contract for the frontend AI persona
+        experience. It wraps search results into analysis, paths, people,
+        persona indexes, sections and metadata. The existing GET /api/search
+        contract remains implemented and must not be broken. During P0
+        implementation, this endpoint must run with mock/stub data when Zhihu
+        API keys or LLM keys are missing.
       operationId: createDemoSearch
-      x-implementation-status: planned
+      x-implementation-status: planned-p0
       requestBody:
         required: true
         content:
@@ -378,23 +388,121 @@ paths:
             examples:
               default:
                 value:
-                  query: 不工作了能去哪儿？
-                  sessionId: s_demo_001
+                  query: 不工作了之后，我想去新西兰生活
+                  count: 20
                   mode: mock
       responses:
-        "501":
-          description: Planned endpoint, not implemented yet.
+        "200":
+          description: Product-layer search response with AI persona entry points.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoSearchResponse"
+              examples:
+                aiPersona:
+                  value:
+                    schemaVersion: "2026-05-13.ai-persona-v1"
+                    queryId: query_demo_001
+                    query: 不工作了之后，我想去新西兰生活
+                    dataMode: mock
+                    features:
+                      aiPersona: true
+                      personaChat: mock
+                      saveSample: false
+                      articleBody: false
+                      sourceEvidenceRequired: true
+                    analysis:
+                      steps:
+                        - title: 读取问题
+                          text: 不工作了之后，我想去新西兰生活
+                      focusTags:
+                        - 暂停工作
+                        - 新西兰
+                    paths: []
+                    people: []
+                    personas: []
+                    sections: []
+                    meta:
+                      mode: mock
+                      generatedAt: "2026-05-13T00:00:00.000Z"
+                    debug:
+                      stubbed: true
+        "400":
+          description: Missing or invalid request body.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Backend error. P0 implementation should prefer mock/stub fallback when keys are missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/personas/chat:
+    post:
+      tags:
+        - Personas
+      summary: Chat with an evidence-grounded AI persona
+      description: >
+        P0.5 target contract for asking a follow-up question to a persona
+        attached to people[].aiPersona. The answer must be grounded in public
+        article/evidence snippets, must include citedArticleIds and boundary,
+        and must not pretend to be the original author.
+      operationId: chatWithPersona
+      x-implementation-status: planned-p0.5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonaChatRequest"
+            examples:
+              default:
+                value:
+                  queryId: query_demo_001
+                  personId: person_return_home
+                  personaId: persona_person_return_home
+                  message: 你当时最担心什么？
+                  history: []
+      responses:
+        "200":
+          description: Grounded persona chat response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaChatSuccessResponse"
               examples:
-                planned:
+                groundedMock:
                   value:
-                    success: false
-                    error:
-                      code: NOT_IMPLEMENTED
-                      message: Planned endpoint, not implemented yet.
+                    success: true
+                    data:
+                      messageId: msg_demo_001
+                      personaId: persona_person_return_home
+                      personId: person_return_home
+                      answer: 从公开内容看，TA 更像是在离开高压工作后先恢复生活节奏，而不是已经完成长期迁移规划。
+                      answerType: grounded_summary
+                      citedArticleIds:
+                        - article_return_home_001
+                      evidence:
+                        - articleId: article_return_home_001
+                          text: 公开内容中的证据片段。
+                          sourceUrl: https://www.zhihu.com/question/mock/answer/return-home
+                      followupQuestions:
+                        - 你想看 TA 当时怎么准备现金流吗？
+                      boundary: 这是基于知乎公开内容生成的经验回应，不代表作者本人。
+        "400":
+          description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Backend error. Stub mode should be available when LLM keys are missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/demo/session/{sessionId}:
     get:
       tags:
@@ -732,9 +840,13 @@ components:
         query:
           type: string
           minLength: 1
-        sessionId:
-          type: string
-          description: Optional client-provided session id.
+          description: Raw user question.
+        count:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 20
+          description: Desired recall count before product-layer grouping.
         mode:
           type: string
           enum:
@@ -742,28 +854,65 @@ components:
             - cache_first
             - real
           default: mock
+          description: Data mode. P0 must work in mock mode without Zhihu or LLM keys.
+        sessionId:
+          type: string
+          description: Optional client-provided session id for local demo continuity.
     DemoSearchResponse:
       type: object
       required:
         - schemaVersion
-        - sessionId
+        - queryId
         - query
+        - dataMode
+        - features
+        - analysis
+        - paths
+        - people
+        - personas
         - sections
         - meta
       properties:
         schemaVersion:
           type: string
-          example: "0.1"
-        sessionId:
+          example: "2026-05-13.ai-persona-v1"
+        queryId:
           type: string
+          description: Stable id that links search, save and persona chat flows.
         query:
-          $ref: "#/components/schemas/QueryView"
+          type: string
+        dataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+        features:
+          $ref: "#/components/schemas/DemoFeatures"
+        analysis:
+          $ref: "#/components/schemas/DemoAnalysis"
+        paths:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoPath"
+        people:
+          type: array
+          description: Primary person/sample data. AI personas hang under each person.
+          items:
+            $ref: "#/components/schemas/DemoPerson"
+        personas:
+          type: array
+          description: Shortcut index only. Do not duplicate complete person data here.
+          items:
+            $ref: "#/components/schemas/PersonaIndex"
         sections:
           type: array
           items:
             $ref: "#/components/schemas/DemoSection"
         meta:
           $ref: "#/components/schemas/ResponseMeta"
+        debug:
+          $ref: "#/components/schemas/DemoDebug"
     DemoSessionResponse:
       allOf:
         - $ref: "#/components/schemas/DemoSearchResponse"
@@ -774,25 +923,348 @@ components:
               enum:
                 - active
                 - expired
-    QueryView:
+    DemoFeatures:
       type: object
       required:
-        - raw
-        - display
+        - aiPersona
+        - personaChat
+        - saveSample
+        - articleBody
+        - sourceEvidenceRequired
       properties:
-        raw:
+        aiPersona:
+          type: boolean
+          description: Whether persona entry points may be shown if person-level aiPersona is enabled.
+        personaChat:
           type: string
-        display:
+          enum:
+            - "off"
+            - mock
+            - real
+          description: Persona chat capability for the current response.
+        saveSample:
+          type: boolean
+          description: Whether server-side save sample is available. P0 may be false.
+        articleBody:
+          type: boolean
+          description: Whether full article body blocks are available. P0 may be false.
+        sourceEvidenceRequired:
+          type: boolean
+          description: Whether frontend should require evidence before showing factual claims.
+    DemoAnalysis:
+      type: object
+      required:
+        - steps
+        - focusTags
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisStep"
+        focusTags:
+          type: array
+          items:
+            type: string
+        summary:
           type: string
+        openQuestions:
+          type: array
+          items:
+            type: string
+    AnalysisStep:
+      type: object
+      required:
+        - title
+        - text
+      properties:
+        title:
+          type: string
+        text:
+          type: string
+    DemoPath:
+      type: object
+      required:
+        - id
+        - name
+        - count
+        - desc
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        count:
+          type: integer
+          minimum: 0
+        desc:
+          type: string
+        short:
+          type: string
+    DemoPerson:
+      type: object
+      required:
+        - id
+        - name
+        - pathId
+        - role
+        - badge
+        - avatar
+        - oneLine
+        - who
+        - overlaps
+        - timeline
+        - lesson
+        - articles
+        - match
+        - aiPersona
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: Display name from public content. Empty values should fall back to 知乎用户.
+        pathId:
+          type: string
+          description: Must reference paths[].id.
+        role:
+          type: string
+        badge:
+          type: string
+        avatar:
+          type: string
+        oneLine:
+          type: string
+        who:
+          type: string
+          description: Description based on public content, not a complete biography.
+        overlaps:
+          type: array
+          items:
+            type: string
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineItem"
+        lesson:
+          type: string
+        articles:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/PersonArticle"
+        match:
+          $ref: "#/components/schemas/PersonMatch"
+        aiPersona:
+          $ref: "#/components/schemas/AiPersona"
+    TimelineItem:
+      type: object
+      required:
+        - date
+        - event
+      properties:
+        date:
+          type: string
+        event:
+          type: string
+    PersonArticle:
+      type: object
+      required:
+        - id
+        - title
+        - text
+        - url
+        - author
+        - avatar
+        - sourceName
+        - sourceUrl
+        - summary
+        - evidence
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          description: Article or answer title. Frontend falls back to text/summary if empty.
+        text:
+          type: string
+          description: Original excerpt or body snippet.
+        url:
+          type: string
+          description: Original Zhihu URL. Hide source action if empty.
+        author:
+          type: string
+          description: Author display name. Frontend falls back to 知乎用户 if empty.
+        avatar:
+          type: string
+          description: Author avatar. Frontend falls back to a default avatar if empty.
+        sourceName:
+          type: string
+          example: 知乎回答
+        sourceUrl:
+          type: string
+        publishedAt:
+          type: string
+        summary:
+          type: string
+        evidence:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ArticleEvidence"
+        body:
+          type: array
+          items:
+            $ref: "#/components/schemas/Block"
+    ArticleEvidence:
+      type: object
+      required:
+        - label
+        - text
+        - sourceUrl
+      properties:
+        label:
+          type: string
+        text:
+          type: string
+        sourceUrl:
+          type: string
+    PersonMatch:
+      type: object
+      required:
+        - score
+        - level
+        - reasons
+        - matchedVariables
+        - riskNotes
+        - contentRelevance
+        - experienceSimilarity
+        - evidenceQuality
+        - personaReadiness
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        level:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        reasons:
+          type: array
+          items:
+            type: string
+        matchedVariables:
+          type: array
+          items:
+            type: string
+        riskNotes:
+          type: array
+          items:
+            type: string
+        contentRelevance:
+          type: number
+          minimum: 0
+          maximum: 1
+        experienceSimilarity:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidenceQuality:
+          type: number
+          minimum: 0
+          maximum: 1
+        personaReadiness:
+          type: number
+          minimum: 0
+          maximum: 1
+    AiPersona:
+      type: object
+      required:
+        - enabled
+        - personaId
+        - displayName
+        - label
+        - openingLine
+        - suggestedQuestions
+        - boundary
+        - grounding
+      properties:
+        enabled:
+          type: boolean
+        personaId:
+          type: string
+        displayName:
+          type: string
+        label:
+          type: string
+          example: 基于公开内容生成
+        openingLine:
+          type: string
+        suggestedQuestions:
+          type: array
+          items:
+            type: string
+        boundary:
+          type: string
+          description: Must explain that the persona does not represent the original author.
+          example: 这是基于知乎公开内容生成的经验回应，不代表作者本人。
+        grounding:
+          $ref: "#/components/schemas/PersonaGrounding"
+    PersonaGrounding:
+      type: object
+      required:
+        - personId
+        - articleIds
+        - evidenceRequired
+      properties:
+        personId:
+          type: string
+        articleIds:
+          type: array
+          items:
+            type: string
+        evidenceRequired:
+          type: boolean
+    PersonaIndex:
+      type: object
+      required:
+        - personaId
+        - personId
+        - displayName
+        - entryType
+      properties:
+        personaId:
+          type: string
+        personId:
+          type: string
+        displayName:
+          type: string
+        entryType:
+          type: string
+          enum:
+            - chat
+            - disabled
     DemoSection:
       type: object
       required:
         - id
+        - type
         - title
         - cards
       properties:
         id:
           type: string
+        type:
+          type: string
+          enum:
+            - analysis
+            - path_map
+            - people_samples
+            - ai_personas
+            - article_reader
+            - build_prompt
         title:
           type: string
         description:
@@ -800,43 +1272,32 @@ components:
         cards:
           type: array
           items:
-            $ref: "#/components/schemas/DemoCard"
-    DemoCard:
+            $ref: "#/components/schemas/SectionCard"
+    SectionCard:
       type: object
       required:
         - id
         - type
         - title
         - summary
-        - evidence
       properties:
         id:
           type: string
         type:
           type: string
           enum:
+            - analysis
             - person
-            - content
             - path
-            - build_prompt
+            - persona
+            - article
         title:
           type: string
         summary:
           type: string
-        tags:
-          type: array
-          items:
-            type: string
-        evidence:
-          $ref: "#/components/schemas/SearchEvidence"
-        blocks:
-          type: array
-          items:
-            $ref: "#/components/schemas/Block"
-        actions:
-          type: array
-          items:
-            $ref: "#/components/schemas/Action"
+        targetId:
+          type: string
+          description: References a path id, person id, persona id or article id.
     Block:
       type: object
       required:
@@ -854,23 +1315,106 @@ components:
           type: string
         source:
           $ref: "#/components/schemas/SearchSource"
-    Action:
+    PersonaChatRequest:
       type: object
       required:
-        - type
-        - label
+        - queryId
+        - personId
+        - personaId
+        - message
       properties:
-        type:
+        queryId:
+          type: string
+        personId:
+          type: string
+        personaId:
+          type: string
+        message:
+          type: string
+          minLength: 1
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatHistoryMessage"
+    ChatHistoryMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
           type: string
           enum:
-            - open_url
-            - view_detail
-            - ask_followup
-        label:
+            - user
+            - assistant
+        content:
           type: string
-        url:
+    PersonaChatSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PersonaChatData"
+    PersonaChatData:
+      type: object
+      required:
+        - messageId
+        - personaId
+        - personId
+        - answer
+        - answerType
+        - citedArticleIds
+        - evidence
+        - followupQuestions
+        - boundary
+      properties:
+        messageId:
           type: string
-        targetId:
+        personaId:
+          type: string
+        personId:
+          type: string
+        answer:
+          type: string
+          description: Grounded response based on public articles/evidence, not the author's own live reply.
+        answerType:
+          type: string
+          enum:
+            - grounded_summary
+            - insufficient_evidence
+            - mock_stub
+        citedArticleIds:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatEvidence"
+        followupQuestions:
+          type: array
+          items:
+            type: string
+        boundary:
+          type: string
+          example: 这是基于知乎公开内容生成的经验回应，不代表作者本人。
+    ChatEvidence:
+      type: object
+      required:
+        - articleId
+        - text
+        - sourceUrl
+      properties:
+        articleId:
+          type: string
+        text:
+          type: string
+        sourceUrl:
           type: string
     ResponseMeta:
       type: object
@@ -885,3 +1429,33 @@ components:
           format: date-time
         traceId:
           type: string
+        sourcePolicy:
+          type: string
+          description: Explains that AI is not a fact source and evidence is required.
+        peopleCount:
+          type: integer
+          minimum: 0
+        pathCount:
+          type: integer
+          minimum: 0
+        llmEnabled:
+          type: boolean
+        zhihuKeyPresent:
+          type: boolean
+        latencyMs:
+          type: integer
+          minimum: 0
+    DemoDebug:
+      type: object
+      additionalProperties: true
+      properties:
+        stubbed:
+          type: boolean
+        searchQueries:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
