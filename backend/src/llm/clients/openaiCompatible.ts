@@ -11,6 +11,8 @@ export interface JsonCompletionInput {
   messages: LlmMessage[];
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
+  maxRetry?: number;
   responseFormat?: JsonResponseFormat;
   taskType: string;
 }
@@ -45,7 +47,7 @@ export async function createOpenAICompatibleJsonCompletion(
 ): Promise<string> {
   assertConfigured(provider, config);
 
-  const attempts = Math.max(config.maxRetry, 0) + 1;
+  const attempts = Math.max(input.maxRetry ?? config.maxRetry, 0) + 1;
   let lastError: unknown;
   let responseFormatFallbackUsed = false;
 
@@ -89,7 +91,7 @@ async function requestJsonCompletion(
   input: JsonCompletionInput
 ): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? config.timeoutMs);
 
   try {
     const response = await fetch(toChatCompletionsUrl(config.baseUrl), {

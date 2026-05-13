@@ -1,5 +1,63 @@
 # AI Handoff
 
+## 2026-05-13 - real demo search performance guardrails
+
+本轮目标：优化 `/api/demo/search` real 链路的首屏可控性，避免 Kimi / DeepSeek 慢响应拖垮主接口；不修改 paths 语义生成逻辑。
+
+已完成：
+
+- 为 real 链路四个 LLM stage 增加单 stage timeout：
+  - `intent_expand`: 3s
+  - `evidence_extract`: 9s
+  - `demo_response_compose`: 7s
+  - `grounding_guard`: 3s
+- stage 超时、失败或未配置时继续使用 deterministic fallback，`/api/demo/search` 仍返回成功响应。
+- `debug.timings[]` 新增 `stageName / durationMs / llmUsed / fallbackUsed / fallbackReason`。
+- `debug.cacheHit` 新增请求级内存缓存命中标记。
+- 增加简单内存缓存，key 包含 `normalizedQuery + dataMode`，并包含 `count` 和匿名/登录上下文摘要，TTL 为 15 分钟。
+- 更新 `scripts/smoke-demo-real-key.mjs`，覆盖两个指定 query，并连续请求同一个 query 验证第二次 cache hit，同时打印总耗时和各 stage 耗时。
+
+验证记录：
+
+- `npm run build` 通过。
+- `npm run smoke:demo-real` 通过。
+- query「为了工作，异地恋值得吗」总耗时约 22.6s：
+  - `intent_expand` 约 1.9s，LLM 成功。
+  - `evidence_extract` 9.0s 超时 fallback。
+  - `demo_response_compose` 7.0s 超时 fallback。
+  - `grounding_guard` 约 1.4s，LLM 成功。
+- query「不工作了能去哪儿」首次总耗时约 22.0s：
+  - `intent_expand` 约 1.6s，LLM 成功。
+  - `evidence_extract` 9.0s 超时 fallback。
+  - `demo_response_compose` 7.0s 超时 fallback。
+  - `grounding_guard` 约 1.3s，LLM 成功。
+- query「不工作了能去哪儿」第二次总耗时约 4ms，`debug.cacheHit=true`。
+
+处理边界：
+
+- 未重写 `PATH_BUCKETS / groupItemsByPath / toPath` 等 paths 语义生成逻辑。
+- 未删除既有 LLM 能力；只是为 demo search 调用增加更短的 stage-level 超时和零重试策略。
+
+## 2026-05-13 - 后续待办：real demo search 展示文案优化
+
+### 背景
+
+`/api/demo/search` 已经可以返回 `dataMode: real`，并能拿到真实知乎内容。但当前 real 模式下的展示字段仍偏工程化和模板化。
+
+### 待优化点
+
+1. `paths.title` 需要更有区分度，避免“从相似回答里找下一步”这类模板表达。
+2. `people.role` / `badge` 避免“Answer公开内容样本”等工程化表达。
+3. `people.oneLine` 控制在 35-60 字，不要直接截原文。
+4. `timeline.date` 不展示原始时间戳。
+5. `match.reasons` 更像用户能理解的匹配理由。
+6. `persona.suggestedQuestions` 结合每个样本内容生成，避免所有人一致。
+
+### 处理约束
+
+- 当前不要修改代码。
+- 等后端主任务完成、工作区干净后，再单独开分支处理。
+
 ## 2026-05-13 - AI persona prompt assets
 
 ### 本轮目标

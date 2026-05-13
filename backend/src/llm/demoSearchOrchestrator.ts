@@ -12,6 +12,7 @@ import {
   type DemoDebugFallbackKind,
   type DemoDebugIntentStage,
   type DemoDebugLlmStageResult,
+  type DemoDebugTiming,
   type DemoPerson,
   type DemoPersona,
   type DemoSearchResponse,
@@ -62,6 +63,10 @@ interface StageRunResult<T> {
   stageResult: DemoDebugLlmStageResult;
 }
 
+interface TimedStageRunResult<T> extends StageRunResult<T> {
+  durationMs: number;
+}
+
 interface ComposeApplyStats {
   focusTagCount: number;
   pathCount: number;
@@ -78,15 +83,23 @@ interface LlmFallbackSummary {
 const MAX_SEARCH_QUERIES = 4;
 const MAX_REAL_ITEMS = 12;
 const MIN_CONTENT_LENGTH = 8;
+const DEMO_LLM_STAGE_TIMEOUT_MS: Partial<Record<LlmTaskType, number>> = {
+  intent_expand: 3000,
+  evidence_extract: 9000,
+  demo_response_compose: 7000,
+  grounding_guard: 3000
+};
 
 export async function composeMultiLlmDemoSearchResponse(
   input: ComposeMultiLlmDemoSearchInput
 ): Promise<DemoSearchResponse> {
   const stageResults: DemoDebugLlmStageResult[] = [];
+  const timings: DemoDebugTiming[] = [];
   const guardWarnings: string[] = [];
 
-  const intentStage = await runIntentExpandStage(input.query, input.userContext);
+  const intentStage = await runTimedStage(() => runIntentExpandStage(input.query, input.userContext));
   stageResults.push(intentStage.stageResult);
+  timings.push(createStageTiming(intentStage));
 
   const searchItems = await searchByExpandedQueries(
     input.query,
@@ -113,24 +126,31 @@ export async function composeMultiLlmDemoSearchResponse(
   });
 
   const candidates = buildCleanedCandidatesFromResponse(response);
-  const evidenceStage = await runEvidenceExtractStage(input.query, intentStage.output, candidates);
+  const evidenceStage = await runTimedStage(() =>
+    runEvidenceExtractStage(input.query, intentStage.output, candidates)
+  );
   stageResults.push(evidenceStage.stageResult);
+  timings.push(createStageTiming(evidenceStage));
 
-  const composeStage = await runDemoResponseComposeStage(
-    input.query,
-    intentStage.output,
-    evidenceStage.output,
-    response,
-    candidates,
-    input.userContext
+  const composeStage = await runTimedStage(() =>
+    runDemoResponseComposeStage(
+      input.query,
+      intentStage.output,
+      evidenceStage.output,
+      response,
+      candidates,
+      input.userContext
+    )
   );
   stageResults.push(composeStage.stageResult);
+  timings.push(createStageTiming(composeStage));
 
   const applyStats = applyDemoResponseComposeOutput(response, composeStage.output, guardWarnings);
   syncTopLevelPersonas(response);
 
-  const groundingStage = await runGroundingGuardStage(response);
+  const groundingStage = await runTimedStage(() => runGroundingGuardStage(response));
   stageResults.push(groundingStage.stageResult);
+  timings.push(createStageTiming(groundingStage));
   applyGroundingGuardOutput(response, groundingStage.output, guardWarnings);
   applyRuleGroundingGuard(response, guardWarnings);
   syncTopLevelPersonas(response);
@@ -161,6 +181,7 @@ export async function composeMultiLlmDemoSearchResponse(
     llmRepairUsed: false,
     llmRepairFailed: false,
     llmStageResults: stageResults,
+    timings,
     enhancedPeopleCount: applyStats.peopleCount + applyStats.personaCount,
     enhancedPathCount: applyStats.pathCount,
     partialFallbackUsed: fallbackSummary.kind === "partial_llm_fallback",
@@ -195,6 +216,75 @@ export function hasPersonaChatLlm(): boolean {
   return llmRouter.isTaskConfigured("persona_chat");
 }
 
+async function runTimedStage<T>(
+  task: () => Promise<StageRunResult<T>>
+): Promise<TimedStageRunResult<T>> {
+  const startedAt = Date.now();
+  const result = await task();
+  return {
+    ...result,
+    durationMs: Date.now() - startedAt
+  };
+}
+
+function createStageTiming(result: TimedStageRunResult<unknown>): DemoDebugTiming {
+  const fallbackUsed = result.stageResult.attempted === 0 || result.stageResult.failed > 0;
+  return {
+    stageName: result.stageResult.stage,
+    durationMs: result.durationMs,
+    llmUsed: result.stageResult.succeeded > 0,
+    fallbackUsed,
+    fallbackReason: fallbackUsed ? result.stageResult.fallbackReasons.join("; ") : ""
+  };
+}
+
+async function runJsonTaskWithStageTimeout(
+  taskType: LlmTaskType,
+  input: Parameters<typeof llmRouter.runJsonTask>[1]
+): Promise<string> {
+  const timeoutMs = DEMO_LLM_STAGE_TIMEOUT_MS[taskType] ?? 8000;
+  return withTimeout(
+    llmRouter.runJsonTask(taskType, {
+      ...input,
+      timeoutMs,
+      maxRetry: 0
+    }),
+    taskType,
+    timeoutMs
+  );
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  taskType: LlmTaskType,
+  timeoutMs: number
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new LlmStageTimeoutError(taskType, timeoutMs)),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+class LlmStageTimeoutError extends Error {
+  constructor(taskType: LlmTaskType, timeoutMs: number) {
+    super(`${taskType} exceeded ${timeoutMs}ms stage timeout`);
+    this.name = "LlmStageTimeoutError";
+  }
+}
+
 async function runIntentExpandStage(
   query: string,
   userContext?: UserContext
@@ -208,7 +298,7 @@ async function runIntentExpandStage(
   }
 
   try {
-    const content = await llmRouter.runJsonTask("intent_expand", {
+    const content = await runJsonTaskWithStageTimeout("intent_expand", {
       temperature: 0.1,
       maxTokens: 800,
       messages: [
@@ -259,7 +349,7 @@ async function runEvidenceExtractStage(
   }
 
   try {
-    const content = await llmRouter.runJsonTask("evidence_extract", {
+    const content = await runJsonTaskWithStageTimeout("evidence_extract", {
       temperature: 0.1,
       maxTokens: 3000,
       messages: [
@@ -310,7 +400,7 @@ async function runDemoResponseComposeStage(
   }
 
   try {
-    const content = await llmRouter.runJsonTask("demo_response_compose", {
+    const content = await runJsonTaskWithStageTimeout("demo_response_compose", {
       temperature: 0.2,
       maxTokens: 3600,
       messages: [
@@ -364,7 +454,7 @@ async function runGroundingGuardStage(
   }
 
   try {
-    const content = await llmRouter.runJsonTask("grounding_guard", {
+    const content = await runJsonTaskWithStageTimeout("grounding_guard", {
       temperature: 0,
       maxTokens: 1400,
       messages: [

@@ -81,6 +81,7 @@ export class DemoSearchService {
           "fit_reason"
         ]);
         response.meta.latencyMs = Date.now() - startedAt;
+        response.debug.timings = [];
         assertDemoSearchGrounding(response);
         return cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
       }

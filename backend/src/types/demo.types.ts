@@ -221,6 +221,7 @@ export interface DemoDebug {
   llmRepairUsed?: boolean;
   llmRepairFailed?: boolean;
   llmStageResults?: DemoDebugLlmStageResult[];
+  timings?: DemoDebugTiming[];
   enhancedPeopleCount?: number;
   enhancedPathCount?: number;
   partialFallbackUsed?: boolean;
@@ -230,6 +231,22 @@ export interface DemoDebug {
   fallbackReason: string;
   guardWarnings: string[];
   notes: string[];
+}
+
+export interface DemoDebugTiming {
+  stageName:
+    | "intent_expand"
+    | "evidence_extract"
+    | "demo_response_compose"
+    | "grounding_guard"
+    | "persona_chat"
+    | "path_enhancer"
+    | "people_enhancer"
+    | "persona_enhancer";
+  durationMs: number;
+  llmUsed: boolean;
+  fallbackUsed: boolean;
+  fallbackReason: string;
 }
 
 export interface DemoDebugIntentStage {
