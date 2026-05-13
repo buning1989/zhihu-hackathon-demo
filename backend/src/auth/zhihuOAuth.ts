@@ -8,6 +8,13 @@ export interface ZhihuAccessToken {
   raw: unknown;
 }
 
+interface TokenExchangeLogContext {
+  redirectUri: string;
+  appId: string;
+  grantType: "authorization_code";
+  hasCode: boolean;
+}
+
 export function buildZhihuAuthorizationUrl(state: string): string {
   assertZhihuOAuthConfigured();
 
@@ -41,7 +48,13 @@ export async function exchangeCodeForToken(code: string): Promise<ZhihuAccessTok
       body
     },
     "ZHIHU_OAUTH_TOKEN_FAILED",
-    "知乎 OAuth token 请求失败"
+    "知乎 OAuth token 请求失败",
+    {
+      redirectUri: config.zhihu.redirectUri,
+      appId: config.zhihu.appId,
+      grantType: "authorization_code",
+      hasCode: Boolean(code)
+    }
   );
 
   const payload = unwrapData(responseBody);
@@ -114,7 +127,8 @@ async function requestZhihuJson(
   url: URL,
   init: RequestInit,
   errorCode: string,
-  fallbackMessage: string
+  fallbackMessage: string,
+  tokenExchangeLogContext?: TokenExchangeLogContext
 ): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.zhihu.timeoutMs);
@@ -128,6 +142,10 @@ async function requestZhihuJson(
     const apiCode = readApiCode(body);
 
     if (!response.ok || (apiCode !== null && apiCode >= 400)) {
+      if (tokenExchangeLogContext) {
+        logTokenExchangeFailure(response.status, body, tokenExchangeLogContext);
+      }
+
       throw new HttpError(
         mapZhihuErrorStatus(response.status, apiCode),
         errorCode,
@@ -142,13 +160,78 @@ async function requestZhihuJson(
     }
 
     if (error instanceof Error && error.name === "AbortError") {
+      if (tokenExchangeLogContext) {
+        logTokenExchangeFailure(null, null, tokenExchangeLogContext);
+      }
+
       throw new HttpError(504, "ZHIHU_OAUTH_TIMEOUT", "知乎 OAuth 请求超时");
+    }
+
+    if (tokenExchangeLogContext) {
+      logTokenExchangeFailure(null, null, tokenExchangeLogContext);
     }
 
     throw new HttpError(502, errorCode, fallbackMessage);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function logTokenExchangeFailure(
+  httpStatus: number | null,
+  responseBody: unknown,
+  context: TokenExchangeLogContext
+): void {
+  console.error("[ZhihuOAuth] token exchange failed", {
+    httpStatus,
+    responseBody: sanitizeForLog(responseBody),
+    redirectUri: context.redirectUri,
+    appId: context.appId,
+    grantType: context.grantType,
+    hasCode: context.hasCode
+  });
+}
+
+function sanitizeForLog(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForLog(item));
+  }
+
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        shouldRedactLogEntry(key, item) ? "[REDACTED]" : sanitizeForLog(item)
+      ])
+    );
+  }
+
+  if (typeof value === "string") {
+    return value
+      .replace(
+        /("?(?:access_token|app_key|authorization_code)"?\s*[:=]\s*")([^"]*)(")/gi,
+        "$1[REDACTED]$3"
+      )
+      .replace(/((?:access_token|app_key|authorization_code)=)([^&\s]+)/gi, "$1[REDACTED]");
+  }
+
+  return value;
+}
+
+function shouldRedactLogEntry(key: string, value: unknown): boolean {
+  if (["access_token", "accessToken", "app_key", "appKey", "authorization_code"].includes(key)) {
+    return true;
+  }
+
+  if (key !== "code") {
+    return false;
+  }
+
+  if (typeof value === "number") {
+    return false;
+  }
+
+  return !(typeof value === "string" && /^\d{3}$/.test(value));
 }
 
 function parseJsonBody(bodyText: string): unknown {
