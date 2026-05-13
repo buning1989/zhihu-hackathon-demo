@@ -39,6 +39,10 @@ export class LlmRouter {
     return getClientForTask(taskType).provider;
   }
 
+  getModelForTask(taskType: LlmTaskType): string {
+    return getClientForTask(taskType).model;
+  }
+
   async runJsonTask(
     taskType: LlmTaskType,
     input: Omit<JsonCompletionInput, "taskType">

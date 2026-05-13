@@ -193,12 +193,29 @@ export function createMockDemoSearchResponse(
       enhancedPeopleCount: 0,
       enhancedPathCount: 0,
       partialFallbackUsed: false,
+      intentStage: buildMockIntentStageDebug(dataMode, options),
       fallbackUsed: options.fallbackUsed ?? false,
       fallbackReason: options.fallbackReason ?? "",
       guardWarnings: options.guardWarnings ?? [],
       notes: options.notes ?? ["mock demo data; no LLM or Zhihu API required"]
     }
   };
+}
+
+function buildMockIntentStageDebug(dataMode: DemoDataMode, options: MockOptions) {
+  const fallbackReason =
+    options.fallbackReason ||
+    (dataMode === "cache_first"
+      ? "cache_first currently uses deterministic mock analysis; no LLM intent planner invoked"
+      : "mock mode uses deterministic static analysis; no LLM intent planner invoked");
+
+  return {
+    mode: options.fallbackUsed ? "fallback" : "rule",
+    llmUsed: false,
+    fallbackReason,
+    intentSource: "rule",
+    focusTagsSource: "rule"
+  } as const;
 }
 
 function buildMockPaths() {

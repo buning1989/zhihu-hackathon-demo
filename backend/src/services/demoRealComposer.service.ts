@@ -164,6 +164,14 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       enhancedPeopleCount: 0,
       enhancedPathCount: 0,
       partialFallbackUsed: false,
+      intentStage: {
+        mode: "rule",
+        llmUsed: false,
+        fallbackReason:
+          "real rule composer initialized analysis.intent and focusTags from deterministic path grouping",
+        intentSource: "rule",
+        focusTagsSource: "rule"
+      },
       fallbackUsed: false,
       fallbackReason: "",
       guardWarnings: [],

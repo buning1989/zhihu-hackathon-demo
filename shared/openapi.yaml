@@ -1449,6 +1449,8 @@ components:
       type: object
       additionalProperties: true
       properties:
+        intentStage:
+          $ref: "#/components/schemas/DemoDebugIntentStage"
         stubbed:
           type: boolean
         searchQueries:
@@ -1459,3 +1461,37 @@ components:
           type: array
           items:
             type: string
+    DemoDebugIntentStage:
+      type: object
+      required:
+        - mode
+        - llmUsed
+        - fallbackReason
+      properties:
+        mode:
+          type: string
+          enum:
+            - rule
+            - llm
+            - hybrid
+            - fallback
+        llmUsed:
+          type: boolean
+        provider:
+          type: string
+          description: LLM provider for the intent/planning stage when known.
+        model:
+          type: string
+          description: LLM model for the intent/planning stage when known.
+        fallbackReason:
+          type: string
+        intentSource:
+          type: string
+          enum:
+            - rule
+            - llm
+        focusTagsSource:
+          type: string
+          enum:
+            - rule
+            - llm

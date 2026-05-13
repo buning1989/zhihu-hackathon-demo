@@ -202,9 +202,20 @@ export interface DemoDebug {
   enhancedPeopleCount?: number;
   enhancedPathCount?: number;
   partialFallbackUsed?: boolean;
+  intentStage: DemoDebugIntentStage;
   fallbackReason: string;
   guardWarnings: string[];
   notes: string[];
+}
+
+export interface DemoDebugIntentStage {
+  mode: "rule" | "llm" | "hybrid" | "fallback";
+  llmUsed: boolean;
+  provider?: string;
+  model?: string;
+  fallbackReason: string;
+  intentSource: "rule" | "llm";
+  focusTagsSource: "rule" | "llm";
 }
 
 export interface DemoDebugLlmStageResult {

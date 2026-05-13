@@ -4,6 +4,7 @@ import { searchService } from "../services/search.service.js";
 import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoDataMode,
+  type DemoDebugIntentStage,
   type DemoDebugLlmStageResult,
   type DemoPerson,
   type DemoPersona,
@@ -54,6 +55,7 @@ interface StageRunResult<T> {
 }
 
 interface ComposeApplyStats {
+  focusTagCount: number;
   pathCount: number;
   peopleCount: number;
   personaCount: number;
@@ -142,6 +144,11 @@ export async function composeMultiLlmDemoSearchResponse(
     enhancedPeopleCount: applyStats.peopleCount + applyStats.personaCount,
     enhancedPathCount: applyStats.pathCount,
     partialFallbackUsed: fallbackSummary.kind === "partial_llm_fallback",
+    intentStage: buildIntentStageDebug(
+      intentStage.stageResult,
+      composeStage.stageResult,
+      applyStats.focusTagCount > 0
+    ),
     fallbackUsed: fallbackSummary.used,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
@@ -525,6 +532,7 @@ function applyDemoResponseComposeOutput(
   guardWarnings: string[]
 ): ComposeApplyStats {
   const stats: ComposeApplyStats = {
+    focusTagCount: 0,
     pathCount: 0,
     peopleCount: 0,
     personaCount: 0
@@ -536,6 +544,7 @@ function applyDemoResponseComposeOutput(
 
   if (output.analysis?.focusTags?.length) {
     response.analysis.focusTags = output.analysis.focusTags.filter(isSafeText).slice(0, 8);
+    stats.focusTagCount = response.analysis.focusTags.length;
   }
 
   const pathById = new Map(response.paths.map((path) => [path.id, path]));
@@ -893,6 +902,73 @@ function summarizeFallbackDetails(stageResults: DemoDebugLlmStageResult[]): stri
     .join("; ");
 
   return details ? `details=${details}` : "";
+}
+
+function buildIntentStageDebug(
+  intentStageResult: DemoDebugLlmStageResult,
+  composeStageResult: DemoDebugLlmStageResult,
+  focusTagsUpdatedByLlm: boolean
+): DemoDebugIntentStage {
+  const intentExpandLlmUsed = intentStageResult.succeeded > 0;
+  const focusTagsLlmUsed = focusTagsUpdatedByLlm && composeStageResult.succeeded > 0;
+  const llmUsed = intentExpandLlmUsed || focusTagsLlmUsed;
+  const mode: DemoDebugIntentStage["mode"] = llmUsed ? "hybrid" : "fallback";
+
+  return {
+    mode,
+    llmUsed,
+    provider: llmRouter.getProviderForTask("intent_expand"),
+    model: llmRouter.getModelForTask("intent_expand"),
+    fallbackReason: summarizeIntentStageReason(
+      intentStageResult,
+      composeStageResult,
+      intentExpandLlmUsed,
+      focusTagsLlmUsed
+    ),
+    intentSource: "rule",
+    focusTagsSource: focusTagsLlmUsed ? "llm" : "rule"
+  };
+}
+
+function summarizeIntentStageReason(
+  intentStageResult: DemoDebugLlmStageResult,
+  composeStageResult: DemoDebugLlmStageResult,
+  intentExpandLlmUsed: boolean,
+  focusTagsLlmUsed: boolean
+): string {
+  const fallbackStages = [intentStageResult, composeStageResult].filter(
+    (result) => result.attempted === 0 || result.failed > 0
+  );
+  const fallbackDetails = summarizeFallbackDetails(fallbackStages);
+
+  if (intentExpandLlmUsed && focusTagsLlmUsed) {
+    return "intent_expand LLM planned search queries and demo_response_compose LLM updated focusTags; analysis.intent remains rule-generated";
+  }
+
+  if (intentExpandLlmUsed) {
+    return [
+      "intent_expand LLM planned search queries; analysis.intent and focusTags remain rule-generated",
+      fallbackDetails
+    ]
+      .filter(Boolean)
+      .join(". ");
+  }
+
+  if (focusTagsLlmUsed) {
+    return [
+      "demo_response_compose LLM updated focusTags; analysis.intent remains rule-generated",
+      fallbackDetails
+    ]
+      .filter(Boolean)
+      .join(". ");
+  }
+
+  return [
+    "deterministic rule analysis used for analysis.intent and focusTags",
+    fallbackDetails
+  ]
+    .filter(Boolean)
+    .join(". ");
 }
 
 function inferIntentTags(query: string): string[] {
