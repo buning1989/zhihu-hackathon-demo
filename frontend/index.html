@@ -2436,10 +2436,7 @@
     const peepBase = "assets/mirofish-character-svgs/";
     const crowdPeepIds = [2, 4, 7, 11, 15, 21, 24, 31, 36, 42, 48, 55, 59, 66, 72, 78, 84, 90, 96, 101, 105];
     const queryPrompts = [
-      "不工作了之后，我想去新西兰生活",
-      "为了工作，异地恋值得吗？",
-      "有什么值得白领尝试的体力劳动",
-      "30岁裸辞后怎么办"
+      "不工作了之后，我想去新西兰生活"
     ];
     const AUTH_LOGIN_URL = "http://127.0.0.1:8000/auth/zhihu/login";
     const API_BASE = window.LIFE_PATH_API_BASE || "http://127.0.0.1:8000";
@@ -2796,9 +2793,7 @@
     }
 
     function pathPeople(pathId, limit = Infinity) {
-      const matched = people.filter((person) => person.pathId === pathId);
-      const pool = matched.length ? matched : people;
-      return pool.slice(0, limit);
+      return peopleForPath(pathId).slice(0, limit);
     }
 
     function normalizeTimeline(value) {
@@ -3308,11 +3303,6 @@
       return score <= 1 ? `${Math.round(score * 100)}%` : `${Math.round(score)}%`;
     }
 
-    function renderDataModeStatus() {
-      const statusLabel = state.backendStatus === "mock" ? "fallback" : state.backendStatus;
-      return `<p class="meta-line">dataMode: ${escapeHtml(state.dataMode)} · backend: ${escapeHtml(statusLabel)}</p>`;
-    }
-
     function getPath(id = state.selectedPathId) {
       return paths.find((item) => item.id === id) || paths[0] || normalizePath({ name: "未知路径" });
     }
@@ -3334,8 +3324,9 @@
     }
 
     function peopleForPath(pathId = state.selectedPathId) {
-      const matched = people.filter((person) => person.pathId === pathId);
-      return matched.length ? matched : people;
+      const path = paths.find((item) => item.id === pathId);
+      const personRefs = new Set(toArray(path?.personRefs).map(String));
+      return people.filter((person) => person.pathId === pathId || personRefs.has(person.id));
     }
 
     function setPage(page) {
@@ -3496,7 +3487,6 @@
         <section class="screen home">
           <div class="center-stack">
             <h1>有什么让你纠结了很久的事？越具体越好</h1>
-            ${renderDataModeStatus()}
             <div class="question-card ${state.homeInputTouched ? "is-editing" : ""}" data-active-prompt="${escapeHtml(prompt)}">
               <label class="sr-only" for="questionInput">输入真实困惑</label>
               <textarea id="questionInput" class="question-input" data-prompt="${escapeHtml(prompt)}"></textarea>
@@ -3509,7 +3499,6 @@
     }
 
     function renderLoading() {
-      const steps = state.analysisSteps.length ? state.analysisSteps : defaultAnalysisSteps(state.question);
       return `
         <section class="screen loading">
           <div class="loading-panel">
@@ -3517,15 +3506,6 @@
               <h1>正在寻找可能与你有相似经历的知友……</h1>
               <span class="pulse-dot" aria-hidden="true"></span>
             </div>
-            ${renderDataModeStatus()}
-            <div class="fingerprint-steps">
-              ${steps.map((step, index) => `
-                <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}">
-                  <strong>${step.title}：</strong>${step.text}
-                </div>
-              `).join("")}
-            </div>
-            ${state.focusTags.length ? `<div class="tag-row" aria-label="关注变量">${renderDataChips(state.focusTags)}</div>` : ""}
           </div>
           ${renderCrowd()}
         </section>
@@ -3588,7 +3568,6 @@
         <section class="screen paths-screen ${state.pathExpanded ? "has-expanded" : "is-overview"}">
           <div class="paths-copy">
             <h1>关于「${escapeHtml(state.question)}」，TA 们是这样做的...</h1>
-            ${renderDataModeStatus()}
           </div>
           <div class="path-showcase" aria-label="前人路径">
             ${renderPathCards(sortedPaths)}
@@ -3599,8 +3578,6 @@
                 <div>
                   <h1>${escapeHtml(selectedPath.name)}的人</h1>
                   <p>${escapeHtml(selectedPath.desc)}</p>
-                  ${selectedPath.fitReason ? `<p class="meta-line">${escapeHtml(selectedPath.fitReason)}</p>` : ""}
-                  ${renderSourceLine(selectedPath.sourceRefs)}
                 </div>
               </div>
               <div class="path-showcase is-expanded" aria-label="${escapeHtml(selectedPath.name)}的前人样本库">
@@ -3620,7 +3597,7 @@
             <span class="path-index">${String(index + 1).padStart(2, "0")}</span>
             <h2>${escapeHtml(path.name)}</h2>
           </div>
-          <span class="path-count">${path.count} 人走过</span>
+          <span class="path-count">${pathPeople(path.id).length} 人走过</span>
           <p class="path-desc">${escapeHtml(path.desc)}</p>
           <span class="path-card-peeps" aria-hidden="true">
             ${pathPeople(path.id, 4).map((person) => `<img src="${avatarSrc(person.avatar)}" alt="">`).join("")}
@@ -3678,8 +3655,7 @@
       const selectedPath = getPath();
       const visible = peopleForPath(selectedPath.id);
       const selectedPerson = state.selectedPersonId ? getPerson() : null;
-      const baseRailPeople = [...visible, ...people.filter((person) => !visible.some((item) => item.id === person.id))];
-      return selectedPerson ? baseRailPeople.filter((person) => person.id !== selectedPerson.id) : baseRailPeople;
+      return selectedPerson ? visible.filter((person) => person.id !== selectedPerson.id) : visible;
     }
 
     function renderSampleStage() {
@@ -3691,7 +3667,6 @@
           <div class="sample-rail">
             <div class="sample-track">
               ${railPeople.map((person, index) => renderSamplePerson(person, index)).join("")}
-              ${railPeople.map((person, index) => renderSamplePerson(person, index + 4)).join("")}
             </div>
           </div>
           ${selectedPerson ? `<div class="person-card-shell" id="personCardShell">${renderPersonCard(selectedPerson)}</div>` : ""}
