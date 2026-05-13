@@ -874,10 +874,34 @@
       position: relative;
       z-index: 10;
       display: grid;
+      margin: 42px auto 0;
+    }
+
+    .path-showcase.path-count-2 {
+      grid-template-columns: repeat(2, minmax(340px, 400px));
+      justify-content: center;
+      gap: 24px;
+      width: min(900px, 100%);
+    }
+
+    .path-showcase.path-count-3 {
+      grid-template-columns: repeat(3, minmax(300px, 360px));
+      justify-content: center;
+      gap: 22px;
+      width: min(1120px, 100%);
+    }
+
+    .path-showcase.path-count-4 {
+      grid-template-columns: repeat(2, minmax(340px, 420px));
+      justify-content: center;
+      gap: 24px;
+      width: min(940px, 100%);
+    }
+
+    .path-showcase.path-count-5 {
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 16px;
       width: min(1180px, 100%);
-      margin: 42px auto 0;
     }
 
     .path-showcase.is-expanded {
@@ -911,11 +935,48 @@
       max-width: 100%;
     }
 
+    .sample-library-title {
+      width: min(1180px, 100%);
+      margin: 34px auto 0;
+      color: var(--text);
+      font-size: 24px;
+      line-height: 1.25;
+    }
+
+    .empty-result-panel {
+      position: relative;
+      z-index: 10;
+      width: min(760px, 100%);
+      margin: 12vh auto 0;
+      padding: 42px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      text-align: center;
+      background: #ffffff;
+      box-shadow: var(--shadow-card);
+    }
+
+    .empty-result-panel h1 {
+      font-size: 42px;
+      line-height: 1.14;
+    }
+
+    .empty-result-panel p {
+      max-width: 560px;
+      margin: 18px auto 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.78;
+    }
+
     .path-card {
       position: relative;
       display: flex;
       flex-direction: column;
-      min-height: 320px;
+      width: 100%;
+      min-width: 300px;
+      max-width: 420px;
+      min-height: 360px;
       padding: 20px 22px 104px;
       overflow: hidden;
       border: 1px solid var(--line);
@@ -925,6 +986,14 @@
       background: rgba(255, 255, 255, 0.78);
       box-shadow: 0 16px 48px rgba(52, 43, 32, 0.07);
       transition: opacity 240ms ease, transform 240ms var(--ease), border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
+    }
+
+    .path-showcase.path-count-2 .path-card {
+      max-width: 400px;
+    }
+
+    .path-showcase.path-count-5 .path-card {
+      min-width: 220px;
     }
 
     .paths-screen.is-overview .path-card,
@@ -1026,10 +1095,14 @@
     .path-desc {
       position: relative;
       z-index: 2;
+      display: -webkit-box;
       margin-top: 12px;
+      overflow: hidden;
       color: var(--muted);
       font-size: 15px;
       line-height: 1.68;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
     }
 
     .path-card-peeps {
@@ -2680,6 +2753,7 @@
       selectedPathId: "trial",
       selectedPersonId: "",
       pathExpanded: false,
+      skipPathShowcase: false,
       readerOpen: false,
       askPanelOpen: false,
       readerArticleIndex: 0,
@@ -2698,7 +2772,7 @@
 
     const previewParams = PAGE_PARAMS;
     const previewPage = previewParams.get("page");
-    if (["home", "loading", "paths", "samples", "chat", "library", "community"].includes(previewPage)) {
+    if (["home", "loading", "paths", "samples", "chat", "library", "community", "empty"].includes(previewPage)) {
       state.page = previewPage;
       state.loadingStep = previewPage === "loading" ? 3 : state.loadingStep;
     }
@@ -2868,17 +2942,21 @@
     function normalizePerson(item = {}, index = 0, fallbackPathId = "") {
       const name = item.name || item.nickname || item.displayName || item.authorName || `样本 ${index + 1}`;
       const pathName = item.pathName || item.path_name || item.path?.name;
+      const derivedPathId = pathName ? slugify(pathName, `path_${index + 1}`) : "";
       const matchedPath = pathName ? paths.find((path) => path.name === pathName) : null;
-      const pathId = item.pathId || item.path_id || item.routeId || item.route_id || item.path?.id || matchedPath?.id || fallbackPathId || paths[0]?.id || "";
+      const pathId = item.pathId || item.path_id || item.routeId || item.route_id || item.path?.id || matchedPath?.id || derivedPathId || fallbackPathId || paths[0]?.id || "";
       const aiPersona = item.aiPersona || item.ai_persona || item.persona || {};
       const match = item.match || {};
       const matchReasons = toArray(match.reasons || match.reason || item.matchReasons || item.match_reasons);
       const overlaps = toArray(item.overlaps || item.similarities || item.reasons || matchReasons);
       const fitReason = textOf(item.fitReason || item.fit_reason || match.fitReason || match.fit_reason || "");
+      const pathDesc = item.pathDesc || item.path_desc || item.path?.desc || item.path?.description;
       const normalized = {
         id: textOf(item.id || item.personId || item.person_id || item.authorId || item.author_id || slugify(name, `person_${index + 1}`)),
         name: textOf(name),
         pathId: textOf(pathId),
+        pathName: textOf(pathName || matchedPath?.name || ""),
+        pathDesc: textOf(pathDesc || ""),
         role: textOf(item.role || item.identity || item.bioTitle || item.bio_title || item.occupation || "知乎用户"),
         badge: textOf(item.badge || item.tagline || item.keyExperience || item.key_experience || item.subtitle || item.oneLine || item.summary || ""),
         gender: textOf(item.gender || item.sex || item.demographic?.gender || "未知"),
@@ -3025,12 +3103,7 @@
       paths = previousPaths;
 
       if (!nextPaths.length && nextPeople.length) {
-        const seen = new Map();
-        nextPeople.forEach((person) => {
-          if (!seen.has(person.pathId)) seen.set(person.pathId, { id: person.pathId, name: person.raw?.pathName || person.raw?.path?.name || person.pathId, count: 0, desc: "", short: "" });
-          seen.get(person.pathId).count += 1;
-        });
-        nextPaths = Array.from(seen.values()).map(normalizePath);
+        nextPaths = buildPathsFromPeople(nextPeople);
       }
 
       if (nextPaths.length) {
@@ -3115,6 +3188,26 @@
 
     function sortPathsByCount(list) {
       return [...list].sort((a, b) => numberOf(b.count, 0) - numberOf(a.count, 0));
+    }
+
+    function buildPathsFromPeople(peopleList = []) {
+      const map = new Map();
+      peopleList.forEach((person) => {
+        const key = textOf(person.pathId || person.pathName || person.raw?.pathName || person.raw?.path_name || "similar");
+        if (!map.has(key)) {
+          map.set(key, normalizePath({
+            id: key,
+            name: person.pathName || person.raw?.pathName || person.raw?.path_name || "相似经历",
+            count: 0,
+            desc: person.pathDesc || person.raw?.pathDesc || person.raw?.path_desc || "这些人都在类似处境下做过选择。",
+            personRefs: []
+          }));
+        }
+        const group = map.get(key);
+        group.count += 1;
+        if (person.id && !group.personRefs.includes(person.id)) group.personRefs.push(person.id);
+      });
+      return Array.from(map.values());
     }
 
     function apiUrl(path) {
@@ -3250,17 +3343,44 @@
     }
 
     function applySearchData(data, query) {
-      paths = sortPathsByCount(data.paths);
       people = data.people;
+      paths = sortPathsByCount(data.paths.length ? data.paths : buildPathsFromPeople(people));
       state.queryId = data.queryId || null;
       state.analysisSteps = data.analysisSteps.length ? data.analysisSteps : defaultAnalysisSteps(query);
       state.focusTags = data.focusTags.length ? data.focusTags : ["身份周期", "现金流", "工作边界", "回流代价"];
       state.selectedPathId = paths[0]?.id || "";
       state.selectedPersonId = "";
       state.pathExpanded = false;
+      state.skipPathShowcase = false;
       state.readerOpen = false;
       state.askPanelOpen = false;
       state.readerArticleIndex = 0;
+    }
+
+    function routeAfterSearchData() {
+      if (!people.length) {
+        state.selectedPathId = "";
+        state.selectedPersonId = "";
+        state.pathExpanded = false;
+        state.skipPathShowcase = false;
+        setPage("empty");
+        return;
+      }
+
+      if (people.length === 1 || paths.length <= 1) {
+        state.selectedPathId = paths[0]?.id || people[0]?.pathId || "";
+        state.pathExpanded = true;
+        state.skipPathShowcase = true;
+        state.selectedPersonId = people.length === 1 ? people[0].id : "";
+        setPage("paths");
+        return;
+      }
+
+      state.selectedPathId = paths[0]?.id || "";
+      state.selectedPersonId = "";
+      state.pathExpanded = false;
+      state.skipPathShowcase = false;
+      setPage("paths");
     }
 
     function escapeHtml(value) {
@@ -3376,7 +3496,8 @@
         samples: renderSamples,
         chat: renderChat,
         library: renderLibrary,
-        community: renderCommunityDraft
+        community: renderCommunityDraft,
+        empty: renderEmptyResults
       };
       app.innerHTML = (views[state.page] || renderHome)();
       updateTopbar();
@@ -3482,13 +3603,14 @@
 
     function renderHome() {
       const prompt = queryPrompts[state.promptIndex % queryPrompts.length];
+      const homeValue = state.homeInputTouched ? state.question : "";
       return `
         <section class="screen home">
           <div class="center-stack">
             <h1>有什么让你纠结了很久的事？越具体越好</h1>
             <div class="question-card ${state.homeInputTouched ? "is-editing" : ""}" data-active-prompt="${escapeHtml(prompt)}">
               <label class="sr-only" for="questionInput">输入真实困惑</label>
-              <textarea id="questionInput" class="question-input" data-prompt="${escapeHtml(prompt)}"></textarea>
+              <textarea id="questionInput" class="question-input" data-prompt="${escapeHtml(prompt)}">${escapeHtml(homeValue)}</textarea>
               <div class="query-placeholder" id="queryPlaceholder">${escapeHtml(prompt)}</div>
               <button class="send-query" type="button" data-action="start" aria-label="发送当前问题">→</button>
             </div>
@@ -3515,6 +3637,22 @@
             </div>
           </div>
           ${renderCrowd()}
+        </section>
+      `;
+    }
+
+    function renderEmptyResults() {
+      return `
+        <section class="screen paths-screen">
+          <div class="empty-result-panel">
+            <h1>暂时没找到足够相似的人</h1>
+            <p>这个问题可能还需要补充一些关键信息，或者先发到知乎圈子，等更多有经历的人回应。</p>
+            <div class="action-row">
+              <button class="primary" type="button" data-action="refine-question">补充问题信息</button>
+              <button class="secondary" type="button" data-action="community">发到知乎圈子问问更多人</button>
+              <button class="text-button" type="button" data-action="home">回到首页</button>
+            </div>
+          </div>
         </section>
       `;
     }
@@ -3558,7 +3696,7 @@
       const [searchData] = await Promise.all([searchPromise, minimumLoading]);
       clearLoadingTimers();
       applySearchData(searchData, state.question);
-      setPage("paths");
+      routeAfterSearchData();
     }
 
     function updateLoadingSteps() {
@@ -3569,16 +3707,26 @@
     }
 
     function renderPaths() {
-      const sortedPaths = sortPathsByCount(paths);
+      const visiblePaths = sortPathsByCount(paths).slice(0, 5);
+      const pathCount = Math.min(visiblePaths.length, 5);
+      const layoutClass = `path-count-${Math.max(pathCount, 1)}`;
+      const showPathShowcase = !state.skipPathShowcase && visiblePaths.length > 0;
       const selectedPath = getPath();
+      const title = state.skipPathShowcase && state.pathExpanded
+        ? people.length === 1
+          ? "我们先找到了这位走过相似路的人"
+          : `关于「${state.question}」，我们先找到这些走过相似路的人`
+        : `关于「${state.question}」，TA 们是这样做的...`;
       return `
         <section class="screen paths-screen ${state.pathExpanded ? "has-expanded" : "is-overview"}">
           <div class="paths-copy">
-            <h1>关于「${escapeHtml(state.question)}」，TA 们是这样做的...</h1>
+            <h1>${escapeHtml(title)}</h1>
           </div>
-          <div class="path-showcase" aria-label="前人路径">
-            ${renderPathCards(sortedPaths)}
-          </div>
+          ${showPathShowcase ? `
+            <div class="path-showcase ${layoutClass}" aria-label="前人路径">
+              ${renderPathCards(visiblePaths)}
+            </div>
+          ` : ""}
           ${state.pathExpanded ? `
             <section class="expanded-path-section" id="expandedPathSection" aria-label="${escapeHtml(selectedPath.name)}的人">
               <div class="expanded-heading">
@@ -3587,6 +3735,7 @@
                   <p>${escapeHtml(selectedPath.desc)}</p>
                 </div>
               </div>
+              <h2 class="sample-library-title">人物样本库</h2>
               <div class="path-showcase is-expanded" aria-label="${escapeHtml(selectedPath.name)}的前人样本库">
                 ${renderExpandedPathPanel(selectedPath)}
               </div>
@@ -3650,10 +3799,10 @@
       return `
         <section class="community-exit">
           <div>
-            <h3>想问问更多人？</h3>
+            <h3>发到知乎圈子问问更多人</h3>
             <p>生成一条知乎想法，等待更多路过的人。</p>
           </div>
-          <button class="secondary community-outline" type="button" data-action="community">发到「人生样本库」圈子</button>
+          <button class="secondary community-outline" type="button" data-action="community">发到知乎圈子问问更多人</button>
         </section>
       `;
     }
@@ -4161,6 +4310,7 @@
             const showcase = card?.closest(".path-showcase");
             state.selectedPathId = target.dataset.id;
             state.pathExpanded = true;
+            state.skipPathShowcase = false;
             state.selectedPersonId = "";
             state.readerOpen = false;
             state.askPanelOpen = false;
@@ -4183,6 +4333,10 @@
           }
           if (action === "select-person") {
             selectPerson(target.dataset.id);
+          }
+          if (action === "refine-question") {
+            state.homeInputTouched = true;
+            setPage("home");
           }
           if (action === "continue-people") {
             state.selectedPersonId = "";
