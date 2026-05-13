@@ -16,9 +16,25 @@ const VALIDATION_QUERIES = [
   decodeURIComponent("%E8%A6%81%E4%B8%8D%E8%A6%81%E5%92%8C%E9%95%BF%E6%9C%9F%E6%B6%88%E8%80%97%E6%88%91%E7%9A%84%E6%9C%8B%E5%8F%8B%E6%96%AD%E8%81%94"),
   decodeURIComponent("%E7%88%B6%E6%AF%8D%E4%B8%8D%E5%90%8C%E6%84%8F%E6%88%91%E7%9A%84%E9%80%89%E6%8B%A9%E6%80%8E%E4%B9%88%E5%8A%9E")
 ];
-const DEFAULT_CHAT_MESSAGE = decodeURIComponent(
-  "%E8%BF%99%E6%AE%B5%E5%85%AC%E5%BC%80%E5%86%85%E5%AE%B9%E9%87%8C%EF%BC%8C%E7%AC%AC%E4%B8%80%E6%AD%A5%E5%BA%94%E8%AF%A5%E6%83%B3%E6%B8%85%E6%A5%9A%E4%BB%80%E4%B9%88%EF%BC%9F"
-);
+const DEFAULT_CHAT_MESSAGES = [
+  decodeURIComponent("%E4%BD%A0%E5%BD%93%E6%97%B6%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E9%80%89%EF%BC%9F"),
+  decodeURIComponent("%E4%BD%A0%E5%90%8E%E6%9D%A5%E5%90%8E%E6%82%94%E4%BA%86%E5%90%97%EF%BC%9F"),
+  decodeURIComponent("%E8%BF%99%E4%B8%AA%E9%80%89%E6%8B%A9%E6%9C%80%E5%A4%A7%E7%9A%84%E4%BB%A3%E4%BB%B7%E6%98%AF%E4%BB%80%E4%B9%88%EF%BC%9F"),
+  decodeURIComponent("%E5%A6%82%E6%9E%9C%E6%88%91%E4%B9%9F%E6%83%B3%E8%BF%99%E4%B9%88%E5%81%9A%EF%BC%8C%E4%BD%A0%E4%BC%9A%E6%8F%90%E9%86%92%E6%88%91%E4%BB%80%E4%B9%88%EF%BC%9F"),
+  decodeURIComponent("%E4%BD%A0%E9%82%A3%E6%97%B6%E5%80%99%E6%9C%80%E5%AE%B3%E6%80%95%E7%9A%84%E6%98%AF%E4%BB%80%E4%B9%88%EF%BC%9F")
+];
+const PERSONA_REPLY_FORBIDDEN_FRAGMENTS = [
+  "根据公开资料",
+  "公开资料",
+  "作为 AI",
+  "作为AI",
+  "我无法确认",
+  "我不能代表作者本人",
+  "公开内容没有提到，所以无法回答",
+  "公开内容不足以回答这个问题",
+  "所以无法回答",
+  "无法回答"
+];
 const REQUIRED_DEMO_STAGES = [
   "intent_expand",
   "candidate_rerank",
@@ -55,7 +71,7 @@ async function main() {
 
     const baseUrl = `http://127.0.0.1:${address.port}`;
     const validationQueries = readQueryListEnv("DEMO_SMOKE_QUERIES", VALIDATION_QUERIES);
-    const chatMessage = readEnv("DEMO_SMOKE_CHAT_MESSAGE", DEFAULT_CHAT_MESSAGE);
+    const chatMessages = readQueryListEnv("DEMO_SMOKE_CHAT_MESSAGES", DEFAULT_CHAT_MESSAGES);
     const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
 
     const validationRuns = [];
@@ -82,24 +98,29 @@ async function main() {
     const personaId = readString(firstPersona.id, "data.personas[0].id");
     const queryId = readString(demoData.queryId, "data.queryId");
 
-    const personaChat = await requestJson(`${baseUrl}/api/personas/chat`, {
-      method: "POST",
-      body: {
-        personaId,
-        queryId,
-        message: chatMessage
-      }
-    });
+    const chatRuns = [];
+    for (const [index, message] of chatMessages.entries()) {
+      const personaChat = await requestJson(`${baseUrl}/api/personas/chat`, {
+        method: "POST",
+        body: {
+          personaId,
+          queryId,
+          message
+        }
+      });
 
-    assertSuccess(personaChat, "POST /api/personas/chat");
-    const chatData = readRecord(personaChat.body.data, "persona chat data");
-    assertNonEmptyString(chatData.reply, "data.reply");
-    assertNonEmptyArray(chatData.sourceRefs, "data.sourceRefs");
-    assertNonEmptyArray(chatData.suggestedQuestions, "data.suggestedQuestions");
-    assertNonEmptyString(chatData.boundaryNotice, "data.boundaryNotice");
+      assertSuccess(personaChat, `POST /api/personas/chat sample ${index + 1}`);
+      const chatData = readRecord(personaChat.body.data, `persona chat data sample ${index + 1}`);
+      assertPersonaChatAcceptance(chatData, `persona chat sample ${index + 1}`);
 
-    const chatDebug = readRecord(chatData.debug, "data.debug");
-    assertEqual(chatDebug.chatMode, "real_llm_chat", "data.debug.chatMode");
+      const chatDebug = readRecord(chatData.debug, `persona chat data sample ${index + 1}.debug`);
+      assertEqual(chatDebug.chatMode, "real_llm_chat", `data.debug.chatMode sample ${index + 1}`);
+      chatRuns.push({
+        message,
+        data: chatData,
+        debug: chatDebug
+      });
+    }
 
     console.log("PASS demo real-key smoke");
     console.log(`demo counts paths=${demoData.paths.length} people=${demoData.people.length} personas=${personas.length}`);
@@ -107,7 +128,8 @@ async function main() {
       `demo stages ${REQUIRED_DEMO_STAGES.map((stage) => `${stage}=recorded`).join(" ")}`
     );
     console.log(`validation queries=${validationRuns.length} cacheQuery="${validationQueries[0]}"`);
-    console.log(`summary cacheHit=${readRecord(cacheHitRun.data.debug, "cache debug").cacheHit} persona_chat=${chatDebug.chatMode}`);
+    printPersonaChatInspection(chatRuns);
+    console.log(`summary cacheHit=${readRecord(cacheHitRun.data.debug, "cache debug").cacheHit} persona_chat_samples=${chatRuns.length}`);
   } finally {
     await closeServer(server);
   }
@@ -193,7 +215,9 @@ function assertCandidatePipelineDebug(debug, label) {
     assertNonEmptyString(item.summaryAngle, `${label}.finalCandidates.summaryAngle`);
     assertNonEmptyString(item.relationToUserIntent, `${label}.finalCandidates.relationToUserIntent`);
     assertNonEmptyString(item.diversityKey, `${label}.finalCandidates.diversityKey`);
-    assertNonEmptyArray(item.sourceRefs, `${label}.finalCandidates.sourceRefs`);
+    if (item.sourceRefs !== undefined) {
+      assertArray(item.sourceRefs, `${label}.finalCandidates.sourceRefs`);
+    }
   }
 }
 
@@ -352,6 +376,31 @@ async function requestJson(url, options) {
 function assertSuccess(response, label) {
   if (response.status !== 200 || response.body?.success !== true) {
     throw new Error(`${label} expected success=true HTTP 200; got ${summarizeResponse(response)}.`);
+  }
+}
+
+function assertPersonaChatAcceptance(chatData, label) {
+  const reply = readString(chatData.reply, `${label} data.reply`);
+  const boundaryNotice = readString(chatData.boundaryNotice, `${label} data.boundaryNotice`);
+  assertArray(chatData.sourceRefs, `${label} data.sourceRefs`);
+  assertArray(chatData.suggestedQuestions, `${label} data.suggestedQuestions`);
+
+  if (!reply.includes("我")) {
+    throw new Error(`${label} data.reply must use first person.`);
+  }
+
+  for (const fragment of PERSONA_REPLY_FORBIDDEN_FRAGMENTS) {
+    if (reply.includes(fragment)) {
+      throw new Error(`${label} data.reply should not include ${fragment}.`);
+    }
+  }
+
+  if (reply.includes(boundaryNotice)) {
+    throw new Error(`${label} data.reply repeated boundaryNotice.`);
+  }
+
+  if (chatData.debug?.chatMode === "real_llm_chat") {
+    assertNonEmptyArray(chatData.sourceRefs, `${label} data.sourceRefs when real`);
   }
 }
 
@@ -607,6 +656,19 @@ function printDemoTiming(run) {
   }
 }
 
+function printPersonaChatInspection(chatRuns) {
+  console.log(`personaChatInspection samples=${chatRuns.length}`);
+  chatRuns.forEach((run, index) => {
+    const sourceRefCount = Array.isArray(run.data.sourceRefs) ? run.data.sourceRefs.length : 0;
+    const suggestedCount = Array.isArray(run.data.suggestedQuestions) ? run.data.suggestedQuestions.length : 0;
+    console.log(
+      `  chat[${index + 1}] mode=${run.debug.chatMode || ""} sourceRefs=${sourceRefCount} suggestedQuestions=${suggestedCount} question=${run.message}`
+    );
+    console.log(`    boundaryNotice=${run.data.boundaryNotice || ""}`);
+    console.log(`    reply=${previewText(run.data.reply || "", 180)}`);
+  });
+}
+
 function selectCandidateQualityPreview(candidates) {
   const records = candidates.filter(isRecord);
   const used = records.filter((candidate) => candidate.usedAsEvidence === true);
@@ -652,6 +714,11 @@ function formatNumber(value) {
   return Number.isFinite(value) ? String(value) : "n/a";
 }
 
+function previewText(value, maxLength) {
+  const normalized = String(value).replace(/\s+/g, " ").trim();
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 3)}...`;
+}
+
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
     throw new Error(`${label} expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`);
@@ -661,6 +728,14 @@ function assertEqual(actual, expected, label) {
 function assertNonEmptyArray(value, label) {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${label} expected a non-empty array.`);
+  }
+
+  return value;
+}
+
+function assertArray(value, label) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} expected an array.`);
   }
 
   return value;

@@ -1,9 +1,14 @@
-import type { DEMO_PERSONA_BOUNDARY_NOTICE } from "./demo.types.js";
+import type {
+  DEMO_PERSONA_BOUNDARY_NOTICE,
+  PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE
+} from "./demo.types.js";
 
 export const PERSONA_CHAT_SCHEMA_VERSION = "personaChat.v1" as const;
 
 export type PersonaChatSchemaVersion = typeof PERSONA_CHAT_SCHEMA_VERSION;
-export type PersonaBoundaryNotice = typeof DEMO_PERSONA_BOUNDARY_NOTICE;
+export type PersonaBoundaryNotice =
+  | typeof DEMO_PERSONA_BOUNDARY_NOTICE
+  | typeof PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE;
 
 export interface PersonaChatRequestBody {
   personaId?: unknown;

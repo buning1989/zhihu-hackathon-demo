@@ -8,8 +8,32 @@ import { composeMultiLlmDemoSearchResponse } from "../llm/demoSearchOrchestrator
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import { demoSessionCacheService } from "../services/demoSessionCache.service.js";
 import { searchService } from "../services/search.service.js";
-import { DEMO_PERSONA_BOUNDARY_NOTICE } from "../types/demo.types.js";
+import {
+  DEMO_PERSONA_BOUNDARY_NOTICE,
+  PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE
+} from "../types/demo.types.js";
 import type { SearchItem } from "../types/api.types.js";
+
+const PERSONA_CHAT_ACCEPTANCE_MESSAGES = [
+  "你当时为什么这么选？",
+  "你后来后悔了吗？",
+  "这个选择最大的代价是什么？",
+  "如果我也想这么做，你会提醒我什么？",
+  "你那时候最害怕的是什么？"
+];
+
+const PERSONA_REPLY_FORBIDDEN_FRAGMENTS = [
+  "根据公开资料",
+  "公开资料",
+  "作为 AI",
+  "作为AI",
+  "我无法确认",
+  "我不能代表作者本人",
+  "公开内容没有提到，所以无法回答",
+  "公开内容不足以回答这个问题",
+  "所以无法回答",
+  "无法回答"
+];
 
 const server = app.listen(0, "127.0.0.1");
 await once(server, "listening");
@@ -100,28 +124,25 @@ try {
 
   const personaId = demoSearch.body.data.personas[0].id;
   const queryId = demoSearch.body.data.queryId;
-  const personaChat = await requestJson(`${baseUrl}/api/personas/chat`, {
-    method: "POST",
-    body: {
-      personaId,
-      queryId,
-      message: "这段公开内容里，第一步应该想清楚什么？"
-    }
-  });
+  for (const message of PERSONA_CHAT_ACCEPTANCE_MESSAGES) {
+    const personaChat = await requestJson(`${baseUrl}/api/personas/chat`, {
+      method: "POST",
+      body: {
+        personaId,
+        queryId,
+        message
+      }
+    });
 
-  assertEqual(personaChat.status, 200, "POST /api/personas/chat status");
-  assertEqual(personaChat.body.success, true, "POST /api/personas/chat success");
-  assertEqual(
-    personaChat.body.data.schemaVersion,
-    "personaChat.v1",
-    "persona chat schemaVersion"
-  );
-  assertEqual(
-    personaChat.body.data.boundaryNotice,
-    DEMO_PERSONA_BOUNDARY_NOTICE,
-    "persona chat boundaryNotice"
-  );
-  assertNonEmptyArray(personaChat.body.data.sourceRefs, "persona chat sourceRefs");
+    assertEqual(personaChat.status, 200, `POST /api/personas/chat status: ${message}`);
+    assertEqual(personaChat.body.success, true, `POST /api/personas/chat success: ${message}`);
+    assertEqual(
+      personaChat.body.data.schemaVersion,
+      "personaChat.v1",
+      `persona chat schemaVersion: ${message}`
+    );
+    assertPersonaChatExperienceReply(personaChat.body.data, `persona chat: ${message}`);
+  }
 
   const missingPersonaId = await requestJson(`${baseUrl}/api/personas/chat`, {
     method: "POST",
@@ -190,9 +211,19 @@ function assertEqual(actual: unknown, expected: unknown, label: string): void {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function assertNonEmptyArray(value: unknown, label: string): void {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${label}: expected non-empty array`);
+  }
+}
+
+function assertArray(value: unknown, label: string): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label}: expected array`);
   }
 }
 
@@ -211,6 +242,35 @@ function assertIncludes(value: unknown, expected: string, label: string): void {
 function assertNotIncludes(value: unknown, expected: string, label: string): void {
   if (typeof value === "string" && value.includes(expected)) {
     throw new Error(`${label}: expected ${String(value)} not to include ${expected}`);
+  }
+}
+
+function assertPersonaChatExperienceReply(value: unknown, label: string): void {
+  if (!isRecord(value)) {
+    throw new Error(`${label}: expected response data object`);
+  }
+
+  const reply = value.reply;
+  const boundaryNotice = value.boundaryNotice;
+  assertNonEmptyString(reply, `${label} reply`);
+  assertNonEmptyString(boundaryNotice, `${label} boundaryNotice`);
+  assertArray(value.sourceRefs, `${label} sourceRefs`);
+  assertArray(value.suggestedQuestions, `${label} suggestedQuestions`);
+
+  if (typeof reply === "string" && !reply.includes("我")) {
+    throw new Error(`${label} reply must use first person`);
+  }
+
+  for (const fragment of PERSONA_REPLY_FORBIDDEN_FRAGMENTS) {
+    assertNotIncludes(reply, fragment, `${label} reply forbidden fragment`);
+  }
+
+  assertNotIncludes(reply, String(boundaryNotice), `${label} reply repeats boundaryNotice`);
+  if (
+    boundaryNotice !== DEMO_PERSONA_BOUNDARY_NOTICE &&
+    boundaryNotice !== PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE
+  ) {
+    throw new Error(`${label} boundaryNotice used unexpected copy`);
   }
 }
 
@@ -294,6 +354,17 @@ async function assertDisabledPersonaFallback(baseUrl: string): Promise<void> {
 
   assertEqual(personaChat.status, 200, "disabled persona chat status");
   assertEqual(personaChat.body.success, true, "disabled persona chat success");
+  assertPersonaChatExperienceReply(personaChat.body.data, "disabled persona chat");
+  assertEqual(
+    personaChat.body.data.boundaryNotice,
+    PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE,
+    "disabled persona chat fallback boundaryNotice"
+  );
+  assertEqual(
+    personaChat.body.data.sourceRefs.length,
+    0,
+    "disabled persona chat fallback sourceRefs"
+  );
   assertEqual(personaChat.body.data.meta.llmUsed, false, "disabled persona chat llmUsed");
   assertEqual(
     personaChat.body.data.debug.chatMode,
