@@ -2990,10 +2990,9 @@
         if (Array.isArray(step)) return { title: textOf(step[0]), text: textOf(step[1]) };
         if (typeof step === "string") return { title: "分析", text: step };
         const detail = textOf(step.text || step.content || step.desc || step.description);
-        const refs = toArray(step.sourceRefs || step.source_refs || step.evidenceIds || step.evidence_ids).map(String);
         return {
           title: textOf(step.title || step.name || step.label),
-          text: detail || [step.status ? `状态：${step.status}` : "", refs.length ? `来源/证据：${refs.join("、")}` : ""].filter(Boolean).join("；")
+          text: detail
         };
       }).filter((step) => step.title || step.text);
       return steps.length ? steps : defaultAnalysisSteps(query);
@@ -3499,12 +3498,20 @@
     }
 
     function renderLoading() {
+      const steps = state.analysisSteps.length ? state.analysisSteps : defaultAnalysisSteps(state.question);
       return `
         <section class="screen loading">
           <div class="loading-panel">
             <div class="loading-title">
               <h1>正在寻找可能与你有相似经历的知友……</h1>
               <span class="pulse-dot" aria-hidden="true"></span>
+            </div>
+            <div class="fingerprint-steps">
+              ${steps.map((step, index) => `
+                <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}">
+                  <strong>${escapeHtml(step.title)}${step.text ? "：" : ""}</strong>${step.text ? escapeHtml(step.text) : ""}
+                </div>
+              `).join("")}
             </div>
           </div>
           ${renderCrowd()}
