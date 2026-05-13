@@ -58,6 +58,15 @@ export interface PublicAuthSession {
   };
 }
 
+export interface UserContext {
+  provider: "zhihu";
+  isLoggedIn: boolean;
+  userId?: string;
+  displayName?: string;
+  headline?: string;
+  avatar?: string;
+}
+
 const sessions = new Map<string, AuthSession>();
 const oauthStates = new Map<string, OAuthStateRecord>();
 
@@ -135,6 +144,28 @@ export function getAuthSession(req: Request): AuthSession | null {
   }
 
   return session;
+}
+
+export function getCurrentUserContext(req: Request): UserContext {
+  const session = getAuthSession(req);
+  if (!session) {
+    return {
+      provider: "zhihu",
+      isLoggedIn: false
+    };
+  }
+
+  const user = session.user;
+  const canUseProfile = session.userInfoLoaded && user.userInfoLoaded && !user.isTemporary;
+
+  return {
+    provider: "zhihu",
+    isLoggedIn: true,
+    ...(canUseProfile && user.id ? { userId: user.id } : {}),
+    ...(canUseProfile && user.displayName ? { displayName: user.displayName } : {}),
+    ...(canUseProfile && user.headline ? { headline: user.headline } : {}),
+    ...(canUseProfile && user.avatar ? { avatar: user.avatar } : {})
+  };
 }
 
 export function destroyAuthSession(req: Request, res: Response): void {

@@ -447,9 +447,30 @@
         <div class="analysis" id="analysis-summary">点击“开始测试”后，这里会显示 analysis.summary。</div>
       </section>
 
+      <section class="panel" aria-labelledby="context-title">
+        <div class="section-head">
+          <h2 id="context-title">三、用户上下文</h2>
+          <p class="section-note">只展示登录状态、是否使用知乎资料，以及被采用的非敏感 profileSignals</p>
+        </div>
+        <div class="status-grid">
+          <div class="status-card">
+            <p class="status-label">是否已登录</p>
+            <p class="status-value" id="context-logged-in">等待测试</p>
+          </div>
+          <div class="status-card">
+            <p class="status-label">是否使用知乎资料</p>
+            <p class="status-value" id="context-profile-used">-</p>
+          </div>
+          <div class="status-card">
+            <p class="status-label">profileSignals</p>
+            <div class="chips" id="context-profile-signals"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="panel" aria-labelledby="paths-title">
         <div class="section-head">
-          <h2 id="paths-title">三、人生路径</h2>
+          <h2 id="paths-title">四、人生路径</h2>
           <p class="section-note">测试系统是否能把一个模糊人生问题拆成不同选择路径</p>
         </div>
         <div class="grid" id="paths"></div>
@@ -457,7 +478,7 @@
 
       <section class="panel" aria-labelledby="people-title">
         <div class="section-head">
-          <h2 id="people-title">四、前人样本</h2>
+          <h2 id="people-title">五、前人样本</h2>
           <p class="section-note">测试系统是否能从知乎内容中提取可参考的人物样本</p>
         </div>
         <div class="grid" id="people"></div>
@@ -465,7 +486,7 @@
 
       <section class="panel" aria-labelledby="personas-title">
         <div class="section-head">
-          <h2 id="personas-title">五、可以继续追问的经验回声</h2>
+          <h2 id="personas-title">六、可以继续追问的经验回声</h2>
           <p class="section-note">测试系统是否能生成可点击的追问入口，并明确不代表作者本人</p>
         </div>
         <div class="grid" id="personas"></div>
@@ -473,7 +494,7 @@
 
       <section class="panel" aria-labelledby="chat-title">
         <div class="section-head">
-          <h2 id="chat-title">六、追问对话测试</h2>
+          <h2 id="chat-title">七、追问对话测试</h2>
           <p class="section-note">测试点击经验回声后，是否能调用 /api/personas/chat</p>
         </div>
         <div id="chat-result" class="empty">请先点击上方任意「继续追问」。</div>
@@ -481,7 +502,7 @@
 
       <section class="panel debug-only" aria-labelledby="raw-title">
         <div class="section-head">
-          <h2 id="raw-title">七、原始返回数据</h2>
+          <h2 id="raw-title">八、原始返回数据</h2>
           <p class="section-note">仅用于开发排错，打开开发调试模式后可查看</p>
         </div>
         <details id="raw-details">
@@ -502,6 +523,9 @@
       const resultCount = document.querySelector("#result-count");
       const errorBox = document.querySelector("#error-box");
       const analysisSummary = document.querySelector("#analysis-summary");
+      const contextLoggedIn = document.querySelector("#context-logged-in");
+      const contextProfileUsed = document.querySelector("#context-profile-used");
+      const contextProfileSignals = document.querySelector("#context-profile-signals");
       const pathsEl = document.querySelector("#paths");
       const peopleEl = document.querySelector("#people");
       const personasEl = document.querySelector("#personas");
@@ -582,6 +606,7 @@
         const sourceMap = new Map((data.meta?.sourceRefs || []).map((source) => [source.id, source]));
 
         analysisSummary.innerHTML = renderAnalysisSummary(data);
+        renderUserContext(data.contextUsed);
         pathsEl.innerHTML = renderList(data.paths, (path) => renderPath(path, data.people || []));
         peopleEl.innerHTML = renderList(data.people, (person) => renderPerson(person, sourceMap));
         personasEl.innerHTML = renderList(data.personas, (persona) => renderPersona(persona, data.people || []));
@@ -604,6 +629,7 @@
               <h3>${escapeHtml(path.title || "未命名路径")}</h3>
             </div>
             <p>${escapeHtml(path.summary || "暂无路径描述。")}</p>
+            ${path.fitReason ? `<p><strong>匹配说明：</strong>${escapeHtml(path.fitReason)}</p>` : ""}
             <div class="chips">
               ${chip(`关联人物 ${linkedPeopleCount} 个`)}
               ${chip(`类型：${mapStance(path.stance)}`)}
@@ -632,6 +658,7 @@
               <p class="small muted">${mapSampleType(person.sampleType, person)}</p>
             </div>
             <p>${escapeHtml(person.oneLine || person.who || "暂无人物摘要。")}</p>
+            ${person.fitReason ? `<p><strong>匹配说明：</strong>${escapeHtml(person.fitReason)}</p>` : ""}
             ${renderPointList("与问题的相关点", relatedPoints)}
             ${person.lesson ? `<p><strong>可参考的提醒：</strong>${escapeHtml(person.lesson)}</p>` : ""}
             <div class="source-box">
@@ -665,6 +692,21 @@
         `;
       }
 
+      function renderUserContext(contextUsed = {}) {
+        const loggedIn = Boolean(contextUsed.loggedIn);
+        const profileUsed = Boolean(contextUsed.zhihuProfileUsed);
+        const signals = Array.isArray(contextUsed.profileSignals) ? contextUsed.profileSignals : [];
+
+        contextLoggedIn.textContent = loggedIn ? "是" : "否";
+        contextLoggedIn.classList.toggle("ok", loggedIn);
+        contextLoggedIn.classList.toggle("error", false);
+        contextProfileUsed.textContent = profileUsed ? "是" : "否";
+        contextProfileUsed.classList.toggle("ok", profileUsed);
+        contextProfileSignals.innerHTML = signals.length > 0
+          ? signals.map((signal) => chip(signal)).join("")
+          : chip("未使用");
+      }
+
       function renderPersona(persona, people = []) {
         const linkedPerson = people.find((person) => person.aiPersona?.personaId === persona.id);
         const intro = persona.intro || linkedPerson?.aiPersona?.openingLine || "可以基于公开内容继续追问。";
@@ -677,6 +719,7 @@
               <p class="small muted">基于公开内容生成，不代表作者本人</p>
             </div>
             <p>${escapeHtml(intro)}</p>
+            ${persona.fitReason ? `<p><strong>匹配说明：</strong>${escapeHtml(persona.fitReason)}</p>` : ""}
             ${renderPointList("可以这样追问", suggestedQuestions)}
             <div class="notice">
               <strong>边界提示：</strong>${escapeHtml(persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}
@@ -831,6 +874,7 @@
         pathsEl.innerHTML = empty("暂无人生路径。");
         peopleEl.innerHTML = empty("暂无人物样本。");
         personasEl.innerHTML = empty("暂无经验回声。");
+        renderUserContext();
       }
 
       function collectSources(sourceRefs = [], sourceMap = new Map()) {

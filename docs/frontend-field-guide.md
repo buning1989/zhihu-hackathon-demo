@@ -46,6 +46,7 @@ Content-Type: application/json
   "queryId": "query_demo_001",
   "query": "不工作了之后，我想去新西兰生活",
   "dataMode": "mock",
+  "contextUsed": {},
   "features": {},
   "analysis": {},
   "paths": [],
@@ -60,13 +61,27 @@ Content-Type: application/json
 前端 P0 推荐读取顺序：
 
 1. 用 `analysis.steps` 和 `analysis.focusTags` 支撑 loading / 问题理解区域。
-2. 用 `paths[]` 渲染路径图。
-3. 用 `people[]` 渲染人物样本卡，这是主数据。
-4. 用 `people[].articles[]` 渲染原文入口和证据。
-5. 用 `people[].match` 渲染匹配解释。
-6. 用 `people[].aiPersona` 渲染 AI 分身入口。
-7. 用顶层 `personas[]` 做快捷入口或导航索引。
-8. `sections[]` 只作为弱绑定布局辅助，不替代主数据。
+2. 联调或 preview 可读 `contextUsed` 展示是否使用了知乎登录上下文。
+3. 用 `paths[]` 渲染路径图，可展示 `paths[].fitReason`。
+4. 用 `people[]` 渲染人物样本卡，这是主数据，可展示 `people[].fitReason`。
+5. 用 `people[].articles[]` 渲染原文入口和证据。
+6. 用 `people[].match` 渲染匹配解释。
+7. 用 `people[].aiPersona` 渲染 AI 分身入口。
+8. 用顶层 `personas[]` 做快捷入口或导航索引，可展示 `personas[].fitReason`。
+9. `sections[]` 只作为弱绑定布局辅助，不替代主数据。
+
+## 用户上下文与 fitReason
+
+`contextUsed` 是可选调试友好字段，用来说明本次是否读取了知乎授权用户的轻量上下文：
+
+- `contextUsed.loggedIn`：是否有有效知乎登录 session。
+- `contextUsed.zhihuProfileUsed`：是否实际使用了非敏感资料信号。
+- `contextUsed.profileSignals[]`：后端从 `headline/displayName` 白名单提取出的职业或兴趣词。
+- `contextUsed.usedFor[]`：可能包含 `intent_expand`、`search_query_expand`、`fit_reason`。
+
+前端不要期待或展示 OAuth token、cookie、完整 userInfo、userId、头像原始对象。`contextUsed` 不是证据来源，也不能替代 `sourceRefs/evidenceIds`。
+
+`fitReason` 可出现在 `paths[]`、`people[]`、`personas[]`。它只能解释“为什么这个公开内容可能与当前问题和轻量资料信号相关”，不能写成确定诊断、身份判断或夸张承诺。展示时建议放在“匹配说明”或调试区域旁边，并继续优先展示证据和原文入口。
 
 ## people[] 是主数据
 
@@ -81,6 +96,7 @@ Content-Type: application/json
 - `people[].pathId`：关联 `paths[].id`。
 - `people[].avatar`：头像，缺失时用默认头像。
 - `people[].oneLine`：人物卡核心句。
+- `people[].fitReason`：可选匹配说明，必须仍以公开内容证据为边界。
 - `people[].who`：TA 是谁的说明。注意这是基于公开内容整理，不等同于作者完整人生。
 - `people[].overlaps[]`：与当前用户问题的重叠点。
 - `people[].timeline[]`：经历线索，P0 可是 mock/rule。

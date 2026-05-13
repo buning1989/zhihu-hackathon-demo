@@ -405,6 +405,12 @@ paths:
                     queryId: query_demo_001
                     query: 不工作了之后，我想去新西兰生活
                     dataMode: mock
+                    contextUsed:
+                      provider: zhihu
+                      loggedIn: false
+                      zhihuProfileUsed: false
+                      profileSignals: []
+                      usedFor: []
                     features:
                       aiPersona: true
                       personaChat: mock
@@ -887,6 +893,8 @@ components:
             - mock
             - cache_first
             - real
+        contextUsed:
+          $ref: "#/components/schemas/DemoContextUsed"
         features:
           $ref: "#/components/schemas/DemoFeatures"
         analysis:
@@ -913,6 +921,42 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
         debug:
           $ref: "#/components/schemas/DemoDebug"
+    DemoContextUsed:
+      type: object
+      description: >
+        Optional debug-safe summary of whether lightweight Zhihu OAuth profile
+        context influenced intent expansion, query expansion or fit reasons.
+        It must not expose tokens, cookies, raw userInfo, full profile objects
+        or grounding evidence.
+      required:
+        - provider
+        - loggedIn
+        - zhihuProfileUsed
+        - profileSignals
+        - usedFor
+      properties:
+        provider:
+          type: string
+          enum:
+            - zhihu
+        loggedIn:
+          type: boolean
+        zhihuProfileUsed:
+          type: boolean
+          description: True only when non-sensitive profileSignals were actually used.
+        profileSignals:
+          type: array
+          description: Non-sensitive occupation/interest terms extracted from basic profile fields.
+          items:
+            type: string
+        usedFor:
+          type: array
+          items:
+            type: string
+            enum:
+              - intent_expand
+              - search_query_expand
+              - fit_reason
     DemoSessionResponse:
       allOf:
         - $ref: "#/components/schemas/DemoSearchResponse"
@@ -1000,6 +1044,9 @@ components:
           type: string
         short:
           type: string
+        fitReason:
+          type: string
+          description: Optional evidence-aware explanation of why this path may fit the user query/profile context.
     DemoPerson:
       type: object
       required:
@@ -1034,6 +1081,9 @@ components:
           type: string
         oneLine:
           type: string
+        fitReason:
+          type: string
+          description: Optional evidence-aware explanation; user context is not a grounding source.
         who:
           type: string
           description: Description based on public content, not a complete biography.
@@ -1246,6 +1296,9 @@ components:
           enum:
             - chat
             - disabled
+        fitReason:
+          type: string
+          description: Optional explanation for showing this persona entry, grounded in matched content.
     DemoSection:
       type: object
       required:
@@ -1449,6 +1502,28 @@ components:
       type: object
       additionalProperties: true
       properties:
+        originalQuery:
+          type: string
+          description: Raw query received by POST /api/demo/search.
+        normalizedQuery:
+          type: string
+          description: Normalized query used for deterministic path generation and cache keying.
+        pathSource:
+          type: string
+          enum:
+            - llm
+            - rule
+            - fallback
+          description: Whether paths were written by LLM compose, deterministic rules, or fallback builder.
+        fallbackReason:
+          type: string
+          description: Why fallback/rule generation was used, when applicable.
+        cacheHit:
+          type: boolean
+          description: True when the demo search response came from the normalizedQuery-aware memory cache.
+        cacheKeyPreview:
+          type: string
+          description: Redacted/debug preview of the cache key; includes normalizedQuery.
         intentStage:
           $ref: "#/components/schemas/DemoDebugIntentStage"
         stubbed:

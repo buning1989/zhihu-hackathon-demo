@@ -2,6 +2,11 @@ import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
 import { composeRealDemoSearchResponse } from "../services/demoRealComposer.service.js";
 import { searchService } from "../services/search.service.js";
 import {
+  buildContextAwareSearchQueries,
+  buildPromptUserContext,
+  createDemoContextUsed
+} from "../services/userContext.service.js";
+import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoDataMode,
   type DemoDebugFallbackKind,
@@ -12,6 +17,7 @@ import {
   type DemoSearchResponse,
   type DemoSourceRef
 } from "../types/demo.types.js";
+import type { UserContext } from "../auth/session.js";
 import type { SearchItem } from "../types/api.types.js";
 import { HttpError } from "../utils/httpError.js";
 import { llmRouter, type LlmTaskType } from "./llmRouter.js";
@@ -35,6 +41,7 @@ interface ComposeMultiLlmDemoSearchInput {
   count: number;
   dataMode: DemoDataMode;
   startedAt: number;
+  userContext?: UserContext;
 }
 
 interface CleanedCandidate {
@@ -78,10 +85,15 @@ export async function composeMultiLlmDemoSearchResponse(
   const stageResults: DemoDebugLlmStageResult[] = [];
   const guardWarnings: string[] = [];
 
-  const intentStage = await runIntentExpandStage(input.query);
+  const intentStage = await runIntentExpandStage(input.query, input.userContext);
   stageResults.push(intentStage.stageResult);
 
-  const searchItems = await searchByExpandedQueries(intentStage.output.searchQueries, input.count);
+  const searchItems = await searchByExpandedQueries(
+    input.query,
+    intentStage.output.searchQueries,
+    input.count,
+    input.userContext
+  );
   const cleanedSearchItems = cleanSearchItems(searchItems).slice(0, MAX_REAL_ITEMS);
   if (cleanedSearchItems.length === 0) {
     throw new HttpError(
@@ -96,7 +108,8 @@ export async function composeMultiLlmDemoSearchResponse(
     count: input.count,
     dataMode: input.dataMode,
     items: cleanedSearchItems,
-    startedAt: input.startedAt
+    startedAt: input.startedAt,
+    userContext: input.userContext
   });
 
   const candidates = buildCleanedCandidatesFromResponse(response);
@@ -108,7 +121,8 @@ export async function composeMultiLlmDemoSearchResponse(
     intentStage.output,
     evidenceStage.output,
     response,
-    candidates
+    candidates,
+    input.userContext
   );
   stageResults.push(composeStage.stageResult);
 
@@ -127,6 +141,11 @@ export async function composeMultiLlmDemoSearchResponse(
 
   response.meta.latencyMs = Date.now() - input.startedAt;
   response.meta.fallbackUsed = fallbackSummary.used;
+  response.contextUsed = createDemoContextUsed(input.userContext, [
+    "intent_expand",
+    "search_query_expand",
+    "fit_reason"
+  ]);
   response.debug = {
     ...response.debug,
     composer: successfulStages > 0 ? "real_llm_composer" : "real_rule_composer",
@@ -175,7 +194,10 @@ export function hasPersonaChatLlm(): boolean {
   return llmRouter.isTaskConfigured("persona_chat");
 }
 
-async function runIntentExpandStage(query: string): Promise<StageRunResult<IntentExpandOutput>> {
+async function runIntentExpandStage(
+  query: string,
+  userContext?: UserContext
+): Promise<StageRunResult<IntentExpandOutput>> {
   const fallback = createFallbackIntent(query);
   if (!llmRouter.isTaskConfigured("intent_expand")) {
     return {
@@ -196,7 +218,8 @@ async function runIntentExpandStage(query: string): Promise<StageRunResult<Inten
         {
           role: "user",
           content: JSON.stringify({
-            query: truncateText(query, 120)
+            query: truncateText(query, 120),
+            userContext: buildPromptUserContext(userContext)
           })
         }
       ]
@@ -271,7 +294,8 @@ async function runDemoResponseComposeStage(
   intent: IntentExpandOutput,
   evidence: EvidenceExtractOutput,
   response: DemoSearchResponse,
-  candidates: CleanedCandidate[]
+  candidates: CleanedCandidate[],
+  userContext?: UserContext
 ): Promise<StageRunResult<DemoResponseComposeOutput>> {
   const fallback = createEmptyDemoComposeOutput();
   if (!llmRouter.isTaskConfigured("demo_response_compose")) {
@@ -297,6 +321,7 @@ async function runDemoResponseComposeStage(
           role: "user",
           content: JSON.stringify({
             query: truncateText(query, 120),
+            userContext: buildPromptUserContext(userContext),
             intent,
             evidenceExtract: evidence,
             allowedIds: {
@@ -375,8 +400,13 @@ async function runGroundingGuardStage(
   }
 }
 
-async function searchByExpandedQueries(queries: string[], count: number): Promise<SearchItem[]> {
-  const normalizedQueries = unique(queries.map((item) => item.trim()).filter(Boolean)).slice(
+async function searchByExpandedQueries(
+  originalQuery: string,
+  queries: string[],
+  count: number,
+  userContext?: UserContext
+): Promise<SearchItem[]> {
+  const normalizedQueries = buildContextAwareSearchQueries(originalQuery, queries, userContext).slice(
     0,
     MAX_SEARCH_QUERIES
   );
@@ -556,13 +586,14 @@ function applyDemoResponseComposeOutput(
   const pathById = new Map(response.paths.map((path) => [path.id, path]));
   for (const item of output.paths) {
     const path = pathById.get(item.id);
-    if (!path || !areSafeTexts([item.title, item.summary])) {
+    if (!path || !areSafeTexts([item.title, item.summary, item.fitReason ?? ""])) {
       guardWarnings.push(`demo_response_compose path skipped: ${item.id}`);
       continue;
     }
 
     path.title = item.title;
     path.summary = item.summary;
+    if (item.fitReason && isSafeFitReason(item.fitReason)) path.fitReason = item.fitReason;
     path.stance = item.stance;
     stats.pathCount += 1;
   }
@@ -581,6 +612,7 @@ function applyDemoResponseComposeOutput(
       item.oneLine,
       item.who,
       item.lesson,
+      item.fitReason,
       item.openingLine,
       ...(item.overlaps ?? []),
       ...(item.matchReasons ?? []),
@@ -596,6 +628,7 @@ function applyDemoResponseComposeOutput(
     if (item.role) person.role = item.role;
     if (item.badge) person.badge = item.badge;
     if (item.oneLine) person.oneLine = item.oneLine;
+    if (item.fitReason && isSafeFitReason(item.fitReason)) person.fitReason = item.fitReason;
     if (item.who) person.who = ensurePublicContentBoundary(item.who);
     if (item.overlaps?.length) person.overlaps = item.overlaps;
     if (item.lesson) person.lesson = item.lesson;
@@ -617,7 +650,7 @@ function applyDemoResponseComposeOutput(
       continue;
     }
 
-    const textValues = [item.openingLine, ...(item.suggestedQuestions ?? [])].filter(
+    const textValues = [item.openingLine, item.fitReason, ...(item.suggestedQuestions ?? [])].filter(
       (value): value is string => Boolean(value)
     );
     if (!areSafeTexts(textValues)) {
@@ -626,6 +659,11 @@ function applyDemoResponseComposeOutput(
     }
 
     if (typeof item.enabled === "boolean") person.aiPersona.enabled = item.enabled;
+    const persona = response.personas.find((candidate) => candidate.personId === item.personId);
+    if (persona && item.fitReason && isSafeFitReason(item.fitReason)) {
+      persona.fitReason = item.fitReason;
+      person.fitReason = person.fitReason ?? item.fitReason;
+    }
     if (item.openingLine) person.aiPersona.openingLine = item.openingLine;
     if (item.suggestedQuestions?.length) {
       person.aiPersona.suggestedQuestions = item.suggestedQuestions;
@@ -740,6 +778,7 @@ function toPersona(person: DemoPerson): DemoPersona {
     avatar: person.avatar,
     personaType: "experience_echo",
     intro: person.aiPersona.openingLine,
+    fitReason: person.fitReason,
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
     sourceRefs: person.sourceRefs,
     suggestedQuestions: person.aiPersona.suggestedQuestions
@@ -758,6 +797,7 @@ function toDemoComposeContext(response: DemoSearchResponse): Record<string, unkn
       role: person.role,
       badge: person.badge,
       oneLine: person.oneLine,
+      fitReason: person.fitReason,
       who: person.who,
       overlaps: person.overlaps,
       lesson: person.lesson,
@@ -1049,6 +1089,21 @@ function isSafeText(value: string): boolean {
   ];
 
   return !forbiddenFragments.some((fragment) => value.includes(fragment));
+}
+
+function isSafeFitReason(value: string): boolean {
+  const overclaimFragments = [
+    "一定适合",
+    "绝对适合",
+    "最适合",
+    "完美匹配",
+    "唯一答案",
+    "保证",
+    "必然",
+    "注定"
+  ];
+
+  return isSafeText(value) && !overclaimFragments.some((fragment) => value.includes(fragment));
 }
 
 function formatErrorSummary(error: unknown): string {

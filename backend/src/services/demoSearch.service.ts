@@ -6,6 +6,8 @@ import {
 } from "../llm/demoSearchOrchestrator.js";
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import { demoSessionCacheService } from "./demoSessionCache.service.js";
+import { createDemoContextUsed } from "./userContext.service.js";
+import type { UserContext } from "../auth/session.js";
 import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
 
@@ -20,7 +22,10 @@ const MAX_COUNT = 20;
 const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "real"]);
 
 export class DemoSearchService {
-  async search(request: DemoSearchRequest): Promise<DemoSearchResponse> {
+  async search(
+    request: DemoSearchRequest,
+    userContext?: UserContext
+  ): Promise<DemoSearchResponse> {
     const startedAt = Date.now();
 
     if (request.dataMode === "real") {
@@ -29,7 +34,8 @@ export class DemoSearchService {
           query: request.query,
           count: request.count,
           dataMode: request.dataMode,
-          startedAt
+          startedAt,
+          userContext
         });
         assertDemoSearchGrounding(response);
         return cacheDemoResponse(response);
@@ -46,6 +52,11 @@ export class DemoSearchService {
             formatErrorSummary(error)
           ]
         });
+        response.contextUsed = createDemoContextUsed(userContext, [
+          "intent_expand",
+          "search_query_expand",
+          "fit_reason"
+        ]);
         response.meta.latencyMs = Date.now() - startedAt;
         assertDemoSearchGrounding(response);
         return cacheDemoResponse(response);
@@ -58,6 +69,7 @@ export class DemoSearchService {
           ? ["cache_first currently uses bundled mock seed for demo continuity"]
           : ["mock demo data; no LLM or Zhihu API required"]
     });
+    response.contextUsed = createDemoContextUsed(userContext);
     response.meta.latencyMs = Date.now() - startedAt;
     assertDemoSearchGrounding(response);
     return cacheDemoResponse(response);

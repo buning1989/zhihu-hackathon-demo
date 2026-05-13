@@ -22,6 +22,7 @@ export interface DemoSearchResponse {
   queryId: string;
   query: string;
   dataMode: DemoDataMode;
+  contextUsed?: DemoContextUsed;
   features: DemoFeatures;
   analysis: DemoAnalysis;
   paths: DemoPath[];
@@ -38,6 +39,14 @@ export interface DemoFeatures {
   saveSample: boolean;
   articleBody: boolean;
   sourceEvidenceRequired: true;
+}
+
+export interface DemoContextUsed {
+  provider: "zhihu";
+  loggedIn: boolean;
+  zhihuProfileUsed: boolean;
+  profileSignals: string[];
+  usedFor: Array<"intent_expand" | "search_query_expand" | "fit_reason">;
 }
 
 export interface DemoAnalysis {
@@ -59,6 +68,7 @@ export interface DemoPath {
   id: string;
   title: string;
   summary: string;
+  fitReason?: string;
   stance: "experience" | "viewpoint" | "mixed";
   personRefs?: string[];
   evidenceIds: string[];
@@ -74,6 +84,7 @@ export interface DemoPerson {
   badge: string;
   avatar: string;
   oneLine: string;
+  fitReason?: string;
   who: string;
   overlaps: string[];
   timeline: DemoTimelineEvent[];
@@ -159,6 +170,7 @@ export interface DemoPersona {
   avatar: string;
   personaType: "experience_echo";
   intro: string;
+  fitReason?: string;
   boundaryNotice: string;
   sourceRefs: string[];
   suggestedQuestions: string[];

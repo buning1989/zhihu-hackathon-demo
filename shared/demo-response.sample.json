@@ -9,6 +9,8 @@
     "people[].aiPersona is the AI persona entry point.",
     "top-level personas[] is only a shortcut index and must not duplicate full person data.",
     "AI is not a fact source; persona answers must be grounded in public content and evidence.",
+    "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
+    "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
     "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape."
   ],
   "field_levels": {
@@ -17,6 +19,7 @@
       "queryId",
       "query",
       "dataMode",
+      "contextUsed",
       "features",
       "analysis.steps",
       "analysis.focusTags",
@@ -46,6 +49,13 @@
     "queryId": "query_demo_20260513_001",
     "query": "不工作了之后，我想去新西兰生活",
     "dataMode": "mock",
+    "contextUsed": {
+      "provider": "zhihu",
+      "loggedIn": false,
+      "zhihuProfileUsed": false,
+      "profileSignals": [],
+      "usedFor": []
+    },
     "features": {
       "aiPersona": true,
       "personaChat": "mock",
@@ -85,6 +95,7 @@
         "name": "去了又回来",
         "count": 18,
         "desc": "这类样本把远方当成暂停键，后来发现真正要处理的是工作边界、现金流和回流成本。",
+        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照工作边界和回流成本，判断仍以来源片段为准。",
         "short": "看清代价后回流"
       },
       {
@@ -111,6 +122,7 @@
         "badge": "离开工作轨道后短暂停靠",
         "avatar": "https://picx.zhimg.com/mock-avatar-a.jpg",
         "oneLine": "她把去远方当作暂停键，后来发现真正要处理的是工作边界。",
+        "fitReason": "结合你的问题和基础资料里的非敏感线索，这个样本只说明公开回答可用来对照现金流和工作边界，判断仍以来源片段为准。",
         "who": "基于知乎公开回答整理出的前人样本：曾在高压工作后离开原来的城市，尝试用一段远距离生活恢复节奏。",
         "overlaps": [
           "都在不想继续当前工作的状态下考虑去远方",
@@ -377,6 +389,7 @@
         "personaId": "persona_person_return_home",
         "personId": "person_return_home",
         "displayName": "阿禾的经验分身",
+        "fitReason": "这个追问入口只用于继续理解已命中的公开回答片段，不代表作者本人。",
         "entryType": "chat"
       },
       {

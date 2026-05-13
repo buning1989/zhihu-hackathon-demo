@@ -68,6 +68,7 @@ docker compose -f infra/docker-compose.yml up
 - 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
+- 知乎 OAuth 用户资料只能作为轻量 `contextUsed/profileSignals/fitReason` 辅助信息，不得作为 evidence/source，也不得返回 token、cookie 或原始 userInfo。
 - 不要把观点作者包装成亲历者，不实现“联系 TA”、私信、模拟作者本人回复等能力。
 - 前端正式初始化后，可以在 `frontend/` 内建立独立工程；届时同步更新 `infra/docker-compose.yml` 的 frontend service。
 

@@ -1,5 +1,7 @@
 import { once } from "node:events";
+import type { Response } from "express";
 import { app } from "../app.js";
+import { createAuthSession, type UserContext } from "../auth/session.js";
 import { llmRouter, type LlmTaskType } from "../llm/llmRouter.js";
 import { createOpenAICompatibleJsonCompletion } from "../llm/clients/openaiCompatible.js";
 import { composeMultiLlmDemoSearchResponse } from "../llm/demoSearchOrchestrator.js";
@@ -36,9 +38,39 @@ try {
   assertEqual(demoSearch.status, 200, "POST /api/demo/search status");
   assertEqual(demoSearch.body.success, true, "POST /api/demo/search success");
   assertEqual(demoSearch.body.data.schemaVersion, "demo.v1", "demo schemaVersion");
+  assertEqual(
+    demoSearch.body.data.contextUsed.loggedIn,
+    false,
+    "anonymous demo context loggedIn"
+  );
   assertNonEmptyArray(demoSearch.body.data.paths, "demo paths");
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
   assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
+
+  const loggedInDemoSearch = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    headers: {
+      cookie: createLoggedInSessionCookie()
+    },
+    body: {
+      query: "不工作了能去哪儿",
+      count: 3,
+      dataMode: "mock"
+    }
+  });
+
+  assertEqual(loggedInDemoSearch.status, 200, "logged-in demo search status");
+  assertEqual(loggedInDemoSearch.body.success, true, "logged-in demo search success");
+  assertEqual(
+    loggedInDemoSearch.body.data.contextUsed.loggedIn,
+    true,
+    "logged-in demo context loggedIn"
+  );
+  assertEqual(
+    JSON.stringify(loggedInDemoSearch.body).includes("test-access-token"),
+    false,
+    "logged-in demo response does not expose token"
+  );
 
   const personaId = demoSearch.body.data.personas[0].id;
   const queryId = demoSearch.body.data.queryId;
@@ -93,6 +125,7 @@ try {
 
   await assertDisabledPersonaFallback(baseUrl);
   await assertDeepSeekResponseFormatFallback();
+  await assertLoggedInUserContextInRealComposer();
   await assertNoLlmConfigFallbackKind();
   await assertPartialLlmFallbackKind();
   await assertGroundingGuardInvalidFallback();
@@ -104,6 +137,7 @@ try {
 
 interface RequestOptions {
   method?: "GET" | "POST";
+  headers?: Record<string, string>;
   body?: unknown;
 }
 
@@ -111,6 +145,7 @@ async function requestJson(url: string, options: RequestOptions = {}) {
   const response = await fetch(url, {
     method: options.method ?? "GET",
     headers: {
+      ...(options.headers ?? {}),
       ...(options.body === undefined ? {} : { "Content-Type": "application/json" })
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
@@ -131,6 +166,12 @@ function assertEqual(actual: unknown, expected: unknown, label: string): void {
 function assertNonEmptyArray(value: unknown, label: string): void {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${label}: expected non-empty array`);
+  }
+}
+
+function assertNonEmptyString(value: unknown, label: string): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${label}: expected non-empty string`);
   }
 }
 
@@ -251,6 +292,37 @@ async function assertDeepSeekResponseFormatFallback(): Promise<void> {
   }
 }
 
+async function assertLoggedInUserContextInRealComposer(): Promise<void> {
+  const userContext: UserContext = {
+    provider: "zhihu",
+    isLoggedIn: true,
+    userId: "zhihu-test-user",
+    displayName: "AI 产品经理",
+    headline: "AI 产品经理，关注自由职业"
+  };
+  const response = await withStubbedOrchestrator({
+    configuredTasks: new Set(),
+    outputs: {},
+    userContext
+  });
+
+  assertEqual(response.contextUsed?.loggedIn, true, "real context loggedIn");
+  assertEqual(response.contextUsed?.zhihuProfileUsed, true, "real context profileUsed");
+  assertIncludes(
+    response.contextUsed?.profileSignals.join(","),
+    "产品经理",
+    "real context profileSignals"
+  );
+  assertNonEmptyString(response.paths[0].fitReason, "real path fitReason");
+  assertNonEmptyString(response.people[0].fitReason, "real person fitReason");
+  assertNonEmptyString(response.personas[0].fitReason, "real persona fitReason");
+  assertEqual(
+    JSON.stringify(response).includes("zhihu-test-user"),
+    false,
+    "real response does not expose userId"
+  );
+}
+
 async function assertNoLlmConfigFallbackKind(): Promise<void> {
   const response = await withStubbedOrchestrator({
     configuredTasks: new Set(),
@@ -328,6 +400,7 @@ async function assertGroundingGuardInvalidFallback(): Promise<void> {
 interface StubbedOrchestratorOptions {
   configuredTasks: Set<LlmTaskType>;
   outputs: Partial<Record<LlmTaskType, string>>;
+  userContext?: UserContext;
 }
 
 async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
@@ -357,13 +430,57 @@ async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
       query: "不工作了能去哪儿",
       count: 1,
       dataMode: "real",
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      userContext: options.userContext
     });
   } finally {
     searchService.search = originalSearch;
     llmRouter.isTaskConfigured = originalIsTaskConfigured;
     llmRouter.runJsonTask = originalRunJsonTask;
   }
+}
+
+function createLoggedInSessionCookie(): string {
+  const headers = new Map<string, string | string[]>();
+  const res = {
+    getHeader(name: string) {
+      return headers.get(name.toLowerCase());
+    },
+    setHeader(name: string, value: string | string[]) {
+      headers.set(name.toLowerCase(), value);
+    }
+  };
+
+  createAuthSession(res as unknown as Response, {
+    provider: "zhihu",
+    userInfoLoaded: true,
+    user: {
+      id: "zhihu-test-user",
+      provider: "zhihu",
+      displayName: "AI 产品经理",
+      avatar: "https://example.test/avatar.png",
+      headline: "AI 产品经理，关注自由职业",
+      isTemporary: false,
+      userInfoLoaded: true,
+      raw: {
+        fixture: true
+      }
+    },
+    token: {
+      accessToken: "test-access-token",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString()
+    }
+  });
+
+  const setCookieHeader = headers.get("set-cookie");
+  const firstCookie = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
+  if (!firstCookie) {
+    throw new Error("test auth session did not set a cookie");
+  }
+
+  return firstCookie.split(";")[0];
 }
 
 function createStubSearchItem(): SearchItem {

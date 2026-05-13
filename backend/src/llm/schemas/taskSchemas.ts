@@ -68,6 +68,7 @@ export interface DemoComposePathOutput {
   id: string;
   title: string;
   summary: string;
+  fitReason?: string;
   stance: DemoPath["stance"];
 }
 
@@ -76,6 +77,7 @@ export interface DemoComposePersonOutput {
   role?: string;
   badge?: string;
   oneLine?: string;
+  fitReason?: string;
   who?: string;
   overlaps?: string[];
   lesson?: string;
@@ -89,6 +91,7 @@ export interface DemoComposePersonOutput {
 export interface DemoComposePersonaOutput {
   personId: string;
   enabled?: boolean;
+  fitReason?: string;
   openingLine?: string;
   suggestedQuestions?: string[];
 }
@@ -134,10 +137,10 @@ export class LlmSchemaError extends Error {
 export function parseIntentExpandOutput(content: string, fallbackQuery: string): IntentExpandOutput {
   const record = parseJsonObject(content);
   const searchQueries = unique([
-    ...readStringArray(record.searchQueries),
-    fallbackQuery
+    fallbackQuery,
+    ...readStringArray(record.searchQueries)
   ])
-    .map((item) => truncateText(item, 40))
+    .map((item, index) => (index === 0 ? item : truncateText(item, 40)))
     .filter(Boolean)
     .slice(0, 4);
   const intentTags = readStringArray(record.intentTags)
@@ -359,6 +362,7 @@ function readDemoComposePath(
     id,
     title: truncateText(readRequiredString(record.title, `paths[${index}].title`), 30),
     summary: truncateText(readRequiredString(record.summary, `paths[${index}].summary`), 110),
+    fitReason: truncateOptionalString(record.fitReason, 120),
     stance: readStance(record.stance)
   };
 }
@@ -378,6 +382,7 @@ function readDemoComposePerson(
     role: truncateOptionalString(record.role, 40),
     badge: truncateOptionalString(record.badge, 18),
     oneLine: truncateOptionalString(record.oneLine, 90),
+    fitReason: truncateOptionalString(record.fitReason, 120),
     who: truncateOptionalString(record.who, 90),
     overlaps: readStringArray(record.overlaps).map((item) => truncateText(item, 50)).slice(0, 4),
     lesson: truncateOptionalString(record.lesson, 90),
@@ -402,6 +407,7 @@ function readDemoComposePersona(
   return {
     personId,
     enabled: typeof record.enabled === "boolean" ? record.enabled : undefined,
+    fitReason: truncateOptionalString(record.fitReason, 120),
     openingLine: truncateOptionalString(record.openingLine, 80),
     suggestedQuestions: readStringArray(record.suggestedQuestions).map((item) => truncateText(item, 50)).slice(0, 3)
   };

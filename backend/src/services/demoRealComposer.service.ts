@@ -10,7 +10,9 @@ import {
   type DemoSearchResponse,
   type DemoSourceRef
 } from "../types/demo.types.js";
+import type { UserContext } from "../auth/session.js";
 import type { SearchItem } from "../types/api.types.js";
+import { buildContextFitReason, createDemoContextUsed } from "./userContext.service.js";
 
 interface ComposeRealInput {
   query: string;
@@ -18,6 +20,7 @@ interface ComposeRealInput {
   dataMode: DemoDataMode;
   items: SearchItem[];
   startedAt: number;
+  userContext?: UserContext;
 }
 
 interface PathBucket {
@@ -64,7 +67,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
   const buckets = groupItemsByPath(limitedItems);
   const sourceRefs = limitedItems.map(toSourceRef);
   const sourceByItemId = new Map(limitedItems.map((item, index) => [item.id, sourceRefs[index]]));
-  const paths = buckets.map((bucket) => toPath(bucket, sourceByItemId));
+  const paths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
   const pathByItemId = new Map<string, string>();
 
   for (const bucket of buckets) {
@@ -74,7 +77,14 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
   }
 
   const people = limitedItems.map((item, index) =>
-    toPerson(item, index, pathByItemId.get(item.id) ?? paths[0].id, sourceByItemId.get(item.id)!)
+    toPerson(
+      item,
+      index,
+      pathByItemId.get(item.id) ?? paths[0].id,
+      sourceByItemId.get(item.id)!,
+      input.query,
+      input.userContext
+    )
   );
   const personas = people.map(toPersona);
   const sourceRefsForReturnedPeople = people
@@ -86,6 +96,11 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     queryId: `query_${hashId(input.query)}`,
     query: input.query,
     dataMode: input.dataMode,
+    contextUsed: createDemoContextUsed(input.userContext, [
+      "intent_expand",
+      "search_query_expand",
+      "fit_reason"
+    ]),
     features: {
       aiPersona: true,
       personaChat: "mock",
@@ -207,7 +222,12 @@ function groupItemsByPath(items: SearchItem[]): PathBucket[] {
     .slice(0, 4);
 }
 
-function toPath(bucket: PathBucket, sourceByItemId: Map<string, DemoSourceRef>): DemoPath {
+function toPath(
+  bucket: PathBucket,
+  sourceByItemId: Map<string, DemoSourceRef>,
+  query: string,
+  userContext?: UserContext
+): DemoPath {
   const sourceRefs = unique(
     bucket.matchedItems
       .map((item) => sourceByItemId.get(item.id)?.id)
@@ -224,6 +244,7 @@ function toPath(bucket: PathBucket, sourceByItemId: Map<string, DemoSourceRef>):
     id: bucket.id,
     title: bucket.title,
     summary: `${bucket.summary} 该路径来自 ${bucket.matchedItems.length} 条知乎公开内容的聚合。`,
+    fitReason: buildContextFitReason(query, userContext, bucket.title),
     stance: bucket.matchedItems.some((item) => classifySampleType(item) === "experience_sample")
       ? "mixed"
       : "viewpoint",
@@ -237,7 +258,9 @@ function toPerson(
   item: SearchItem,
   index: number,
   pathId: string,
-  sourceRef: DemoSourceRef
+  sourceRef: DemoSourceRef,
+  query: string,
+  userContext?: UserContext
 ): DemoPerson {
   const sampleType = classifySampleType(item);
   const article = toArticle(item, sourceRef);
@@ -255,6 +278,11 @@ function toPerson(
     badge: toBadge(sampleType),
     avatar: item.author.avatar,
     oneLine: summary,
+    fitReason: buildContextFitReason(
+      query,
+      userContext,
+      inferMatchedVariables(item).slice(0, 2).join("、") || item.title || "公开内容主题"
+    ),
     who: toWho(sampleType),
     overlaps: toOverlaps(item),
     timeline: [
@@ -308,6 +336,7 @@ function toPersona(person: DemoPerson): DemoPersona {
     avatar: person.avatar,
     personaType: "experience_echo",
     intro: person.aiPersona.openingLine,
+    fitReason: person.fitReason,
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
     sourceRefs: person.sourceRefs,
     suggestedQuestions: person.aiPersona.suggestedQuestions

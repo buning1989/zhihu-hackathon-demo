@@ -108,6 +108,7 @@ export function createMockDemoSearchResponse(
     avatar: person.avatar,
     personaType: "experience_echo" as const,
     intro: person.aiPersona.openingLine,
+    fitReason: person.fitReason,
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
     sourceRefs: person.sourceRefs,
     suggestedQuestions: person.aiPersona.suggestedQuestions
@@ -225,6 +226,7 @@ function buildMockPaths() {
       id: "path_city_pause",
       title: "先停靠，把日常重新排稳",
       summary: "适合暂时不想立刻回到职场、需要先恢复生活秩序的人。",
+      fitReason: "结合你的问题，这条路径只说明公开内容可用来对照生活节奏，判断仍以来源片段为准。",
       stance: "experience" as const,
       evidenceIds: ["ev_city_daily", "ev_city_outdoor"],
       sourceRefs: ["source_mock_city_walk"]
@@ -233,6 +235,7 @@ function buildMockPaths() {
       id: "path_side_income",
       title: "轻量试错，先验证收入可能",
       summary: "适合想离开固定工作，但还需要确认现金流和技能变现路径的人。",
+      fitReason: "结合你的问题，这条路径只说明公开内容可用来对照现金流试错，判断仍以来源片段为准。",
       stance: "mixed" as const,
       evidenceIds: ["ev_side_cashflow", "ev_side_content"],
       sourceRefs: ["source_mock_side_income"]
@@ -241,6 +244,7 @@ function buildMockPaths() {
       id: "path_safety_net",
       title: "先兜住底线，再谈下一步",
       summary: "适合焦虑最坏情况、需要把预算、保障和过渡工作先理清的人。",
+      fitReason: "结合你的问题，这条路径只说明公开内容可用来对照风险底线，判断仍以来源片段为准。",
       stance: "viewpoint" as const,
       evidenceIds: ["ev_safety_budget", "ev_safety_support"],
       sourceRefs: ["source_mock_safety_net"]
@@ -258,6 +262,7 @@ function buildMockPeople() {
       badge: "先把日常排稳",
       avatar: "",
       oneLine: "这个样本提醒你，去哪里之前，可能先要知道一天怎么过。",
+      fitReason: "结合你的问题，这个样本只说明公开回答可用来对照日常节奏，判断仍以来源片段为准。",
       who: "基于知乎公开回答整理出的前人样本，不等同于作者完整人生。",
       overlaps: ["都在离开工作结构后寻找新的日常秩序", "都关心低成本生活和身体状态"],
       timeline: [
@@ -291,6 +296,7 @@ function buildMockPeople() {
       badge: "先验证现金流",
       avatar: "",
       oneLine: "这个样本更像一张检查表：安全垫、技能、试错成本，一个个算清楚。",
+      fitReason: "结合你的问题，这个样本只说明公开回答可用来对照现金流试错，判断仍以来源片段为准。",
       who: "基于知乎公开回答整理出的观点与经验混合样本，不等同于作者完整人生。",
       overlaps: ["都在考虑不上班后的收入来源", "都需要判断试错成本和现金流"],
       timeline: [
@@ -324,6 +330,7 @@ function buildMockPeople() {
       badge: "先处理最坏情况",
       avatar: "",
       oneLine: "这个样本不急着讲远方，而是先问：如果暂时没收入，基本盘怎么守住？",
+      fitReason: "结合你的问题，这个样本只说明公开回答可用来对照预算和保障，判断仍以来源片段为准。",
       who: "基于知乎公开回答整理出的观点样本，不等同于作者完整人生。",
       overlaps: ["都担心不工作后的基本生活", "都需要把预算和保障政策先确认"],
       timeline: [

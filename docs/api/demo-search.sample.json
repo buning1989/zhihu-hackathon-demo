@@ -5,6 +5,13 @@
     "queryId": "query_66aeeff2",
     "query": "不工作了能去哪儿",
     "dataMode": "mock",
+    "contextUsed": {
+      "provider": "zhihu",
+      "loggedIn": false,
+      "zhihuProfileUsed": false,
+      "profileSignals": [],
+      "usedFor": []
+    },
     "features": {
       "aiPersona": true,
       "personaChat": "mock",
@@ -57,6 +64,7 @@
         "id": "path_city_pause",
         "title": "先停靠，把日常重新排稳",
         "summary": "适合暂时不想立刻回到职场、需要先恢复生活秩序的人。",
+        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照生活节奏，判断仍以来源片段为准。",
         "stance": "experience",
         "evidenceIds": [
           "ev_city_daily",
@@ -102,6 +110,7 @@
         "badge": "先把日常排稳",
         "avatar": "",
         "oneLine": "这个样本提醒你，去哪里之前，可能先要知道一天怎么过。",
+        "fitReason": "结合你的问题，这个样本只说明公开回答可用来对照日常节奏，判断仍以来源片段为准。",
         "who": "基于知乎公开回答整理出的前人样本，不等同于作者完整人生。",
         "overlaps": [
           "都在离开工作结构后寻找新的日常秩序",
@@ -520,6 +529,7 @@
         "avatar": "",
         "personaType": "experience_echo",
         "intro": "你可以继续问这段公开内容里的选择、代价和下一步判断。",
+        "fitReason": "结合你的问题，这个追问入口只用于继续理解已命中的公开回答片段，不代表作者本人。",
         "boundaryNotice": "该 AI 分身基于公开内容生成，不代表作者本人。",
         "sourceRefs": [
           "source_mock_city_walk"
