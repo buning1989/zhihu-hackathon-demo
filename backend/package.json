@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "npm run build && node dist/server.js",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "smoke": "npm run build && node dist/tests/smoke.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

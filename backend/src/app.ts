@@ -3,6 +3,7 @@ import { authRoutes } from "./auth/routes.js";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware.js";
 import { demoRoutes } from "./routes/demo.routes.js";
 import { healthRoutes } from "./routes/health.routes.js";
+import { personasRoutes } from "./routes/personas.routes.js";
 import { searchRoutes } from "./routes/search.routes.js";
 import { zhihuRoutes } from "./routes/zhihu.routes.js";
 
@@ -22,6 +23,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/zhihu", zhihuRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/demo", demoRoutes);
+app.use("/api/personas", personasRoutes);
 app.use("/auth", authRoutes);
 
 app.use(notFoundMiddleware);
