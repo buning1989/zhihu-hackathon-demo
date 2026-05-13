@@ -68,10 +68,10 @@ async function main() {
 
     const demoData = cacheWarmRun.data;
     const personas = assertNonEmptyArray(demoData.personas, "data.personas");
-    printDemoTiming(firstRun);
-    printDemoTiming(secondRun);
-    printDemoTiming(cacheWarmRun);
-    printDemoTiming(cacheHitRun);
+    printDemoRunDetails(firstRun);
+    printDemoRunDetails(secondRun);
+    printDemoRunDetails(cacheWarmRun);
+    printDemoRunDetails(cacheHitRun);
 
     const firstPersona = readRecord(personas[0], "data.personas[0]");
     const personaId = readString(firstPersona.id, "data.personas[0].id");
@@ -267,6 +267,51 @@ function assertStageTiming(timings, stage) {
   }
 }
 
+function printDemoRunDetails(run) {
+  printDemoPaths(run);
+  printCandidateQuality(run);
+  printDemoTiming(run);
+}
+
+function printDemoPaths(run) {
+  const debug = readRecord(run.data.debug, `${run.label} debug`);
+  const paths = assertNonEmptyArray(run.data.paths, `${run.label} data.paths`);
+  console.log(`paths ${run.label} query="${run.query}" pathSource=${debug.pathSource || ""}`);
+
+  paths.forEach((path, index) => {
+    const item = readRecord(path, `${run.label} data.paths[${index}]`);
+    const title = readString(item.title, `${run.label} data.paths[${index}].title`);
+    const summary = typeof item.summary === "string" ? item.summary : "";
+    const source = formatPathSource(item, debug);
+
+    console.log(`  path[${index + 1}] title=${title}`);
+    console.log(`    summary=${summary}`);
+    console.log(`    source=${source}`);
+  });
+}
+
+function printCandidateQuality(run) {
+  const debug = readRecord(run.data.debug, `${run.label} debug`);
+  const candidates = assertNonEmptyArray(
+    debug.candidateQuality,
+    `${run.label} data.debug.candidateQuality`
+  );
+  const preview = selectCandidateQualityPreview(candidates);
+  console.log(
+    `candidateQuality ${run.label} query="${run.query}" shown=${preview.length}/${candidates.length}`
+  );
+
+  preview.forEach((candidate, index) => {
+    const item = readRecord(candidate, `${run.label} data.debug.candidateQuality[${index}]`);
+    const label = readCandidateLabel(item);
+
+    console.log(
+      `  candidate[${index + 1}] ${label} contentLength=${formatNumber(item.contentLength)} relevanceScore=${formatNumber(item.relevanceScore)} qualityScore=${formatNumber(item.qualityScore)} experienceSignalScore=${formatNumber(item.experienceSignalScore)} usedAsEvidence=${item.usedAsEvidence === true}`
+    );
+    console.log(`    filterReason=${String(item.filterReason || "")}`);
+  });
+}
+
 function printDemoTiming(run) {
   const debug = readRecord(run.data.debug, `${run.label} debug`);
   const timings = Array.isArray(debug.timings) ? debug.timings : [];
@@ -283,6 +328,47 @@ function printDemoTiming(run) {
       `  stage=${timing.stageName} durationMs=${timing.durationMs} llmUsed=${timing.llmUsed} fallbackUsed=${timing.fallbackUsed} fallbackReason=${timing.fallbackReason || ""}`
     );
   }
+}
+
+function selectCandidateQualityPreview(candidates) {
+  const records = candidates.filter(isRecord);
+  const used = records.filter((candidate) => candidate.usedAsEvidence === true);
+  const downranked = records.filter((candidate) => candidate.usedAsEvidence !== true);
+  const preview = [...used.slice(0, 2), ...downranked.slice(0, 1)];
+
+  if (preview.length >= 2 || records.length <= preview.length) {
+    return preview.slice(0, 3);
+  }
+
+  return [...preview, ...records.filter((candidate) => !preview.includes(candidate))].slice(0, 3);
+}
+
+function formatPathSource(path, debug) {
+  const directSource =
+    typeof path.source === "string"
+      ? path.source
+      : typeof path.pathSource === "string"
+        ? path.pathSource
+        : "";
+  const sourceRefs = Array.isArray(path.sourceRefs) ? path.sourceRefs.filter(Boolean).join(",") : "";
+
+  return [
+    directSource,
+    debug.pathSource ? `pathSource=${debug.pathSource}` : "",
+    sourceRefs ? `sourceRefs=${sourceRefs}` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function readCandidateLabel(candidate) {
+  const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
+  const candidateId = typeof candidate.candidateId === "string" ? candidate.candidateId.trim() : "";
+  return title ? `title=${title}` : `candidateId=${candidateId || "unknown"}`;
+}
+
+function formatNumber(value) {
+  return Number.isFinite(value) ? String(value) : "n/a";
 }
 
 function assertEqual(actual, expected, label) {
