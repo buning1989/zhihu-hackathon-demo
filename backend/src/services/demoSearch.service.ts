@@ -38,12 +38,15 @@ export class DemoSearchService {
         assertDemoSearchGrounding(response);
         return response;
       } catch (error) {
-        const response = createMockDemoSearchResponse(request.query, request.count, request.dataMode, {
+        logRealSearchFallback(error, request, startedAt);
+
+        const response = createMockDemoSearchResponse(request.query, request.count, "mock", {
           fallbackUsed: true,
+          requestedDataMode: request.dataMode,
           resolvedDataMode: "mock",
           notes: [
             "real mode fallback to mock demo data",
-            error instanceof Error ? error.message : "unknown real mode error"
+            formatErrorSummary(error)
           ]
         });
         response.meta.latencyMs = Date.now() - startedAt;
@@ -69,6 +72,7 @@ export const demoSearchService = new DemoSearchService();
 export function parseDemoSearchRequest(body: unknown): DemoSearchRequest {
   const record = isRecord(body) ? body : {};
   const query = readString(record.query).trim();
+  const dataMode = readString(record.dataMode) || readString(record.mode);
 
   if (!query) {
     throw new HttpError(400, "QUERY_REQUIRED", "Missing required body field: query");
@@ -77,7 +81,7 @@ export function parseDemoSearchRequest(body: unknown): DemoSearchRequest {
   return {
     query,
     count: parseCount(record.count),
-    dataMode: parseDataMode(record.dataMode)
+    dataMode: parseDataMode(dataMode)
   };
 }
 
@@ -87,8 +91,9 @@ function composeFromSearchItems(
   startedAt: number
 ): DemoSearchResponse {
   if (items.length === 0) {
-    return createMockDemoSearchResponse(request.query, request.count, request.dataMode, {
+    return createMockDemoSearchResponse(request.query, request.count, "mock", {
       fallbackUsed: true,
+      requestedDataMode: request.dataMode,
       resolvedDataMode: "mock",
       notes: ["real search returned no items; fallback to mock demo data"]
     });
@@ -367,4 +372,51 @@ function hashId(value: string): string {
   }
 
   return (hash >>> 0).toString(16);
+}
+
+function logRealSearchFallback(
+  error: unknown,
+  request: DemoSearchRequest,
+  startedAt: number
+): void {
+  console.error("[DemoSearch] real Zhihu search failed; falling back to mock", {
+    query: request.query,
+    count: request.count,
+    requestedDataMode: request.dataMode,
+    elapsedMs: Date.now() - startedAt,
+    ...toLoggableError(error)
+  });
+}
+
+function toLoggableError(error: unknown): {
+  code: string;
+  statusCode: number | null;
+  message: string;
+} {
+  if (error instanceof HttpError) {
+    return {
+      code: error.code,
+      statusCode: error.statusCode,
+      message: error.message
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      code: error.name || "ERROR",
+      statusCode: null,
+      message: error.message || "Unknown error"
+    };
+  }
+
+  return {
+    code: "UNKNOWN_ERROR",
+    statusCode: null,
+    message: "Unknown error"
+  };
+}
+
+function formatErrorSummary(error: unknown): string {
+  const loggableError = toLoggableError(error);
+  return `${loggableError.code}: ${loggableError.message}`;
 }

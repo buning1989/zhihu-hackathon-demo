@@ -5,7 +5,11 @@ import type { ZhihuSearchParams, ZhihuSearchRawResponse } from "./zhihu.types.js
 export class ZhihuProvider {
   async searchRaw(params: ZhihuSearchParams): Promise<ZhihuSearchRawResponse> {
     if (!config.zhihu.accessSecret) {
-      throw new HttpError(500, "ZHIHU_AUTH_FAILED", "知乎 API 鉴权失败");
+      throw new HttpError(
+        500,
+        "ZHIHU_AUTH_FAILED",
+        "缺少 ZH_ACCESS_SECRET 或 ZHIHU_API_KEY，无法调用知乎 API"
+      );
     }
 
     const controller = new AbortController();
@@ -50,7 +54,7 @@ export class ZhihuProvider {
         throw new HttpError(504, "ZHIHU_TIMEOUT", "知乎 API 请求超时");
       }
 
-      throw new HttpError(502, "ZHIHU_REQUEST_FAILED", "知乎 API 请求失败");
+      throw new HttpError(502, "ZHIHU_REQUEST_FAILED", buildRequestFailedMessage(error));
     } finally {
       clearTimeout(timeout);
     }
@@ -100,4 +104,12 @@ function readZhihuErrorMessage(body: unknown): string | null {
 
   const message = body.message ?? body.Message ?? body.data ?? body.Data;
   return typeof message === "string" && message.trim() ? message : null;
+}
+
+function buildRequestFailedMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return `知乎 API 请求失败: ${error.message}`;
+  }
+
+  return "知乎 API 请求失败";
 }

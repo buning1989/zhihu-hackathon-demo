@@ -8,6 +8,7 @@ export type DemoPersonaChatMode = "off" | "mock" | "real";
 export interface DemoSearchRequestBody {
   query?: unknown;
   count?: unknown;
+  mode?: unknown;
   dataMode?: unknown;
 }
 
