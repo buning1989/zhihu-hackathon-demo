@@ -1450,16 +1450,24 @@
 
     .person-card {
       position: relative;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
       width: 100%;
       height: 100%;
-      padding: 26px;
+      padding: 0;
       border: 1px solid var(--line);
       border-radius: 24px;
       text-align: left;
       color: var(--text);
       background: #ffffff;
       box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .person-card-body {
+      min-height: 0;
       overflow: auto;
+      padding: 26px;
     }
 
     .card-peep {
@@ -1488,7 +1496,7 @@
       max-width: calc(100% - 104px);
     }
 
-    .sample-stage.is-detail-open .person-card {
+    .sample-stage.is-detail-open .person-card-body {
       padding: 22px;
     }
 
@@ -1632,7 +1640,14 @@
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
-      margin-top: 22px;
+      margin-top: 0;
+      padding: 16px 26px 20px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+    }
+
+    .sample-stage.is-detail-open .card-actions {
+      padding: 14px 22px 18px;
     }
 
     .card-actions .primary {
@@ -1734,7 +1749,6 @@
       gap: 10px;
       align-items: center;
       padding-top: 18px;
-      border-top: 1px solid var(--line);
     }
 
     .inline-ask-actions .primary {
@@ -1798,6 +1812,7 @@
 
     .reader-actions {
       display: flex;
+      align-items: center;
       gap: 10px;
       margin-top: 32px;
       padding-top: 20px;
@@ -1933,11 +1948,13 @@
     }
 
     .message {
-      max-width: 76%;
-      padding: 18px 20px;
+      width: fit-content;
+      max-width: min(68%, 720px);
+      padding: 14px 18px;
       border-radius: 24px;
       line-height: 1.78;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
       animation: msgIn 340ms var(--ease) both;
     }
 
@@ -1953,38 +1970,6 @@
       color: var(--text);
       background: #fbf7ef;
       border-bottom-left-radius: 8px;
-    }
-
-    .message-boundary,
-    .message-sources {
-      display: grid;
-      gap: 6px;
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(38, 35, 31, 0.08);
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.62;
-      white-space: normal;
-    }
-
-    .message-boundary strong,
-    .message-sources strong {
-      color: var(--text);
-    }
-
-    .message-sources a {
-      color: var(--warm);
-      text-decoration: none;
-      border-bottom: 1px solid rgba(216, 154, 69, 0.36);
-    }
-
-    .message-suggestions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-      white-space: normal;
     }
 
     .message.typing {
@@ -2069,16 +2054,31 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .library-group-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
     .library-group-head h2 {
       font-size: 22px;
       line-height: 1.36;
     }
 
-    .library-group-head p {
-      margin-bottom: 8px;
-      color: var(--faint);
-      font-size: 13px;
+    .library-count-pill {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 6px 10px;
+      border: 1px solid rgba(216, 154, 69, 0.24);
+      border-radius: 999px;
+      color: #6f5a2b;
+      background: rgba(255, 241, 199, 0.48);
+      font-size: 12px;
       font-weight: 850;
+      line-height: 1.2;
     }
 
     .library-sample-list {
@@ -2823,6 +2823,19 @@
       return String(value);
     }
 
+    function isGeneratedSampleLabel(value) {
+      const text = textOf(value).trim();
+      return /^样本\s*\d+$/i.test(text)
+        || /^公开回答样本\s*[A-Za-z0-9]+(?:\s*[·。].*)?$/i.test(text)
+        || /^知乎回答样本\s*[A-Za-z0-9]*(?:\s*[·。].*)?$/i.test(text)
+        || /^基于公开回答整理的.+样本(?:\s*[·。].*)?$/i.test(text);
+    }
+
+    function cleanGeneratedSampleLabel(value) {
+      const text = textOf(value).trim();
+      return isGeneratedSampleLabel(text) ? "" : text;
+    }
+
     function numberOf(value, fallback = 0) {
       const next = Number(value);
       return Number.isFinite(next) ? next : fallback;
@@ -2931,7 +2944,8 @@
     }
 
     function normalizePerson(item = {}, index = 0, fallbackPathId = "") {
-      const name = item.name || item.nickname || item.displayName || item.authorName || `样本 ${index + 1}`;
+      const nameCandidates = [item.name, item.nickname, item.displayName, item.display_name, item.authorName, item.author_name].map((value) => textOf(value).trim()).filter(Boolean);
+      const name = nameCandidates.find((value) => !isGeneratedSampleLabel(value)) || cleanGeneratedSampleLabel(nameCandidates[0]) || `知乎用户 ${index + 1}`;
       const pathName = item.pathName || item.path_name || item.path?.name;
       const derivedPathId = pathName ? slugify(pathName, `path_${index + 1}`) : "";
       const matchedPath = pathName ? paths.find((path) => path.name === pathName) : null;
@@ -3142,10 +3156,7 @@
     function normalizeChatResponse(payload) {
       const body = getResponseBody(payload) || {};
       return {
-        reply: textOf(body.reply || body.content || body.message || body.messages?.at?.(-1)?.content || ""),
-        boundaryNotice: textOf(body.boundaryNotice || body.boundary_notice || body.boundary || ""),
-        sourceRefs: toArray(body.sourceRefs || body.source_refs || body.sources || body.evidence),
-        suggestedQuestions: toArray(body.suggestedQuestions || body.suggested_questions || body.questions).map(String)
+        reply: textOf(body.reply || body.content || body.message || body.messages?.at?.(-1)?.content || "")
       };
     }
 
@@ -3159,21 +3170,8 @@
     }
 
     function fallbackChatPayload(person) {
-      const articles = getPersonArticles(person).slice(0, 2);
       return {
-        reply: getPersonaReply(person),
-        boundaryNotice: person.boundaryNotice || `这是基于${person.name}公开内容生成的经验分身，不代表作者本人。`,
-        sourceRefs: articles.map((article) => ({
-          id: article.id,
-          title: article.title,
-          sourceName: article.sourceName,
-          url: article.sourceUrl
-        })),
-        suggestedQuestions: person.suggestedQuestions?.length ? person.suggestedQuestions : [
-          "刚开始时最大的现实落差是什么？",
-          "出发前最应该先确认什么？",
-          "如果只是想离开工作状态，该怎么判断？"
-        ]
+        reply: getPersonaReply(person)
       };
     }
 
@@ -3418,7 +3416,7 @@
     }
 
     function getPerson(id = state.selectedPersonId) {
-      return people.find((item) => item.id === id) || people[0] || normalizePerson({ name: "未知样本" });
+      return people.find((item) => item.id === id) || people[0] || normalizePerson({ name: "知乎用户" });
     }
 
     function getProfileUrl(person) {
@@ -3430,16 +3428,12 @@
     }
 
     function personaName(person) {
-      return person.personaDisplayName || `${person.name}的分身`;
+      return `${personDisplayName(person)}的分身`;
     }
 
     function personDisplayName(person) {
       const raw = textOf(person?.name || "").trim();
-      const cleaned = raw
-        .replace(/基于公开回答整理的/g, "")
-        .replace(/样本/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
+      const cleaned = cleanGeneratedSampleLabel(raw).replace(/\s+/g, " ").trim();
       return cleaned && !/^\d+$/.test(cleaned) ? cleaned : "知乎用户";
     }
 
@@ -3842,33 +3836,35 @@
       ].filter(Boolean).join(" · ");
       return `
         <article class="person-card has-peep">
-          <div class="card-peep" aria-hidden="true"><img src="${avatarSrc(person.avatar)}" alt=""></div>
-          <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
-          ${person.oneLine ? `<p class="summary">${escapeHtml(person.oneLine)}</p>` : ""}
-          <div class="section-block">
-            <h3>TA 是谁</h3>
-            <p>${person.who}</p>
-          </div>
-          <div class="section-block">
-            <h3>为什么匹配到 TA</h3>
-            ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
-            <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-            ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
-            ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
-          </div>
-          <div class="section-block">
-            <h3>TA 的经历时间线</h3>
-            <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
-          </div>
-          ${person.lesson ? `
+          <div class="person-card-body">
+            <div class="card-peep" aria-hidden="true"><img src="${avatarSrc(person.avatar)}" alt=""></div>
+            <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
+            ${person.oneLine ? `<p class="summary">${escapeHtml(person.oneLine)}</p>` : ""}
             <div class="section-block">
-              <h3>可以带走的一点</h3>
-              <p class="key-insight">${escapeHtml(person.lesson)}</p>
+              <h3>TA 是谁</h3>
+              <p>${person.who}</p>
             </div>
-          ` : ""}
-          <div class="section-block">
-            <h3>TA的真实经历</h3>
-            <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
+            <div class="section-block">
+              <h3>为什么匹配到 TA</h3>
+              ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
+              <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+              ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+              ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
+            </div>
+            <div class="section-block">
+              <h3>TA 的经历时间线</h3>
+              <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
+            </div>
+            ${person.lesson ? `
+              <div class="section-block">
+                <h3>可以带走的一点</h3>
+                <p class="key-insight">${escapeHtml(person.lesson)}</p>
+              </div>
+            ` : ""}
+            <div class="section-block">
+              <h3>TA的真实经历</h3>
+              <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
+            </div>
           </div>
           <div class="card-actions">
             <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
@@ -3902,21 +3898,17 @@
     function renderInlineReader(person) {
       const articles = getPersonArticles(person);
       const articleIndex = Math.min(state.readerArticleIndex, Math.max(articles.length - 1, 0));
-      const article = articles[articleIndex] || normalizeArticle({ title: `${person.name} 的公开分享`, body: person.articleBody }, 0, person);
-      const body = article.body.length ? article.body : normalizeTextBlocks(article.summary || article.evidence?.map((item) => item.text) || person.articleBody);
-      const meta = [article.author || person.name, article.sourceName, article.publishedAt].filter(Boolean).join(" · ");
-      const articleSourceRefs = article.sourceRefs.length ? article.sourceRefs : article.sourceUrl ? [{ title: article.title, sourceName: article.sourceName, url: article.sourceUrl }] : person.sourceRefs;
+      const article = articles[articleIndex] || normalizeArticle({ title: `${personDisplayName(person)} 的公开分享`, body: person.articleBody }, 0, person);
+      const body = article.body.length ? article.body : [];
+      const sourceUrl = article.sourceUrl || textOf(article.sourceRefs.find((ref) => typeof ref === "object" && ref?.url)?.url || "");
       return `
         <article class="inline-reader">
           <h2>${escapeHtml(article.title)}</h2>
-          <p class="reader-meta">${escapeHtml(meta || "知乎回答 / 文章")}${article.sourceUrl ? ` · <a href="${escapeHtml(article.sourceUrl)}" target="_blank" rel="noreferrer">查看知乎原文</a>` : ""}</p>
-          ${article.summary ? `<p class="key-insight">${escapeHtml(article.summary)}</p>` : ""}
-          ${renderSourceLine(articleSourceRefs)}
-          ${article.evidence.length ? `<div class="section-block"><h3>证据片段</h3>${article.evidence.map((item) => `<p class="evidence-line">${escapeHtml([item.label, item.text].filter(Boolean).join("："))}${item.sourceRefId ? ` · ${escapeHtml(item.sourceRefId)}` : ""}</p>`).join("")}</div>` : ""}
+          ${sourceUrl ? `<p class="reader-meta"><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">查看知乎原文</a></p>` : ""}
           <div class="reader-body">${body.map((p) => `<p>${escapeHtml(p)}</p>`).join("")}</div>
           <div class="reader-actions">
             <button class="primary" type="button" data-action="question-from-reader">基于这篇原文继续提问</button>
-            <button class="secondary dark" type="button" data-action="close-reader">收起原文</button>
+            <button class="ghost-text-button" type="button" data-action="close-reader">收起原文</button>
           </div>
         </article>
       `;
@@ -3931,15 +3923,11 @@
               <div class="mini-person">
                 <div class="mini-peep-card chat-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
                 <div>
-                  <strong>${person.name}</strong>
-                  <p style="color:var(--muted);line-height:1.6">${person.role}<br>${getPath(person.pathId).name}</p>
+                  <strong>${escapeHtml(personDisplayName(person))}</strong>
                 </div>
               </div>
               <div class="disclaimer">
-                ${escapeHtml(person.boundaryNotice || `这是基于${person.name}公开内容生成的经验分身，用来帮你理解 TA 曾经分享过的经历。它不代表本人实时观点。`)}
-                ${person.personaOpeningLine ? `<br>${escapeHtml(person.personaOpeningLine)}` : ""}
-                ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
-                ${renderSourceLine(person.personaSourceRefs)}
+                ${escapeHtml(`这是基于${personDisplayName(person)}公开内容生成的经验分身，用来帮你理解 TA 曾经分享过的经历。它不代表本人实时观点。`)}
               </div>
               <div class="action-row" style="justify-content:flex-start">
                 <button class="secondary" type="button" data-action="samples">返回人物卡</button>
@@ -3950,7 +3938,7 @@
               <div class="chat-head"><h2>${escapeHtml(personaName(person))}</h2></div>
               <div class="messages">
                 ${state.messages.map(renderChatMessage).join("")}
-                ${state.aiTyping ? `<div class="message ai typing" aria-label="${person.name}的分身正在输入"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>` : ""}
+                ${state.aiTyping ? `<div class="message ai typing" aria-label="${escapeHtml(personDisplayName(person))}的分身正在输入"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>` : ""}
               </div>
               <div>
                 <div class="chat-input">
@@ -3969,9 +3957,6 @@
       return `
         <div class="message ${roleClass}">
           ${escapeHtml(msg.text)}
-          ${msg.boundaryNotice ? `<div class="message-boundary"><strong>边界说明</strong><span>${escapeHtml(msg.boundaryNotice)}</span></div>` : ""}
-          ${msg.sourceRefs?.length ? `<div class="message-sources"><strong>来源</strong>${msg.sourceRefs.map(renderSourceRef).join("")}</div>` : ""}
-          ${msg.suggestedQuestions?.length ? `<div class="message-suggestions">${msg.suggestedQuestions.map((question) => `<button class="quick-chip" type="button" data-action="quick-chat" data-text="${escapeHtml(question)}">${escapeHtml(question)}</button>`).join("")}</div>` : ""}
         </div>
       `;
     }
@@ -4008,8 +3993,10 @@
       return `
         <section class="library-group-card">
           <div class="library-group-head">
-            <p>问题</p>
-            <h2>${escapeHtml(group.question || "未命名问题")}</h2>
+            <div class="library-group-title">
+              <h2>${escapeHtml(group.question || "未命名问题")}</h2>
+              <span class="library-count-pill">已存${group.people.length}个样本</span>
+            </div>
           </div>
           <div class="library-sample-list">
             ${group.people.map(renderSavedSampleCard).join("")}
@@ -4023,7 +4010,7 @@
         <article class="saved-card">
           <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
           <div>
-            <a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(person.name)}</a>
+            <a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a>
             <p style="color:var(--faint);margin-top:4px">路径：${escapeHtml(getPath(person.pathId).name)}</p>
             <p style="color:var(--muted);margin-top:6px;line-height:1.6">${escapeHtml(person.oneLine)}</p>
           </div>
@@ -4216,20 +4203,14 @@
         const data = normalizeChatResponse(response);
         state.messages.push({
           role: "ai",
-          text: data.reply || getPersonaReply(person),
-          boundaryNotice: data.boundaryNotice || person.boundaryNotice,
-          sourceRefs: data.sourceRefs,
-          suggestedQuestions: data.suggestedQuestions.length ? data.suggestedQuestions : person.suggestedQuestions
+          text: data.reply || getPersonaReply(person)
         });
       } catch (error) {
         console.warn("Persona chat API unavailable, using mock fallback.", error);
         const data = fallbackChatPayload(person);
         state.messages.push({
           role: "ai",
-          text: data.reply,
-          boundaryNotice: data.boundaryNotice,
-          sourceRefs: data.sourceRefs,
-          suggestedQuestions: data.suggestedQuestions
+          text: data.reply
         });
       }
       state.aiTyping = false;
