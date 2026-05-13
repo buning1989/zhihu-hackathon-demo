@@ -185,6 +185,8 @@ function logLlmComposerFallback(
 function markLlmSkipped(response: DemoSearchResponse, reason: string): void {
   response.debug.llmUsed = false;
   response.debug.llmComposerUsed = false;
+  response.debug.llmRepairUsed = false;
+  response.debug.llmRepairFailed = false;
   response.debug.fallbackUsed = false;
   response.debug.fallbackReason = reason;
   response.debug.guardWarnings = [];
@@ -200,6 +202,10 @@ function markLlmFallback(response: DemoSearchResponse, error: unknown): void {
   response.meta.fallbackUsed = true;
   response.debug.llmUsed = false;
   response.debug.llmComposerUsed = false;
+  response.debug.llmRepairUsed =
+    error instanceof DemoComposerLlmError ? error.llmRepairUsed : false;
+  response.debug.llmRepairFailed =
+    error instanceof DemoComposerLlmError ? error.llmRepairFailed : false;
   response.debug.fallbackUsed = true;
   response.debug.fallbackReason = fallbackReason;
   response.debug.guardWarnings =

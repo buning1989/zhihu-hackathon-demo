@@ -10,6 +10,7 @@ export interface LlmMessage {
 export interface CreateJsonCompletionInput {
   messages: LlmMessage[];
   temperature?: number;
+  maxTokens?: number;
 }
 
 export class LlmProviderError extends Error {
@@ -40,6 +41,8 @@ export class OpenAICompatibleClient {
           model: config.llm.model,
           messages: input.messages,
           temperature: input.temperature ?? 0.2,
+          max_tokens: input.maxTokens ?? 3000,
+          stream: false,
           response_format: { type: "json_object" }
         }),
         signal: controller.signal

@@ -29,6 +29,13 @@ interface ComposeLlmDemoInput {
 interface ComposerContext {
   query: string;
   maxPeople: number;
+  outputLimits: {
+    paths: "2-3";
+    people: 3;
+    timelinePerPerson: 1;
+    suggestedQuestionsPerPerson: 2;
+    analysisSteps: 2;
+  };
   boundaryNotice: string;
   allowedPeople: AllowedPerson[];
 }
@@ -62,7 +69,9 @@ export class DemoComposerLlmError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public readonly guardWarnings: string[] = []
+    public readonly guardWarnings: string[] = [],
+    public readonly llmRepairUsed = false,
+    public readonly llmRepairFailed = false
   ) {
     super(message);
     this.name = "DemoComposerLlmError";
@@ -75,6 +84,7 @@ export async function composeLlmDemoSearchResponse(
   const context = buildComposerContext(input);
   const content = await llmClient.createJsonCompletion({
     temperature: 0.2,
+    maxTokens: 3000,
     messages: [
       {
         role: "system",
@@ -85,7 +95,8 @@ export async function composeLlmDemoSearchResponse(
         content: [
           "请基于下面的 composer_context 输出严格 JSON。",
           "只能使用 allowedPeople 里提供的 personId、articleIds、sourceRefs、evidenceIds 和证据文本。",
-          "不要输出 Markdown，不要解释。",
+          "严格遵守 outputLimits：people 最多 3 个，paths 2-3 个，timeline 每人 1 条，suggestedQuestions 每人 2 条，analysis.steps 最多 2 条。",
+          "不要输出 Markdown，不要解释，不要尾随逗号，不要注释，不要多余字段。",
           "",
           "<composer_context>",
           JSON.stringify(context, null, 2),
@@ -94,17 +105,44 @@ export async function composeLlmDemoSearchResponse(
       }
     ]
   });
-  const output = parseJsonObject(content);
+  const parsed = await parseJsonObjectWithRepair(content, context);
 
-  return buildResponseFromLlmOutput(output, input);
+  try {
+    return buildResponseFromLlmOutput(parsed.output, input, {
+      llmRepairUsed: parsed.repairUsed,
+      llmRepairFailed: parsed.repairFailed
+    });
+  } catch (error) {
+    if (parsed.repairUsed && error instanceof DemoComposerLlmError) {
+      throw new DemoComposerLlmError(
+        error.code,
+        error.message,
+        error.guardWarnings,
+        true,
+        parsed.repairFailed
+      );
+    }
+
+    throw error;
+  }
 }
 
 function buildComposerContext(input: ComposeLlmDemoInput): ComposerContext {
+  const maxPeople = Math.min(Math.max(input.count, 1), input.deterministicResponse.people.length, 3);
+  const people = input.deterministicResponse.people.slice(0, maxPeople);
+
   return {
     query: input.query,
-    maxPeople: Math.min(Math.max(input.count, 1), input.deterministicResponse.people.length),
+    maxPeople,
+    outputLimits: {
+      paths: "2-3",
+      people: 3,
+      timelinePerPerson: 1,
+      suggestedQuestionsPerPerson: 2,
+      analysisSteps: 2
+    },
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
-    allowedPeople: input.deterministicResponse.people.map((person) => {
+    allowedPeople: people.map((person) => {
       const article = person.articles[0];
 
       return {
@@ -117,12 +155,12 @@ function buildComposerContext(input: ComposeLlmDemoInput): ComposerContext {
         title: article?.title ?? "",
         author: article?.author ?? person.name,
         url: article?.url ?? "",
-        text: truncateText(article?.text ?? "", 900),
+        text: truncateText(article?.text ?? "", 360),
         evidence:
           article?.evidence.map((evidence) => ({
             id: evidence.id,
             label: evidence.label,
-            text: truncateText(evidence.text, 220),
+            text: truncateText(evidence.text, 120),
             sourceRefId: evidence.sourceRefId
           })) ?? []
       };
@@ -132,7 +170,11 @@ function buildComposerContext(input: ComposeLlmDemoInput): ComposerContext {
 
 function buildResponseFromLlmOutput(
   output: Record<string, unknown>,
-  input: ComposeLlmDemoInput
+  input: ComposeLlmDemoInput,
+  llmParse: {
+    llmRepairUsed: boolean;
+    llmRepairFailed: boolean;
+  }
 ): DemoSearchResponse {
   const guardWarnings: string[] = [];
   const peopleSeed = readPeopleSeed(output, input.deterministicResponse);
@@ -201,6 +243,8 @@ function buildResponseFromLlmOutput(
       personaCount: personas.length,
       llmUsed: true,
       llmComposerUsed: true,
+      llmRepairUsed: llmParse.llmRepairUsed,
+      llmRepairFailed: llmParse.llmRepairFailed,
       fallbackUsed: false,
       fallbackReason: "",
       guardWarnings,
@@ -218,11 +262,14 @@ function readPeopleSeed(
     fail("LLM_SCHEMA_INVALID", "LLM response must include people");
   }
 
-  const baselineById = new Map(deterministicResponse.people.map((person) => [person.id, person]));
+  const baselineById = new Map(
+    deterministicResponse.people.slice(0, 3).map((person) => [person.id, person])
+  );
   const selectedPersonIds = new Set<string>();
   const baselinesById = new Map<string, DemoPerson>();
+  const limitedRecords = records.slice(0, 3);
 
-  for (const record of records) {
+  for (const record of limitedRecords) {
     const id = readRequiredString(record, "id", "people[].id");
     const baseline = baselineById.get(id);
     if (!baseline) {
@@ -238,7 +285,7 @@ function readPeopleSeed(
   }
 
   return {
-    records,
+    records: limitedRecords,
     baselinesById,
     selectedPersonIds
   };
@@ -254,8 +301,12 @@ function normalizePaths(
     fail("LLM_SCHEMA_INVALID", "LLM response must include paths", guardWarnings);
   }
 
+  if (records.length > 3) {
+    guardWarnings.push("paths exceeded output limit; only first 3 paths were used");
+  }
+
   const pathIds = new Set<string>();
-  return records.map((record) => {
+  return records.slice(0, 3).map((record) => {
     const id = readRequiredString(record, "id", "paths[].id");
     if (pathIds.has(id)) {
       fail("LLM_GROUNDING_INVALID", `LLM duplicated path id: ${id}`, guardWarnings);
@@ -392,7 +443,11 @@ function normalizeTimeline(
     fail("LLM_SCHEMA_INVALID", `Person timeline is required: ${personId}`, guardWarnings);
   }
 
-  return records.slice(0, 3).map((record, index) => ({
+  if (records.length > 1) {
+    guardWarnings.push(`people[${personId}].timeline exceeded output limit; only first event was used`);
+  }
+
+  return records.slice(0, 1).map((record, index) => ({
     date: readRequiredString(record, "date", `people[${personId}].timeline[${index}].date`),
     event: readRequiredString(record, "event", `people[${personId}].timeline[${index}].event`),
     evidenceIds: readAllowedRefs(
@@ -531,7 +586,7 @@ function normalizePersonPersona(
     displayName,
     label: readOptionalString(record.label) || "基于公开内容生成",
     openingLine,
-    suggestedQuestions: readStringArray(record.suggestedQuestions).slice(0, 5),
+    suggestedQuestions: readStringArray(record.suggestedQuestions).slice(0, 2),
     boundary: DEMO_PERSONA_BOUNDARY_NOTICE,
     grounding: {
       personId: baseline.id,
@@ -601,7 +656,10 @@ function normalizePersonas(
       intro,
       boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
       sourceRefs,
-      suggestedQuestions: suggestedQuestions.length > 0 ? suggestedQuestions : person.aiPersona.suggestedQuestions
+      suggestedQuestions:
+        suggestedQuestions.length > 0
+          ? suggestedQuestions.slice(0, 2)
+          : person.aiPersona.suggestedQuestions.slice(0, 2)
     };
   });
 }
@@ -623,7 +681,7 @@ function normalizeAnalysis(
     focusTags: readStringArray(record.focusTags).slice(0, 8),
     steps:
       steps.length > 0
-        ? steps.slice(0, 5).map((step, index) => normalizeAnalysisStep(
+        ? steps.slice(0, 2).map((step, index) => normalizeAnalysisStep(
             step,
             index,
             allowedSourceRefs,
@@ -711,6 +769,94 @@ function collectUsedSourceRefs(
   }
 
   return baselineSourceRefs.filter((sourceRef) => usedIds.has(sourceRef.id));
+}
+
+async function parseJsonObjectWithRepair(
+  content: string,
+  context: ComposerContext
+): Promise<{
+  output: Record<string, unknown>;
+  repairUsed: boolean;
+  repairFailed: boolean;
+}> {
+  try {
+    return {
+      output: parseJsonObject(content),
+      repairUsed: false,
+      repairFailed: false
+    };
+  } catch (error) {
+    if (!(error instanceof DemoComposerLlmError) || error.code !== "LLM_JSON_PARSE_FAILED") {
+      throw error;
+    }
+
+    try {
+      const repairedContent = await repairLlmJson(content, error.message, context);
+      return {
+        output: parseJsonObject(repairedContent),
+        repairUsed: true,
+        repairFailed: false
+      };
+    } catch (repairError) {
+      const repairWarnings =
+        repairError instanceof DemoComposerLlmError ? repairError.guardWarnings : [];
+      throw new DemoComposerLlmError(
+        "LLM_JSON_REPAIR_FAILED",
+        `LLM JSON repair failed after initial parse error: ${toErrorMessage(repairError)}`,
+        [...error.guardWarnings, ...repairWarnings],
+        true,
+        true
+      );
+    }
+  }
+}
+
+async function repairLlmJson(
+  invalidJson: string,
+  parseError: string,
+  context: ComposerContext
+): Promise<string> {
+  return llmClient.createJsonCompletion({
+    temperature: 0,
+    maxTokens: 3000,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "你是 JSON 语法修复器。只修复格式，不改事实。",
+          "只输出一个合法 JSON object，不要 Markdown，不要解释。",
+          "禁止尾随逗号、注释、多余字段、未闭合字符串。",
+          "不得新增、删除或替换任何 personId、articleIds、sourceRefs、evidenceIds。",
+          "不得新增事实、作者经历、路径、人物或引用；只能修正引号、逗号、括号、转义和未闭合字符串。"
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: [
+          "下面是一次 Demo Composer 输出的非法 JSON。请只修复 JSON 格式。",
+          `解析错误：${parseError}`,
+          "",
+          "允许引用的 ID 只包括：",
+          JSON.stringify(buildRepairAllowedIds(context), null, 2),
+          "",
+          "<invalid_json>",
+          truncateText(invalidJson, 12000),
+          "</invalid_json>"
+        ].join("\n")
+      }
+    ]
+  });
+}
+
+function buildRepairAllowedIds(context: ComposerContext): Record<string, unknown> {
+  return {
+    people: context.allowedPeople.map((person) => ({
+      personId: person.personId,
+      articleIds: person.articleIds,
+      sourceRefs: person.sourceRefs,
+      evidenceIds: person.evidenceIds
+    }))
+  };
 }
 
 function parseJsonObject(content: string): Record<string, unknown> {
@@ -883,6 +1029,14 @@ function truncateText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unknown error";
 }
 
 function unique(values: string[]): string[] {

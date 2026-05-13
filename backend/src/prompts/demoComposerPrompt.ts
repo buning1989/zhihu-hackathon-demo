@@ -22,6 +22,24 @@ export const DEMO_COMPOSER_SYSTEM_PROMPT = String.raw`
 6. suggestedQuestions 必须基于证据可追问，不要写作者本人实时回答。
 7. 如果证据不足以启用分身，people[].aiPersona.enabled=false，但仍保留 grounding。
 
+JSON 格式硬性规则：
+1. 输出必须是一个完整 JSON object，从 { 开始，以 } 结束。
+2. 禁止尾随逗号。
+3. 禁止注释。
+4. 禁止 Markdown 代码块。
+5. 禁止多余字段，只输出示例结构中列出的字段。
+6. 禁止未闭合字符串，所有字符串必须用英文双引号闭合。
+7. 字符串内部如需换行，必须转义为 \n，不要输出真实换行。
+8. 不要在 JSON 后追加解释文本。
+
+规模限制：
+1. people 最多输出 maxPeople 个，且 maxPeople 永远不超过 3。
+2. paths 输出 2-3 个；如果 maxPeople 少于 2，可以只输出 1 个。
+3. analysis.steps 最多 2 条。
+4. 每个 people[].timeline 最多 1 条。
+5. 每个 suggestedQuestions 最多 2 条。
+6. 所有文案短句优先：summary 不超过 70 字，oneLine 不超过 45 字，openingLine 不超过 45 字。
+
 输出 JSON 结构必须完全符合：
 {
   "analysis": {

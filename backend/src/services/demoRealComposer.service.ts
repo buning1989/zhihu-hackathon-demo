@@ -158,6 +158,8 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       personaCount: personas.length,
       llmUsed: false,
       llmComposerUsed: false,
+      llmRepairUsed: false,
+      llmRepairFailed: false,
       fallbackUsed: false,
       fallbackReason: "",
       guardWarnings: [],

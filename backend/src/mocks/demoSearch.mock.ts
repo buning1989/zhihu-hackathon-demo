@@ -187,6 +187,8 @@ export function createMockDemoSearchResponse(
       itemCount: people.length,
       llmUsed: false,
       llmComposerUsed: false,
+      llmRepairUsed: false,
+      llmRepairFailed: false,
       fallbackUsed: options.fallbackUsed ?? false,
       fallbackReason: options.fallbackReason ?? "",
       guardWarnings: options.guardWarnings ?? [],

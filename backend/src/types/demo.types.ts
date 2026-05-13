@@ -196,6 +196,8 @@ export interface DemoDebug {
   llmUsed?: boolean;
   fallbackUsed: boolean;
   llmComposerUsed: boolean;
+  llmRepairUsed?: boolean;
+  llmRepairFailed?: boolean;
   fallbackReason: string;
   guardWarnings: string[];
   notes: string[];
