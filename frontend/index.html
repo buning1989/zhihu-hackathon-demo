@@ -1461,6 +1461,47 @@
       background: rgba(255, 241, 199, 0.72);
     }
 
+    .meta-line,
+    .source-line,
+    .evidence-line {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .source-line,
+    .evidence-line {
+      margin-top: 7px;
+    }
+
+    .source-line a,
+    .reader-meta a {
+      color: var(--warm);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(216, 154, 69, 0.36);
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .data-chip {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      padding: 6px 9px;
+      border: 1px solid rgba(216, 154, 69, 0.22);
+      border-radius: 999px;
+      color: #6f5a2b;
+      background: rgba(255, 241, 199, 0.54);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
     .article-list {
       display: grid;
       gap: 8px;
@@ -2275,6 +2316,12 @@
     ];
     const AUTH_LOGIN_URL = "http://127.0.0.1:8000/auth/zhihu/login";
     const API_BASE = window.LIFE_PATH_API_BASE || "http://127.0.0.1:8000";
+    const PAGE_PARAMS = new URLSearchParams(window.location.search);
+    const ALLOWED_DATA_MODES = new Set(["mock", "cache_first", "real"]);
+
+    function resolveDataMode(value) {
+      return ALLOWED_DATA_MODES.has(value) ? value : "cache_first";
+    }
 
     function peepSrc(file) {
       const name = String(file).endsWith(".svg") ? file : `openpeeps${file}.svg`;
@@ -2298,6 +2345,7 @@
       saveEndpoint: "/api/samples/save",
       savedEndpoint: "/api/samples/saved",
       chatEndpoint: "/api/personas/chat",
+      dataMode: resolveDataMode(PAGE_PARAMS.get("dataMode")),
       requestTimeoutMs: 12000,
       useMockFallback: true,
       useMockUserFallback: true
@@ -2514,6 +2562,7 @@
       analysisSteps: defaultAnalysisSteps("不工作了之后，我想去新西兰生活"),
       focusTags: ["身份周期", "现金流", "工作边界", "回流代价"],
       backendStatus: "idle",
+      dataMode: API_CONFIG.dataMode,
       saved: [],
       questionText: defaultQuestionText(),
       messages: [],
@@ -2521,7 +2570,7 @@
       questionModalOpen: false
     };
 
-    const previewParams = new URLSearchParams(window.location.search);
+    const previewParams = PAGE_PARAMS;
     const previewPage = previewParams.get("page");
     if (["home", "loading", "paths", "samples", "chat", "library", "community"].includes(previewPage)) {
       state.page = previewPage;
@@ -2599,7 +2648,11 @@
         name: textOf(name),
         count: numberOf(item.count ?? item.peopleCount ?? item.people_count ?? item.sampleCount ?? item.sample_count ?? item.total ?? item.numPeople, 0),
         desc: textOf(item.desc || item.description || item.summary || item.reason || item.explanation || item.short, ""),
-        short: textOf(item.short || item.subtitle || item.tagline || item.summary || item.description || "")
+        short: textOf(item.short || item.subtitle || item.tagline || item.summary || item.description || ""),
+        fitReason: textOf(item.fitReason || item.fit_reason || ""),
+        personRefs: toArray(item.personRefs || item.person_refs || item.peopleRefs || item.people_refs || item.personIds || item.person_ids || item.peopleIds || item.people_ids).map(String),
+        sourceRefs: normalizeSourceRefs(item.sourceRefs || item.source_refs || item.sources),
+        evidenceIds: toArray(item.evidenceIds || item.evidence_ids).map(String)
       };
     }
 
@@ -2620,6 +2673,39 @@
       }).filter((item) => item[0] || item[1]);
     }
 
+    function normalizeTextBlocks(value) {
+      return toArray(value).map((item) => {
+        if (Array.isArray(item)) return item.map((part) => textOf(part)).filter(Boolean).join(" ");
+        if (typeof item === "object" && item) return textOf(item.text || item.content || item.summary || item.description || item.title);
+        return textOf(item);
+      }).filter(Boolean);
+    }
+
+    function normalizeSourceRefs(value) {
+      return toArray(value).map((item, index) => {
+        if (typeof item === "string") return item;
+        return {
+          id: textOf(item.id || item.sourceRefId || item.source_ref_id || `source_${index + 1}`),
+          title: textOf(item.title || item.name || item.label || item.id || `来源 ${index + 1}`),
+          sourceName: textOf(item.sourceName || item.source_name || item.provider || item.type || ""),
+          url: textOf(item.url || item.sourceUrl || item.source_url || item.link || "")
+        };
+      });
+    }
+
+    function normalizeEvidence(value) {
+      return toArray(value).map((item, index) => {
+        if (typeof item === "string") return { id: `evidence_${index + 1}`, label: "", text: item, sourceRefId: "", sourceUrl: "" };
+        return {
+          id: textOf(item.id || item.evidenceId || item.evidence_id || `evidence_${index + 1}`),
+          label: textOf(item.label || item.title || item.type || ""),
+          text: textOf(item.text || item.content || item.summary || item.description || ""),
+          sourceRefId: textOf(item.sourceRefId || item.source_ref_id || item.sourceId || item.source_id || ""),
+          sourceUrl: textOf(item.sourceUrl || item.source_url || item.url || "")
+        };
+      }).filter((item) => item.id || item.text);
+    }
+
     function normalizeArticle(item, index = 0, person = {}) {
       if (typeof item === "string") {
         return {
@@ -2629,7 +2715,10 @@
           sourceName: "知乎回答 / 文章",
           sourceUrl: "",
           publishedAt: "",
-          body: index === 0 ? toArray(person.articleBody) : []
+          summary: "",
+          evidence: [],
+          sourceRefs: [],
+          body: index === 0 ? normalizeTextBlocks(person.articleBody) : []
         };
       }
       return {
@@ -2640,7 +2729,9 @@
         sourceUrl: textOf(item.sourceUrl || item.source_url || item.url || item.link || ""),
         publishedAt: textOf(item.publishedAt || item.published_at || item.createdAt || item.created_at || ""),
         summary: textOf(item.summary || item.excerpt || ""),
-        body: toArray(item.body || item.paragraphs || item.content || item.text)
+        evidence: normalizeEvidence(item.evidence || item.evidences),
+        sourceRefs: normalizeSourceRefs(item.sourceRefs || item.source_refs || item.sources),
+        body: normalizeTextBlocks(item.body || item.paragraphs || item.content || item.text)
       };
     }
 
@@ -2650,6 +2741,10 @@
       const matchedPath = pathName ? paths.find((path) => path.name === pathName) : null;
       const pathId = item.pathId || item.path_id || item.routeId || item.route_id || item.path?.id || matchedPath?.id || fallbackPathId || paths[0]?.id || "";
       const aiPersona = item.aiPersona || item.ai_persona || item.persona || {};
+      const match = item.match || {};
+      const matchReasons = toArray(match.reasons || match.reason || item.matchReasons || item.match_reasons);
+      const overlaps = toArray(item.overlaps || item.similarities || item.reasons || matchReasons);
+      const fitReason = textOf(item.fitReason || item.fit_reason || match.fitReason || match.fit_reason || "");
       const normalized = {
         id: textOf(item.id || item.personId || item.person_id || item.authorId || item.author_id || slugify(name, `person_${index + 1}`)),
         name: textOf(name),
@@ -2660,12 +2755,20 @@
         avatar: textOf(item.avatar || item.avatarUrl || item.avatar_url || item.image || item.imageUrl || crowdPeepIds[index % crowdPeepIds.length]),
         oneLine: textOf(item.oneLine || item.one_line || item.summary || item.cardSummary || item.card_summary || item.badge || ""),
         who: textOf(item.who || item.bio || item.intro || item.profile || item.description || item.authorSummary || ""),
-        overlaps: toArray(item.overlaps || item.matchReasons || item.match_reasons || item.similarities || item.reasons),
+        overlaps: overlaps.length ? overlaps : toArray(fitReason),
         timeline: normalizeTimeline(item.timeline || item.events),
         lesson: textOf(item.lesson || item.takeaway || item.keyLesson || item.key_lesson || item.conclusion || ""),
+        fitReason,
+        match,
+        sourceRefs: normalizeSourceRefs(item.sourceRefs || item.source_refs || item.sources),
+        evidenceIds: toArray(item.evidenceIds || item.evidence_ids).map(String),
         personaId: textOf(aiPersona.personaId || aiPersona.persona_id || item.personaId || item.persona_id || ""),
+        personaDisplayName: textOf(aiPersona.displayName || aiPersona.display_name || item.personaDisplayName || item.persona_display_name || ""),
+        personaLabel: textOf(aiPersona.label || aiPersona.personaType || aiPersona.persona_type || item.personaLabel || ""),
+        personaOpeningLine: textOf(aiPersona.openingLine || aiPersona.opening_line || aiPersona.intro || item.personaOpeningLine || ""),
         boundaryNotice: textOf(aiPersona.boundary || aiPersona.boundaryNotice || aiPersona.boundary_notice || item.boundaryNotice || item.boundary_notice || ""),
         suggestedQuestions: toArray(aiPersona.suggestedQuestions || aiPersona.suggested_questions || item.suggestedQuestions || item.suggested_questions).map(String),
+        personaSourceRefs: normalizeSourceRefs(aiPersona.grounding?.sourceRefs || aiPersona.grounding?.source_refs || aiPersona.sourceRefs || aiPersona.source_refs),
         articles: [],
         raw: item
       };
@@ -2677,6 +2780,10 @@
           sourceUrl: item.sourceUrl || item.url
         }, 0, normalized)];
       }
+      if (!normalized.sourceRefs.length) {
+        normalized.sourceRefs = normalizeSourceRefs(normalized.articles.flatMap((article) => article.sourceRefs?.length ? article.sourceRefs : article.sourceUrl ? [{ title: article.title, sourceName: article.sourceName, url: article.sourceUrl }] : []));
+      }
+      if (!normalized.personaSourceRefs.length) normalized.personaSourceRefs = normalized.sourceRefs;
       return normalized;
     }
 
@@ -2733,8 +2840,12 @@
         return {
           ...person,
           personaId: person.personaId || textOf(persona.personaId || persona.persona_id || persona.id || ""),
+          personaDisplayName: person.personaDisplayName || textOf(persona.displayName || persona.display_name || persona.name || ""),
+          personaLabel: person.personaLabel || textOf(persona.label || persona.personaType || persona.persona_type || ""),
+          personaOpeningLine: person.personaOpeningLine || textOf(persona.openingLine || persona.opening_line || persona.intro || ""),
           boundaryNotice: person.boundaryNotice || textOf(persona.boundary || persona.boundaryNotice || persona.boundary_notice || ""),
-          suggestedQuestions: person.suggestedQuestions.length ? person.suggestedQuestions : toArray(persona.suggestedQuestions || persona.suggested_questions).map(String)
+          suggestedQuestions: person.suggestedQuestions.length ? person.suggestedQuestions : toArray(persona.suggestedQuestions || persona.suggested_questions).map(String),
+          personaSourceRefs: person.personaSourceRefs.length ? person.personaSourceRefs : normalizeSourceRefs(persona.sourceRefs || persona.source_refs)
         };
       });
     }
@@ -2748,13 +2859,19 @@
       const steps = toArray(raw).map((step) => {
         if (Array.isArray(step)) return { title: textOf(step[0]), text: textOf(step[1]) };
         if (typeof step === "string") return { title: "分析", text: step };
-        return { title: textOf(step.title || step.name || step.label), text: textOf(step.text || step.content || step.desc || step.description) };
+        const detail = textOf(step.text || step.content || step.desc || step.description);
+        const refs = toArray(step.sourceRefs || step.source_refs || step.evidenceIds || step.evidence_ids).map(String);
+        return {
+          title: textOf(step.title || step.name || step.label),
+          text: detail || [step.status ? `状态：${step.status}` : "", refs.length ? `来源/证据：${refs.join("、")}` : ""].filter(Boolean).join("；")
+        };
       }).filter((step) => step.title || step.text);
       return steps.length ? steps : defaultAnalysisSteps(query);
     }
 
     function normalizeSearchResponse(payload, query) {
       const body = getResponseBody(payload) || {};
+      const backendSucceeded = payload?.success === true || body?.success === true;
       const rawPaths = toArray(body.paths || body.routes || body.directions || body.pathways);
       let nextPaths = rawPaths.map(normalizePath);
       const searchItems = toArray(body.items);
@@ -2764,7 +2881,7 @@
         toArray(path.people || path.samples || path.personas || path.authors).forEach((person) => nestedPeople.push({ person, pathId: normalizedPath.id }));
       });
 
-      if (!nextPaths.length && searchItems.length) {
+      if (!backendSucceeded && !nextPaths.length && searchItems.length) {
         nextPaths = mockPaths.map((path) => normalizePath(path));
       }
 
@@ -2800,6 +2917,16 @@
       }
 
       if (!nextPaths.length || !nextPeople.length) {
+        if (backendSucceeded) {
+          return {
+            queryId: textOf(body.queryId || body.query_id || body.id || ""),
+            query: textOf(body.query || body.question || query),
+            analysisSteps: normalizeAnalysisSteps(body.analysis || body, query),
+            focusTags: toArray(body.analysis?.focusTags || body.analysis?.focus_tags || body.focusTags || body.focus_tags || body.tags).map(String),
+            paths: sortPathsByCount(nextPaths),
+            people: nextPeople
+          };
+        }
         if (!API_CONFIG.useMockFallback) throw new Error("后端返回缺少 paths 或 people");
         return normalizeSearchResponse({
           queryId: "mock_query",
@@ -2988,6 +3115,41 @@
         .replace(/'/g, "&#039;");
     }
 
+    function refTitle(ref, index = 0) {
+      if (typeof ref === "string") return ref;
+      return textOf(ref.title || ref.name || ref.label || ref.id || `来源 ${index + 1}`);
+    }
+
+    function renderInlineSourceRefs(sourceRefs = []) {
+      const refs = normalizeSourceRefs(sourceRefs);
+      if (!refs.length) return "";
+      return refs.map((ref, index) => {
+        if (typeof ref === "string") return `<span>${escapeHtml(ref)}</span>`;
+        const title = refTitle(ref, index);
+        return ref.url ? `<a href="${escapeHtml(ref.url)}" target="_blank" rel="noreferrer">${escapeHtml(title)}</a>` : `<span>${escapeHtml(title)}</span>`;
+      }).join("、");
+    }
+
+    function renderSourceLine(sourceRefs = [], label = "来源") {
+      const content = renderInlineSourceRefs(sourceRefs);
+      return content ? `<p class="source-line">${label}：${content}</p>` : "";
+    }
+
+    function renderDataChips(items = []) {
+      return toArray(items).filter(Boolean).map((item) => `<span class="data-chip">${escapeHtml(item)}</span>`).join("");
+    }
+
+    function formatScore(value) {
+      const score = Number(value);
+      if (!Number.isFinite(score)) return "";
+      return score <= 1 ? `${Math.round(score * 100)}%` : `${Math.round(score)}%`;
+    }
+
+    function renderDataModeStatus() {
+      const statusLabel = state.backendStatus === "mock" ? "fallback" : state.backendStatus;
+      return `<p class="meta-line">dataMode: ${escapeHtml(state.dataMode)} · backend: ${escapeHtml(statusLabel)}</p>`;
+    }
+
     function getPath(id = state.selectedPathId) {
       return paths.find((item) => item.id === id) || paths[0] || normalizePath({ name: "未知路径" });
     }
@@ -3002,6 +3164,10 @@
 
     function getPersonaReply(person) {
       return person.lesson || person.oneLine || "我能分享的最重要经验，是先把现金流、身份周期和真实生活节奏想清楚。";
+    }
+
+    function personaName(person) {
+      return person.personaDisplayName || `${person.name}的分身`;
     }
 
     function peopleForPath(pathId = state.selectedPathId) {
@@ -3158,6 +3324,7 @@
         <section class="screen home">
           <div class="center-stack">
             <h1>有什么让你纠结了很久的事？越具体越好</h1>
+            ${renderDataModeStatus()}
             <div class="question-card ${state.homeInputTouched ? "is-editing" : ""}" data-active-prompt="${escapeHtml(prompt)}">
               <label class="sr-only" for="questionInput">输入真实困惑</label>
               <textarea id="questionInput" class="question-input" data-prompt="${escapeHtml(prompt)}"></textarea>
@@ -3178,6 +3345,7 @@
               <h1>正在寻找可能与你有相似经历的知友……</h1>
               <span class="pulse-dot" aria-hidden="true"></span>
             </div>
+            ${renderDataModeStatus()}
             <div class="fingerprint-steps">
               ${steps.map((step, index) => `
                 <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}">
@@ -3185,6 +3353,7 @@
                 </div>
               `).join("")}
             </div>
+            ${state.focusTags.length ? `<div class="tag-row" aria-label="关注变量">${renderDataChips(state.focusTags)}</div>` : ""}
           </div>
           ${renderCrowd()}
         </section>
@@ -3194,7 +3363,7 @@
     async function requestSearchData(query) {
       state.backendStatus = "loading";
       try {
-        const payload = await postJson(API_CONFIG.demoSearchEndpoint, { query, count: 5, dataMode: "mock" });
+        const payload = await postJson(API_CONFIG.demoSearchEndpoint, { query, count: 5, dataMode: state.dataMode });
         state.backendStatus = "ready";
         return normalizeSearchResponse(payload, query);
       } catch (error) {
@@ -3212,6 +3381,11 @@
       setPage("loading");
       clearLoadingTimers();
       const searchPromise = requestSearchData(state.question);
+      searchPromise.then((data) => {
+        state.analysisSteps = data.analysisSteps.length ? data.analysisSteps : defaultAnalysisSteps(state.question);
+        state.focusTags = data.focusTags.length ? data.focusTags : state.focusTags;
+        if (state.page === "loading") render();
+      }).catch(() => {});
       const minimumLoading = new Promise((resolve) => setTimeout(resolve, 4300));
       [1, 2, 3, 4].forEach((step, index) => {
         loadingTimers.push(setTimeout(() => {
@@ -3239,6 +3413,7 @@
         <section class="screen paths-screen ${state.pathExpanded ? "has-expanded" : "is-overview"}">
           <div class="paths-copy">
             <h1>关于「${escapeHtml(state.question)}」，TA 们是这样做的...</h1>
+            ${renderDataModeStatus()}
           </div>
           <div class="path-showcase" aria-label="前人路径">
             ${renderPathCards(sortedPaths)}
@@ -3249,6 +3424,8 @@
                 <div>
                   <h1>${escapeHtml(selectedPath.name)}的人</h1>
                   <p>${escapeHtml(selectedPath.desc)}</p>
+                  ${selectedPath.fitReason ? `<p class="meta-line">${escapeHtml(selectedPath.fitReason)}</p>` : ""}
+                  ${renderSourceLine(selectedPath.sourceRefs)}
                 </div>
               </div>
               <div class="path-showcase is-expanded" aria-label="${escapeHtml(selectedPath.name)}的前人样本库">
@@ -3268,6 +3445,8 @@
             <h2><span class="path-index">${String(index + 1).padStart(2, "0")}</span><span class="path-title-text">${escapeHtml(path.name)}</span></h2>
             <span class="path-count">${path.count} 人走过</span>
             <p>${escapeHtml(path.desc)}</p>
+            ${path.fitReason ? `<p class="meta-line">${escapeHtml(path.fitReason)}</p>` : ""}
+            ${renderSourceLine(path.sourceRefs)}
           </div>
           <span class="path-card-peeps" aria-hidden="true">
             ${pathPeople(path.id, 4).map((person) => `<img src="${avatarSrc(person.avatar)}" alt="">`).join("")}
@@ -3349,25 +3528,53 @@
 
     function renderPersonCard(person) {
       const articles = getPersonArticles(person);
+      const matchReasons = toArray(person.match?.reasons);
+      const matchedVariables = toArray(person.match?.matchedVariables || person.match?.matched_variables);
+      const riskNotes = toArray(person.match?.riskNotes || person.match?.risk_notes);
+      const matchMeta = [
+        person.match?.level ? `匹配等级：${person.match.level}` : "",
+        person.match?.score !== undefined ? `匹配度：${formatScore(person.match.score)}` : ""
+      ].filter(Boolean).join(" · ");
       return `
         <article class="person-card has-peep">
           <div class="card-peep" aria-hidden="true"><img src="${avatarSrc(person.avatar)}" alt=""></div>
           <h2><a class="person-name-link" href="${getProfileUrl(person)}" target="_blank" rel="noreferrer">${person.name}</a></h2>
+          <p class="meta-line">${escapeHtml([person.role, person.badge].filter(Boolean).join(" · "))}</p>
+          ${person.oneLine ? `<p class="summary">${escapeHtml(person.oneLine)}</p>` : ""}
           <div class="section-block">
             <h3>TA 是谁</h3>
             <p>${person.who}</p>
+            ${renderSourceLine(person.sourceRefs)}
           </div>
           <div class="section-block">
             <h3>为什么匹配到 TA</h3>
-            <ul>${person.overlaps.map((item) => `<li>${item}</li>`).join("")}</ul>
+            ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
+            <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+            ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+            ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
+            ${riskNotes.length ? `<p class="source-line">风险提示：${escapeHtml(riskNotes.join("；"))}</p>` : ""}
           </div>
           <div class="section-block">
             <h3>TA 的经历时间线</h3>
-            <div class="timeline">${person.timeline.map((item) => `<div><b>${item[0]}</b><span>${item[1]}</span></div>`).join("")}</div>
+            <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
+            ${person.evidenceIds.length ? `<p class="evidence-line">证据：${escapeHtml(person.evidenceIds.join("、"))}</p>` : ""}
+          </div>
+          ${person.lesson ? `
+            <div class="section-block">
+              <h3>可以带走的一点</h3>
+              <p class="key-insight">${escapeHtml(person.lesson)}</p>
+            </div>
+          ` : ""}
+          <div class="section-block">
+            <h3>AI 分身边界</h3>
+            <p>${escapeHtml(person.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</p>
+            ${person.personaOpeningLine ? `<p class="meta-line">${escapeHtml(person.personaOpeningLine)}</p>` : ""}
+            ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
+            ${renderSourceLine(person.personaSourceRefs)}
           </div>
           <div class="section-block">
             <h3>TA的真实经历</h3>
-            <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}">《${article.title}》</button>`).join("")}</div>
+            <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}">《${escapeHtml(article.title)}》</button>`).join("")}</div>
           </div>
           <div class="card-actions">
             <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
@@ -3382,6 +3589,13 @@
         <div class="question-modal" role="dialog" aria-modal="true" aria-label="向 ${escapeHtml(person.name)} 提问">
           <section class="question-modal-card">
             <textarea class="editable-text" id="editableQuestion">${escapeHtml(state.questionText)}</textarea>
+            <div class="side-note-card" style="margin-top:18px">
+              <h3>${escapeHtml(person.personaLabel || "AI 分身边界")}</h3>
+              <p>${escapeHtml(person.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}</p>
+              ${person.personaOpeningLine ? `<p>${escapeHtml(person.personaOpeningLine)}</p>` : ""}
+              ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
+              ${renderSourceLine(person.personaSourceRefs)}
+            </div>
             <div class="action-row">
               <button class="primary" type="button" data-action="chat">呼叫 TA 的 AI 分身先聊聊</button>
               <button class="text-button" type="button" data-action="mock-dm">递给 TA 本人</button>
@@ -3399,13 +3613,17 @@
       const articles = getPersonArticles(person);
       const articleIndex = Math.min(state.readerArticleIndex, Math.max(articles.length - 1, 0));
       const article = articles[articleIndex] || normalizeArticle({ title: `${person.name} 的公开分享`, body: person.articleBody }, 0, person);
-      const body = article.body.length ? article.body : toArray(person.articleBody);
+      const body = article.body.length ? article.body : normalizeTextBlocks(article.summary || article.evidence?.map((item) => item.text) || person.articleBody);
       const meta = [article.author || person.name, article.sourceName, article.publishedAt].filter(Boolean).join(" · ");
+      const articleSourceRefs = article.sourceRefs.length ? article.sourceRefs : article.sourceUrl ? [{ title: article.title, sourceName: article.sourceName, url: article.sourceUrl }] : person.sourceRefs;
       return `
         <article class="inline-reader">
-          <h2>${article.title}</h2>
-          <p class="reader-meta">${meta || "知乎回答 / 文章"}${article.sourceUrl ? ` · <a href="${article.sourceUrl}" target="_blank" rel="noreferrer">查看知乎原文</a>` : ""}</p>
-          <div class="reader-body">${body.map((p) => `<p>${p}</p>`).join("")}</div>
+          <h2>${escapeHtml(article.title)}</h2>
+          <p class="reader-meta">${escapeHtml(meta || "知乎回答 / 文章")}${article.sourceUrl ? ` · <a href="${escapeHtml(article.sourceUrl)}" target="_blank" rel="noreferrer">查看知乎原文</a>` : ""}</p>
+          ${article.summary ? `<p class="key-insight">${escapeHtml(article.summary)}</p>` : ""}
+          ${renderSourceLine(articleSourceRefs)}
+          ${article.evidence.length ? `<div class="section-block"><h3>证据片段</h3>${article.evidence.map((item) => `<p class="evidence-line">${escapeHtml([item.label, item.text].filter(Boolean).join("："))}${item.sourceRefId ? ` · ${escapeHtml(item.sourceRefId)}` : ""}</p>`).join("")}</div>` : ""}
+          <div class="reader-body">${body.map((p) => `<p>${escapeHtml(p)}</p>`).join("")}</div>
           <div class="reader-actions">
             <button class="primary" type="button" data-action="question-from-reader">基于这篇原文继续提问</button>
             <button class="secondary dark" type="button" data-action="close-reader">收起原文</button>
@@ -3427,14 +3645,19 @@
                   <p style="color:var(--muted);line-height:1.6">${person.role}<br>${getPath(person.pathId).name}</p>
                 </div>
               </div>
-              <div class="disclaimer">这是基于${person.name}公开内容生成的经验分身，用来帮你理解 TA 曾经分享过的经历。它不代表本人实时观点。</div>
+              <div class="disclaimer">
+                ${escapeHtml(person.boundaryNotice || `这是基于${person.name}公开内容生成的经验分身，用来帮你理解 TA 曾经分享过的经历。它不代表本人实时观点。`)}
+                ${person.personaOpeningLine ? `<br>${escapeHtml(person.personaOpeningLine)}` : ""}
+                ${person.suggestedQuestions.length ? `<div class="tag-row">${renderDataChips(person.suggestedQuestions)}</div>` : ""}
+                ${renderSourceLine(person.personaSourceRefs)}
+              </div>
               <div class="action-row" style="justify-content:flex-start">
                 <button class="secondary" type="button" data-action="samples">返回人物卡</button>
                 <button class="secondary" type="button" data-action="save-person">存入样本库</button>
               </div>
             </aside>
             <section class="chat-main">
-              <div class="chat-head"><h2>${person.name}的分身</h2></div>
+              <div class="chat-head"><h2>${escapeHtml(personaName(person))}</h2></div>
               <div class="messages">
                 ${state.messages.map(renderChatMessage).join("")}
                 ${state.aiTyping ? `<div class="message ai typing" aria-label="${person.name}的分身正在输入"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>` : ""}
