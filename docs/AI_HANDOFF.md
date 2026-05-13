@@ -18,6 +18,8 @@
 
 新增：
 
+- `backend/app/prompts/persona_composer_system.md`
+- `backend/app/prompts/persona_chat_system.md`
 - `backend/src/prompts/personaComposerPrompt.ts`
 - `backend/src/prompts/personaChatPrompt.ts`
 - `backend/src/prompts/personaPromptBuilder.ts`
@@ -32,6 +34,7 @@
 
 ### 已完成事项
 
+- 纠正 prompt 资产落点：两份 system markdown 已补入既有 `backend/app/prompts/` 管理目录，可由 `backend/app/prompt_loader.py` 按文件名读取。
 - 新增 Persona Composer system prompt，用于生成 `people[].aiPersona`。
 - 新增 Persona Chat system prompt，用于后续 `POST /api/personas/chat`。
 - 新增 `buildPersonaChatMessages(input)`，按固定 system prompt、动态 `persona_context`、`userMessage` 拼装消息。

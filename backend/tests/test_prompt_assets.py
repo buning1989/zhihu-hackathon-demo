@@ -36,6 +36,18 @@ EXPECTED_PROMPTS = {
         "answer_type=insufficient_evidence",
         "answer_type 必须为 out_of_scope",
     ],
+    "persona_composer_system.md": [
+        "people[].aiPersona",
+        "AI 分身不是作者本人",
+        "personaReadiness < 0.5",
+        "enabled 必须为 false",
+    ],
+    "persona_chat_system.md": [
+        "POST /api/personas/chat",
+        "persona_context",
+        "表达拟人化，事实不拟人化",
+        "answerType 必须为 insufficient_evidence",
+    ],
 }
 
 

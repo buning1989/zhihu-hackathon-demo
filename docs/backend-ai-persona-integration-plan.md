@@ -278,6 +278,8 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 
 落地文件：
 
+- `backend/app/prompts/persona_composer_system.md`
+- `backend/app/prompts/persona_chat_system.md`
 - `docs/prompts/persona-composer.system.md`
 - `docs/prompts/persona-chat.system.md`
 - `backend/src/prompts/personaComposerPrompt.ts`
