@@ -222,6 +222,9 @@ Content-Type: application/json
 - `llmUsed/llmComposerUsed/llmRepairUsed/llmRepairFailed`
 - `llmStageResults`
 - `timings`
+- `searchQueries`
+- `searchQueryResults`
+- `mergedCandidateCount/dedupedCandidateCount/validCandidateCount`
 - `candidateQuality`
 - `experienceSummaryDebug`
 - `pathSource`
@@ -301,7 +304,7 @@ Content-Type: application/json
 | --- | --- |
 | `dataMode: "mock"` | 不调用知乎搜索和 demo search LLM；返回 query-aware deterministic mock 数据。`meta.sourceRefs[].provider` 为 `mock`，`debug.composer` 为 `mock`，`debug.llmUsed` 为 `false`，`debug.llmStageResults` 为空数组。 |
 | `dataMode: "cache_first"` | 当前实现先查请求级内存缓存；未命中时生成 deterministic mock fallback，`dataMode` 仍为 `cache_first`，`debug.notes` 会说明 cache miss。 |
-| `dataMode: "real"` | 调用真实搜索和多阶段 LLM orchestration。成功时来源为 `provider: "zhihu"`、`type: "zhihu_answer"`，并返回 `debug.llmStageResults`、`debug.timings`、`debug.candidateQuality`、`debug.experienceSummaryDebug`。任一关键 real 链路抛错时，接口仍返回成功，但会 fallback 到 mock，顶层 `dataMode` 变为 `mock`，`debug.requestedDataMode` 为 `real`，`debug.resolvedDataMode` 为 `mock`。 |
+| `dataMode: "real"` | 调用真实搜索和多阶段 LLM orchestration。成功时来源为 `provider: "zhihu"`、`type: "zhihu_answer"`，并返回 `debug.llmStageResults`、`debug.timings`、`debug.searchQueries`、`debug.searchQueryResults`、`debug.candidateQuality`、`debug.experienceSummaryDebug`。任一关键 real 链路抛错时，接口仍返回成功，但会 fallback 到 mock，顶层 `dataMode` 变为 `mock`，`debug.requestedDataMode` 为 `real`，`debug.resolvedDataMode` 为 `mock`。 |
 
 补充：
 

@@ -47,6 +47,9 @@ export interface SearchItem {
   title: string;
   text: string;
   url: string;
+  matchedQuery?: string;
+  queryType?: string;
+  queryPurpose?: string;
   author: SearchAuthor;
   stats: SearchStats;
   comments: unknown[];

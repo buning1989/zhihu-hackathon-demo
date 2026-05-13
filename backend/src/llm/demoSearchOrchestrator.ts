@@ -2,7 +2,6 @@ import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
 import { composeRealDemoSearchResponse } from "../services/demoRealComposer.service.js";
 import { searchService } from "../services/search.service.js";
 import {
-  buildContextAwareSearchQueries,
   buildPromptUserContext,
   createDemoContextUsed
 } from "../services/userContext.service.js";
@@ -18,6 +17,8 @@ import {
   type DemoExperienceSummaryDebug,
   type DemoPerson,
   type DemoPersona,
+  type DemoSearchQueryPlan,
+  type DemoSearchQueryResultDebug,
   type DemoSearchResponse,
   type DemoSourceRef
 } from "../types/demo.types.js";
@@ -42,6 +43,7 @@ import {
   parseGroundingGuardOutput,
   parseIntentExpandOutput
 } from "./schemas/taskSchemas.js";
+import { buildFallbackSearchQueryPlan, sortSearchQueryPlans } from "./searchQueryPlan.js";
 
 interface ComposeMultiLlmDemoSearchInput {
   query: string;
@@ -67,6 +69,9 @@ interface CleanedCandidate {
   experienceSignalScore: number;
   contentLength: number;
   filterReason: string;
+  matchedQuery?: string;
+  queryType?: string;
+  queryPurpose?: string;
 }
 
 interface ExperienceSummaryCandidate {
@@ -91,6 +96,9 @@ interface ExperienceSummaryCandidate {
   };
   contentHash: string;
   fallbackSummary: string;
+  matchedQuery?: string;
+  queryType?: string;
+  queryPurpose?: string;
 }
 
 interface ExperienceSummaryStageOutput {
@@ -120,7 +128,15 @@ interface LlmFallbackSummary {
   reason: string;
 }
 
-const MAX_SEARCH_QUERIES = 4;
+interface SearchByExpandedQueriesResult {
+  items: SearchItem[];
+  searchQueries: DemoSearchQueryPlan[];
+  searchQueryResults: DemoSearchQueryResultDebug[];
+  mergedCandidateCount: number;
+  dedupedCandidateCount: number;
+}
+
+const MAX_SEARCH_QUERIES = 12;
 const MAX_REAL_ITEMS = 12;
 const MAX_EXPERIENCE_SUMMARY_PEOPLE = 3;
 const MIN_CONTENT_LENGTH = 8;
@@ -157,13 +173,13 @@ export async function composeMultiLlmDemoSearchResponse(
   stageResults.push(intentStage.stageResult);
   timings.push(createStageTiming(intentStage));
 
-  const searchItems = await searchByExpandedQueries(
+  const recalledSearch = await searchByExpandedQueries(
     input.query,
     intentStage.output.searchQueries,
     input.count,
     input.userContext
   );
-  const qualitySelection = selectQualitySearchItems(input.query, searchItems, MAX_REAL_ITEMS);
+  const qualitySelection = selectQualitySearchItems(input.query, recalledSearch.items, MAX_REAL_ITEMS);
   const cleanedSearchItems = qualitySelection.items;
   if (cleanedSearchItems.length === 0) {
     throw new HttpError(
@@ -260,6 +276,11 @@ export async function composeMultiLlmDemoSearchResponse(
     fallbackKind: fallbackSummary.kind,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
+    searchQueries: recalledSearch.searchQueries,
+    searchQueryResults: recalledSearch.searchQueryResults,
+    mergedCandidateCount: recalledSearch.mergedCandidateCount,
+    dedupedCandidateCount: recalledSearch.dedupedCandidateCount,
+    validCandidateCount: cleanedSearchItems.length,
     candidateQuality: response.debug.candidateQuality,
     experienceSummaryDebug: experienceSummaryStage.output.debug,
     notes:
@@ -367,7 +388,7 @@ async function runIntentExpandStage(
   try {
     const content = await runJsonTaskWithStageTimeout("intent_expand", {
       temperature: 0.1,
-      maxTokens: 800,
+      maxTokens: 1600,
       messages: [
         {
           role: "system",
@@ -713,25 +734,36 @@ async function runGroundingGuardStage(
 }
 
 async function searchByExpandedQueries(
-  originalQuery: string,
-  queries: string[],
+  _originalQuery: string,
+  queries: DemoSearchQueryPlan[],
   count: number,
-  userContext?: UserContext
-): Promise<SearchItem[]> {
-  const normalizedQueries = buildContextAwareSearchQueries(originalQuery, queries, userContext).slice(
-    0,
-    MAX_SEARCH_QUERIES
-  );
-  const perQueryCount = Math.min(Math.max(count, 3), 10);
+  _userContext?: UserContext
+): Promise<SearchByExpandedQueriesResult> {
+  const normalizedQueries = sortSearchQueryPlans(queries).slice(0, MAX_SEARCH_QUERIES);
+  const perQueryCount = Math.min(Math.max(count, 3), 5);
   const items: SearchItem[] = [];
   const errors: string[] = [];
+  const searchQueryResults: DemoSearchQueryResultDebug[] = [];
 
-  for (const query of normalizedQueries) {
+  for (const queryPlan of normalizedQueries) {
     try {
-      const result = await searchService.search(query, perQueryCount);
-      items.push(...result.items);
+      const result = await searchService.search(queryPlan.query, perQueryCount);
+      const queryItems = result.items
+        .slice(0, perQueryCount)
+        .map((item) => attachMatchedQuery(item, queryPlan));
+      items.push(...queryItems);
+      searchQueryResults.push({
+        ...queryPlan,
+        returnedCount: queryItems.length
+      });
     } catch (error) {
-      errors.push(formatErrorSummary(error));
+      const errorSummary = formatErrorSummary(error);
+      errors.push(`${queryPlan.query}: ${errorSummary}`);
+      searchQueryResults.push({
+        ...queryPlan,
+        returnedCount: 0,
+        error: errorSummary
+      });
     }
   }
 
@@ -746,7 +778,13 @@ async function searchByExpandedQueries(
     );
   }
 
-  return dedupedItems;
+  return {
+    items: dedupedItems,
+    searchQueries: normalizedQueries,
+    searchQueryResults,
+    mergedCandidateCount: items.length,
+    dedupedCandidateCount: dedupedItems.length
+  };
 }
 
 function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
@@ -754,7 +792,7 @@ function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
   const result: SearchItem[] = [];
 
   for (const item of items) {
-    const key = item.url || item.id || `${item.title}:${item.author.name}`;
+    const key = item.url || item.id || normalizeText(item.title);
     if (!key || seen.has(key)) {
       continue;
     }
@@ -764,6 +802,15 @@ function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
   }
 
   return result;
+}
+
+function attachMatchedQuery(item: SearchItem, queryPlan: DemoSearchQueryPlan): SearchItem {
+  return {
+    ...item,
+    matchedQuery: queryPlan.query,
+    queryType: queryPlan.type,
+    queryPurpose: queryPlan.purpose
+  };
 }
 
 function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): CleanedCandidate[] {
@@ -812,7 +859,10 @@ function buildCleanedCandidatesFromResponse(response: DemoSearchResponse): Clean
         qualityScore: quality?.qualityScore ?? person.match.evidenceQuality,
         experienceSignalScore: quality?.experienceSignalScore ?? person.match.experienceSimilarity,
         contentLength: quality?.contentLength ?? normalizeText(text).length,
-        filterReason: quality?.filterReason ?? "used_as_core_evidence: selected by response composer"
+        filterReason: quality?.filterReason ?? "used_as_core_evidence: selected by response composer",
+        matchedQuery: quality?.matchedQuery,
+        queryType: quality?.queryType,
+        queryPurpose: quality?.queryPurpose
       });
     }
   }
@@ -873,7 +923,10 @@ function buildExperienceSummaryCandidates(
             quality?.filterReason ?? "experienceSummary fallback quality derived from person.match"
         },
         contentHash: hashString(`${article?.title ?? ""}\n${content}\n${fallbackSummary}`),
-        fallbackSummary
+        fallbackSummary,
+        matchedQuery: quality?.matchedQuery,
+        queryType: quality?.queryType,
+        queryPurpose: quality?.queryPurpose
       });
       continue;
     }
@@ -909,7 +962,10 @@ function buildExperienceSummaryCandidates(
           experienceSignalScore
         })
       ),
-      fallbackSummary
+      fallbackSummary,
+      matchedQuery: quality?.matchedQuery,
+      queryType: quality?.queryType,
+      queryPurpose: quality?.queryPurpose
     });
   }
 
@@ -973,7 +1029,10 @@ function toExperienceSummaryPromptCandidate(
       label: evidence.label,
       text: truncateText(evidence.text, 180)
     })),
-    candidateQuality: candidate.candidateQuality
+    candidateQuality: candidate.candidateQuality,
+    matchedQuery: candidate.matchedQuery,
+    queryType: candidate.queryType,
+    queryPurpose: candidate.queryPurpose
   };
 }
 
@@ -1066,10 +1125,16 @@ function buildExperienceFallbackSummary(person: DemoPerson): string {
 }
 
 function createFallbackIntent(query: string): IntentExpandOutput {
+  const intentTags = inferIntentTags(query);
+  const userNeedSummary = `用户正在探索「${truncateText(query, 40)}」相关的公开经验与可行路径。`;
+
   return {
-    searchQueries: [query],
-    intentTags: inferIntentTags(query),
-    userNeedSummary: `用户正在探索「${truncateText(query, 40)}」相关的公开经验与可行路径。`
+    intent: "life_path_exploration",
+    userCoreQuestion: userNeedSummary,
+    focusTags: intentTags,
+    searchQueries: buildFallbackSearchQueryPlan(query),
+    intentTags,
+    userNeedSummary
   };
 }
 

@@ -1,5 +1,5 @@
 import type { SearchItem } from "../types/api.types.js";
-import type { DemoCandidateQuality } from "../types/demo.types.js";
+import type { DemoCandidateQuality, DemoSearchQueryType } from "../types/demo.types.js";
 import { normalizeDemoQuery } from "./demoQueryIdentity.service.js";
 
 export interface CandidateAssessment extends DemoCandidateQuality {
@@ -228,6 +228,9 @@ export function scoreSearchCandidate(query: string, item: SearchItem): Candidate
     item,
     candidateId: item.id,
     title: title || "未命名知乎内容",
+    matchedQuery: item.matchedQuery,
+    queryType: readSearchQueryType(item.queryType),
+    queryPurpose: item.queryPurpose,
     relevanceScore,
     qualityScore,
     experienceSignalScore,
@@ -308,6 +311,9 @@ function toCandidateQualityDebug(
     candidateId: assessment.candidateId,
     sourceRefId: assessment.sourceRefId,
     title: assessment.title,
+    matchedQuery: assessment.matchedQuery,
+    queryType: assessment.queryType,
+    queryPurpose: assessment.queryPurpose,
     relevanceScore: assessment.relevanceScore,
     qualityScore: assessment.qualityScore,
     experienceSignalScore: assessment.experienceSignalScore,
@@ -393,6 +399,21 @@ function countKeywordHits(text: string, keyword: string): number {
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function readSearchQueryType(value: unknown): DemoSearchQueryType | undefined {
+  if (
+    value === "original" ||
+    value === "real_experience" ||
+    value === "life_path" ||
+    value === "failure_review" ||
+    value === "decision_conflict" ||
+    value === "alternative_solution"
+  ) {
+    return value;
+  }
+
+  return undefined;
 }
 
 function unique<T>(values: T[]): T[] {

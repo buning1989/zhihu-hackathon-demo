@@ -1,4 +1,5 @@
-import type { DemoPath } from "../../types/demo.types.js";
+import type { DemoPath, DemoSearchQueryPlan } from "../../types/demo.types.js";
+import { normalizeSearchQueryPlans } from "../searchQueryPlan.js";
 
 export type LlmTaskSchemaName =
   | "intent_expand"
@@ -15,7 +16,10 @@ export type PersonaChatAnswerType =
   | "safety_boundary";
 
 export interface IntentExpandOutput {
-  searchQueries: string[];
+  intent: string;
+  userCoreQuestion: string;
+  focusTags: string[];
+  searchQueries: DemoSearchQueryPlan[];
   intentTags: string[];
   userNeedSummary: string;
 }
@@ -148,23 +152,26 @@ export class LlmSchemaError extends Error {
 
 export function parseIntentExpandOutput(content: string, fallbackQuery: string): IntentExpandOutput {
   const record = parseJsonObject(content);
-  const searchQueries = unique([
-    fallbackQuery,
-    ...readStringArray(record.searchQueries)
+  const searchQueries = normalizeSearchQueryPlans(fallbackQuery, record.searchQueries);
+  const focusTags = unique([
+    ...readStringArray(record.focusTags),
+    ...readStringArray(record.intentTags)
   ])
-    .map((item, index) => (index === 0 ? item : truncateText(item, 40)))
-    .filter(Boolean)
-    .slice(0, 4);
-  const intentTags = readStringArray(record.intentTags)
     .map((item) => truncateText(item, 12))
     .slice(0, 8);
-  const userNeedSummary =
-    truncateText(readRequiredString(record.userNeedSummary, "userNeedSummary"), 120) ||
+  const userCoreQuestion =
+    truncateText(readString(record.userCoreQuestion) || readString(record.userNeedSummary), 120) ||
     `用户在探索「${truncateText(fallbackQuery, 30)}」相关的公开经验。`;
+  const userNeedSummary =
+    truncateText(readString(record.userNeedSummary) || userCoreQuestion, 120) ||
+    userCoreQuestion;
 
   return {
-    searchQueries: searchQueries.length > 0 ? searchQueries : [fallbackQuery],
-    intentTags,
+    intent: truncateText(readString(record.intent) || "life_path_exploration", 48),
+    userCoreQuestion,
+    focusTags,
+    searchQueries,
+    intentTags: focusTags,
     userNeedSummary
   };
 }

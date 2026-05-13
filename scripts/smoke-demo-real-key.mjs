@@ -7,12 +7,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const DEFAULT_QUERY = decodeURIComponent(
   "%E4%B8%8D%E5%B7%A5%E4%BD%9C%E4%BA%86%E8%83%BD%E5%8E%BB%E5%93%AA%E5%84%BF"
 );
-const RELATIONSHIP_QUERY = decodeURIComponent(
-  "%E4%B8%BA%E4%BA%86%E5%B7%A5%E4%BD%9C%EF%BC%8C%E5%BC%82%E5%9C%B0%E6%81%8B%E5%80%BC%E5%BE%97%E5%90%97"
-);
-const CAREER_TRANSITION_QUERY = decodeURIComponent(
-  "%33%35%E5%B2%81%E8%BD%AC%E8%A1%8C%E8%BF%98%E6%9D%A5%E5%BE%97%E5%8F%8A%E5%90%97"
-);
+const VALIDATION_QUERIES = [
+  DEFAULT_QUERY,
+  decodeURIComponent("%33%35%E5%B2%81%E8%A3%B8%E8%BE%9E%E6%98%AF%E4%B8%8D%E6%98%AF%E5%AE%8C%E4%BA%86"),
+  decodeURIComponent("%E6%88%91%E4%B8%8D%E6%83%B3%E4%B8%8A%E7%8F%AD%E4%BD%86%E4%B9%9F%E4%B8%8D%E7%9F%A5%E9%81%93%E8%83%BD%E5%B9%B2%E5%98%9B"),
+  decodeURIComponent("%E7%95%99%E5%9C%A8%E5%8C%97%E4%BA%AC%E8%BF%98%E6%98%AF%E5%9B%9E%E8%80%81%E5%AE%B6"),
+  decodeURIComponent("%E4%B8%8D%E6%83%B3%E8%AF%BB%E7%A0%94%E4%BA%86%E6%80%8E%E4%B9%88%E5%8A%9E")
+];
 const DEFAULT_CHAT_MESSAGE = decodeURIComponent(
   "%E8%BF%99%E6%AE%B5%E5%85%AC%E5%BC%80%E5%86%85%E5%AE%B9%E9%87%8C%EF%BC%8C%E7%AC%AC%E4%B8%80%E6%AD%A5%E5%BA%94%E8%AF%A5%E6%83%B3%E6%B8%85%E6%A5%9A%E4%BB%80%E4%B9%88%EF%BC%9F"
 );
@@ -50,16 +51,16 @@ async function main() {
     }
 
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const firstQuery = readEnv("DEMO_SMOKE_QUERY_A", RELATIONSHIP_QUERY);
-    const secondQuery = readEnv("DEMO_SMOKE_QUERY_B", CAREER_TRANSITION_QUERY);
-    const cachedQuery = readEnv("DEMO_SMOKE_QUERY", DEFAULT_QUERY);
+    const validationQueries = readQueryListEnv("DEMO_SMOKE_QUERIES", VALIDATION_QUERIES);
     const chatMessage = readEnv("DEMO_SMOKE_CHAT_MESSAGE", DEFAULT_CHAT_MESSAGE);
     const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
 
-    const firstRun = await runDemoSearch(baseUrl, firstQuery, count, "first query");
-    const secondRun = await runDemoSearch(baseUrl, secondQuery, count, "second query");
-    const cacheWarmRun = await runDemoSearch(baseUrl, cachedQuery, count, "cache warm query");
-    const cacheHitRun = await runDemoSearch(baseUrl, cachedQuery, count, "cache hit query");
+    const validationRuns = [];
+    for (const [index, query] of validationQueries.entries()) {
+      validationRuns.push(await runDemoSearch(baseUrl, query, count, `validation query ${index + 1}`));
+    }
+
+    const cacheHitRun = await runDemoSearch(baseUrl, validationQueries[0], count, "cache hit query");
 
     assertEqual(
       readRecord(cacheHitRun.data.debug, "cache hit data.debug").cacheHit,
@@ -67,11 +68,11 @@ async function main() {
       "cache hit data.debug.cacheHit"
     );
 
-    const demoData = cacheWarmRun.data;
+    const demoData = validationRuns[0].data;
     const personas = assertNonEmptyArray(demoData.personas, "data.personas");
-    printDemoRunDetails(firstRun);
-    printDemoRunDetails(secondRun);
-    printDemoRunDetails(cacheWarmRun);
+    for (const run of validationRuns) {
+      printDemoRunDetails(run);
+    }
     printDemoRunDetails(cacheHitRun);
 
     const firstPersona = readRecord(personas[0], "data.personas[0]");
@@ -102,6 +103,7 @@ async function main() {
     console.log(
       `demo stages ${REQUIRED_DEMO_STAGES.map((stage) => `${stage}=recorded`).join(" ")}`
     );
+    console.log(`validation queries=${validationRuns.length} cacheQuery="${validationQueries[0]}"`);
     console.log(`summary cacheHit=${readRecord(cacheHitRun.data.debug, "cache debug").cacheHit} persona_chat=${chatDebug.chatMode}`);
   } finally {
     await closeServer(server);
@@ -137,6 +139,7 @@ async function runDemoSearch(baseUrl, query, count, label) {
     assertStageTiming(timings, stage);
   }
   assertExperiencePathTitles(data.paths, `${label} data.paths`);
+  assertSearchPlan(debug, query, `${label} data.debug`);
   assertCandidateQuality(debug, `${label} data.debug.candidateQuality`);
   assertExperienceSummaries(data.people, `${label} data.people`);
 
@@ -188,9 +191,44 @@ function assertCandidateQuality(debug, label) {
       }
     }
     assertNonEmptyString(item.filterReason, `${label}.filterReason`);
+    assertNonEmptyString(item.matchedQuery, `${label}.matchedQuery`);
+    assertNonEmptyString(item.queryType, `${label}.queryType`);
 
     if (item.contentLength < 30 && item.usedAsEvidence === true) {
       throw new Error(`${label} short candidate became core evidence: ${item.title || item.candidateId}.`);
+    }
+  }
+}
+
+function assertSearchPlan(debug, originalQuery, label) {
+  const searchQueries = assertNonEmptyArray(debug.searchQueries, `${label}.searchQueries`);
+  if (searchQueries.length < 8) {
+    throw new Error(`${label}.searchQueries expected at least 8 items, got ${searchQueries.length}.`);
+  }
+
+  const first = readRecord(searchQueries[0], `${label}.searchQueries[0]`);
+  assertEqual(readString(first.query, `${label}.searchQueries[0].query`), originalQuery, `${label}.searchQueries[0].query`);
+  assertEqual(readString(first.type, `${label}.searchQueries[0].type`), "original", `${label}.searchQueries[0].type`);
+
+  const queryTypes = new Set(
+    searchQueries.map((item, index) => readString(readRecord(item, `${label}.searchQueries[${index}]`).type, `${label}.searchQueries[${index}].type`))
+  );
+  if (queryTypes.size < 5) {
+    throw new Error(`${label}.searchQueries expected at least 5 query types, got ${Array.from(queryTypes).join(",")}.`);
+  }
+
+  const searchQueryResults = assertNonEmptyArray(debug.searchQueryResults, `${label}.searchQueryResults`);
+  assertEqual(searchQueryResults.length, searchQueries.length, `${label}.searchQueryResults length`);
+  searchQueryResults.forEach((item, index) => {
+    const result = readRecord(item, `${label}.searchQueryResults[${index}]`);
+    if (!Number.isFinite(result.returnedCount)) {
+      throw new Error(`${label}.searchQueryResults[${index}].returnedCount expected a finite number.`);
+    }
+  });
+
+  for (const key of ["mergedCandidateCount", "dedupedCandidateCount", "validCandidateCount"]) {
+    if (!Number.isFinite(debug[key])) {
+      throw new Error(`${label}.${key} expected a finite number.`);
     }
   }
 }
@@ -270,6 +308,7 @@ function assertStageTiming(timings, stage) {
 }
 
 function printDemoRunDetails(run) {
+  printSearchPlan(run);
   printDemoPaths(run);
   printExperienceSummaries(run);
   printCandidateQuality(run);
@@ -340,6 +379,33 @@ function printDemoPaths(run) {
     console.log(`  path[${index + 1}] title=${title}`);
     console.log(`    summary=${summary}`);
     console.log(`    source=${source}`);
+  });
+}
+
+function printSearchPlan(run) {
+  const debug = readRecord(run.data.debug, `${run.label} debug`);
+  const searchQueries = assertNonEmptyArray(debug.searchQueries, `${run.label} data.debug.searchQueries`);
+  const searchQueryResults = Array.isArray(debug.searchQueryResults) ? debug.searchQueryResults : [];
+  const focusTags = Array.isArray(run.data.analysis?.focusTags) ? run.data.analysis.focusTags.join(",") : "";
+  console.log(
+    `searchPlan ${run.label} originalQuery="${debug.originalQuery || run.query}" intent="${run.data.analysis?.intent || ""}" focusTags="${focusTags}" searchQueries=${searchQueries.length}`
+  );
+  console.log(
+    `  counts merged=${formatNumber(debug.mergedCandidateCount)} deduped=${formatNumber(debug.dedupedCandidateCount)} valid=${formatNumber(debug.validCandidateCount)} fallbackReason=${debug.fallbackReason || ""}`
+  );
+
+  searchQueries.forEach((plan, index) => {
+    const item = readRecord(plan, `${run.label} data.debug.searchQueries[${index}]`);
+    const query = readString(item.query, `${run.label} data.debug.searchQueries[${index}].query`);
+    const type = readString(item.type, `${run.label} data.debug.searchQueries[${index}].type`);
+    const purpose = typeof item.purpose === "string" ? item.purpose : "";
+    const priority = Number.isFinite(item.priority) ? item.priority : "";
+    const result = searchQueryResults.find((candidate) => isRecord(candidate) && candidate.query === query);
+    const returnedCount = isRecord(result) && Number.isFinite(result.returnedCount) ? result.returnedCount : "n/a";
+    const error = isRecord(result) && typeof result.error === "string" ? ` error=${result.error}` : "";
+    console.log(
+      `  query[${index + 1}] priority=${priority} type=${type} returned=${returnedCount} query=${query} purpose=${purpose}${error}`
+    );
   });
 }
 
@@ -430,7 +496,11 @@ function formatPathSource(path, debug) {
 function readCandidateLabel(candidate) {
   const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
   const candidateId = typeof candidate.candidateId === "string" ? candidate.candidateId.trim() : "";
-  return title ? `title=${title}` : `candidateId=${candidateId || "unknown"}`;
+  const matchedQuery = typeof candidate.matchedQuery === "string" ? ` matchedQuery=${candidate.matchedQuery}` : "";
+  const queryType = typeof candidate.queryType === "string" ? ` queryType=${candidate.queryType}` : "";
+  return title
+    ? `title=${title}${matchedQuery}${queryType}`
+    : `candidateId=${candidateId || "unknown"}${matchedQuery}${queryType}`;
 }
 
 function formatNumber(value) {
@@ -480,6 +550,20 @@ function isRecord(value) {
 function readEnv(name, fallback) {
   const value = process.env[name];
   return value && value.trim() ? value.trim() : fallback;
+}
+
+function readQueryListEnv(name, fallback) {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    return fallback;
+  }
+
+  const queries = value
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return queries.length > 0 ? queries : fallback;
 }
 
 function parsePositiveInt(value, fallback) {

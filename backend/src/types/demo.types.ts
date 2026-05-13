@@ -6,6 +6,13 @@ export type DemoDataMode = "mock" | "cache_first" | "real";
 export type DemoPersonaChatMode = "off" | "mock" | "real";
 export type DemoExperienceSummarySource = "llm" | "fallback" | "none";
 export type DemoExperienceSummaryStatus = "ready" | "pending" | "failed";
+export type DemoSearchQueryType =
+  | "original"
+  | "real_experience"
+  | "life_path"
+  | "failure_review"
+  | "decision_conflict"
+  | "alternative_solution";
 export type DemoDebugFallbackKind =
   | ""
   | "no_llm_config"
@@ -208,6 +215,18 @@ export interface DemoMeta {
   fallbackUsed: boolean;
 }
 
+export interface DemoSearchQueryPlan {
+  query: string;
+  type: DemoSearchQueryType;
+  purpose: string;
+  priority: number;
+}
+
+export interface DemoSearchQueryResultDebug extends DemoSearchQueryPlan {
+  returnedCount: number;
+  error?: string;
+}
+
 export interface DemoDebug {
   composer: "mock" | "real_rule_composer" | "real_llm_composer";
   originalQuery: string;
@@ -236,6 +255,11 @@ export interface DemoDebug {
   fallbackKind: DemoDebugFallbackKind;
   fallbackReason: string;
   guardWarnings: string[];
+  searchQueries?: DemoSearchQueryPlan[];
+  searchQueryResults?: DemoSearchQueryResultDebug[];
+  mergedCandidateCount?: number;
+  dedupedCandidateCount?: number;
+  validCandidateCount?: number;
   candidateQuality?: DemoCandidateQuality[];
   experienceSummaryDebug?: DemoExperienceSummaryDebug[];
   notes: string[];
@@ -245,6 +269,9 @@ export interface DemoCandidateQuality {
   candidateId: string;
   sourceRefId?: string;
   title: string;
+  matchedQuery?: string;
+  queryType?: DemoSearchQueryType;
+  queryPurpose?: string;
   relevanceScore: number;
   qualityScore: number;
   experienceSignalScore: number;

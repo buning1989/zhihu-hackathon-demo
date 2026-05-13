@@ -451,6 +451,8 @@ async function assertCandidateQualityPrefersExperience(): Promise<void> {
   if (!usedQuality) {
     throw new Error("candidate quality debug missing used item");
   }
+  assertNonEmptyString(usedQuality.matchedQuery, "used candidate matchedQuery");
+  assertNonEmptyString(usedQuality.queryType, "used candidate queryType");
   assertEqual(
     usedQuality.experienceSignalScore > lowQuality.experienceSignalScore,
     true,
@@ -467,6 +469,7 @@ async function assertNoLlmConfigFallbackKind(): Promise<void> {
   assertEqual(response.debug.fallbackUsed, true, "no llm fallbackUsed");
   assertEqual(response.debug.fallbackKind, "no_llm_config", "no llm fallbackKind");
   assertIncludes(response.debug.fallbackReason, "no_llm_config", "no llm fallbackReason");
+  assertSearchPlanDebug(response, "不工作了能去哪儿");
 }
 
 async function assertPartialLlmFallbackKind(): Promise<void> {
@@ -503,6 +506,7 @@ async function assertPartialLlmFallbackKind(): Promise<void> {
     "partial llm fallbackKind"
   );
   assertIncludes(response.debug.fallbackReason, "evidence_extract", "partial llm fallbackReason");
+  assertSearchPlanDebug(response, "不工作了能去哪儿");
 }
 
 async function assertGroundingGuardInvalidFallback(): Promise<void> {
@@ -620,6 +624,38 @@ function createLoggedInSessionCookie(): string {
   }
 
   return firstCookie.split(";")[0];
+}
+
+function assertSearchPlanDebug(response: Awaited<ReturnType<typeof withStubbedOrchestrator>>, query: string): void {
+  const searchQueries = response.debug.searchQueries;
+  assertNonEmptyArray(searchQueries, "debug.searchQueries");
+  if (!searchQueries || searchQueries.length < 8) {
+    throw new Error(`debug.searchQueries expected at least 8 items, got ${searchQueries?.length ?? 0}`);
+  }
+
+  assertEqual(searchQueries[0].query, query, "debug.searchQueries[0].query");
+  assertEqual(searchQueries[0].type, "original", "debug.searchQueries[0].type");
+  const queryTypes = new Set(searchQueries.map((item) => item.type));
+  if (queryTypes.size < 5) {
+    throw new Error(`debug.searchQueries expected at least 5 query types, got ${Array.from(queryTypes).join(",")}`);
+  }
+
+  const searchQueryResults = response.debug.searchQueryResults;
+  assertNonEmptyArray(searchQueryResults, "debug.searchQueryResults");
+  assertEqual(searchQueryResults?.length, searchQueries.length, "debug.searchQueryResults length");
+  for (const result of searchQueryResults ?? []) {
+    if (!Number.isFinite(result.returnedCount)) {
+      throw new Error(`debug.searchQueryResults returnedCount missing for ${result.query}`);
+    }
+  }
+
+  if (
+    !Number.isFinite(response.debug.mergedCandidateCount) ||
+    !Number.isFinite(response.debug.dedupedCandidateCount) ||
+    !Number.isFinite(response.debug.validCandidateCount)
+  ) {
+    throw new Error("debug candidate counts must include merged/deduped/valid counts");
+  }
 }
 
 function createStubSearchItem(): SearchItem {

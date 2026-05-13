@@ -265,8 +265,13 @@ people[].experienceSummary
 
 ## debug.candidateQuality
 
-real 模式下，`debug.candidateQuality[]` 会列出本次召回候选的质量判断，方便联调筛选结果：
+real 模式下，`debug.searchQueries[]` 会列出 intent_expand 生成的知乎搜索召回计划；每项包含 `query / type / priority / purpose`。`debug.searchQueryResults[]` 会按 query 展示本次真实搜索返回数量，`mergedCandidateCount / dedupedCandidateCount / validCandidateCount` 分别表示合并前候选数、去重后候选数和进入核心证据筛选后的有效候选数。
 
+`debug.candidateQuality[]` 会列出本次召回候选的质量判断，方便联调筛选结果：
+
+- `matchedQuery`：这条候选最先由哪条搜索 query 召回。
+- `queryType`：对应搜索方向，例如 `real_experience`、`failure_review`。
+- `queryPurpose`：该 query 的召回目的。
 - `relevanceScore`：候选与 query 的规则相关度，0 到 1。
 - `qualityScore`：综合正文长度、信息密度、具体变量和证据可用性的质量分。
 - `experienceSignalScore`：第一人称、时间线、决策过程、结果反馈等亲历信号强度。
