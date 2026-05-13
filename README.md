@@ -9,7 +9,8 @@
 ├── backend/                 # 现有后端服务，当前为 Node.js + TypeScript + Express
 ├── frontend/                # 前端预留目录，当前只有可访问的静态占位首页
 ├── shared/
-│   └── openapi.yaml         # 前后端协作接口契约
+│   ├── openapi.yaml         # 前后端协作接口契约
+│   └── demo-response.sample.json # 前端 P0 字段参考样例
 ├── infra/
 │   └── docker-compose.yml   # 本地一键启动 demo 的预留编排
 ├── scripts/
@@ -58,10 +59,12 @@ docker compose -f infra/docker-compose.yml up
 - 后端健康检查：`http://localhost:8000/health`
 - 前端占位首页：`http://localhost:3000/`
 - OpenAPI 契约：`shared/openapi.yaml`
+- 前端字段样例：`shared/demo-response.sample.json`
 
 ## 前后端协作规则
 
-- `shared/openapi.yaml` 是前后端协作的最小契约。新增或调整接口时，先更新契约，再同步实现和 README。
+- `shared/openapi.yaml` 是前后端协作的最小契约。当前 P0 主接口是 `GET /api/search`；`/api/demo/search` 和 `/api/demo/session/{sessionId}` 标记为 planned，不是当前可调用接口。
+- 北陆前端开发先以 `shared/demo-response.sample.json` 作为唯一字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
 - 不要把观点作者包装成亲历者，不实现“联系 TA”、私信、模拟作者本人回复等能力。
@@ -91,13 +94,17 @@ npm run smoke
 冒烟脚本至少检查：
 
 - `GET /health` 可访问。
+- `GET /api/health` 可访问。
+- `GET /api/search?query=不工作了能去哪儿&count=1` 在没有真实知乎密钥时返回明确 JSON 错误，服务不能崩溃。
 - 前端首页 `/` 可访问。
 
 也可以手动检查：
 
 ```bash
 curl -i "http://localhost:8000/health"
+curl -i "http://localhost:8000/api/health"
+curl -i "http://localhost:8000/api/search?query=不工作了能去哪儿&count=1"
 curl -i "http://localhost:3000/"
 ```
 
-后续业务 demo 验收应以 `shared/openapi.yaml` 的 `/api/demo/search` 和 `/api/demo/session/{sessionId}` 为协作基线，再逐步接入真实后端实现。
+后续业务 demo 可以沿着 `shared/openapi.yaml` 中 planned 的 `/api/demo/search` 和 `/api/demo/session/{sessionId}` 演进，但当前前端联调以 `GET /api/search` 为准。

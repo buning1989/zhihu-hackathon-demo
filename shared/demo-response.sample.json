@@ -1,0 +1,112 @@
+{
+  "sample_name": "frontend-p0-search-reference",
+  "contract_version": "0.1.1",
+  "main_interface": "GET /api/search?query=不工作了能去哪儿&count=1",
+  "implementation_status": "current",
+  "field_levels": {
+    "P0_required": [
+      "success",
+      "data.query",
+      "data.count",
+      "data.hasMore",
+      "data.searchHashId",
+      "data.items",
+      "data.items[].id",
+      "data.items[].type",
+      "data.items[].title",
+      "data.items[].text",
+      "data.items[].url",
+      "data.items[].source.provider",
+      "data.items[].source.url",
+      "data.items[].evidence.text",
+      "data.items[].evidence.source.provider",
+      "data.items[].evidence.source.url"
+    ],
+    "P1_experience": [
+      "data.items[].author.name",
+      "data.items[].author.avatar",
+      "data.items[].stats.voteUpCount",
+      "data.items[].stats.commentCount",
+      "data.items[].comments",
+      "future.sections",
+      "future.cards",
+      "future.actions"
+    ],
+    "P2_decorative": [
+      "data.items[].author.badge",
+      "data.items[].author.badgeText",
+      "data.items[].stats.rankingScore",
+      "data.items[].editTime",
+      "data.items[].authorityLevel",
+      "future.blocks",
+      "future.meta.traceId"
+    ]
+  },
+  "empty_value_rules": {
+    "string": "Existing backend returns empty string when upstream omits optional text fields.",
+    "number": "Existing backend returns 0 when upstream omits numeric fields.",
+    "array": "Existing backend returns [] when upstream omits array fields.",
+    "source": "Every rendered card must keep source/evidence. Hide source links only when source.url is empty."
+  },
+  "success_response": {
+    "success": true,
+    "data": {
+      "query": "不工作了能去哪儿",
+      "count": 1,
+      "hasMore": false,
+      "searchHashId": "",
+      "items": [
+        {
+          "id": "zhihu_item_1",
+          "type": "answer",
+          "title": "裸辞以后可以去哪里",
+          "text": "一段来自知乎真实内容或 mock 内容的摘要。前端 P0 可以把它作为主文案，也可以作为证据句展示。",
+          "url": "https://www.zhihu.com/question/mock/answer/mock",
+          "author": {
+            "name": "知乎作者",
+            "avatar": "",
+            "badge": "",
+            "badgeText": ""
+          },
+          "stats": {
+            "commentCount": 0,
+            "voteUpCount": 0,
+            "rankingScore": 0
+          },
+          "comments": [],
+          "editTime": 0,
+          "authorityLevel": "",
+          "source": {
+            "provider": "zhihu",
+            "url": "https://www.zhihu.com/question/mock/answer/mock"
+          },
+          "evidence": {
+            "text": "一段来自知乎真实内容或 mock 内容的摘要。前端 P0 可以把它作为主文案，也可以作为证据句展示。",
+            "source": {
+              "provider": "zhihu",
+              "url": "https://www.zhihu.com/question/mock/answer/mock"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "error_response_without_zhihu_key": {
+    "success": false,
+    "error": {
+      "code": "ZHIHU_AUTH_FAILED",
+      "message": "知乎 API 鉴权失败"
+    }
+  },
+  "future_optional_shape": {
+    "schemaVersion": "future",
+    "sections": [],
+    "cards": [],
+    "blocks": [],
+    "actions": [],
+    "meta": {
+      "mode": "mock",
+      "traceId": ""
+    }
+  }
+}

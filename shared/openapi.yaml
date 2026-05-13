@@ -1,40 +1,231 @@
 openapi: 3.1.0
 info:
   title: Zhihu Hackathon Demo API
-  version: 0.1.0
-  description: Minimal shared contract for frontend and backend collaboration.
+  version: 0.1.1
+  description: >
+    Shared contract for the current monorepo scaffold. The frontend should
+    treat GET /api/search as the current P0 main interface. Paths marked with
+    x-implementation-status: planned are future contracts and are not available
+    in the backend yet.
 servers:
   - url: http://localhost:8000
     description: Local backend
 tags:
   - name: Health
-  - name: Demo
+    description: Implemented health checks.
+  - name: Search
+    description: Implemented search endpoints.
+  - name: Zhihu
+    description: Implemented raw Zhihu proxy endpoints.
+  - name: Planned
+    description: Future demo endpoints, not implemented in the backend yet.
 paths:
   /health:
     get:
       tags:
         - Health
-      summary: Health check
-      operationId: getHealth
+      summary: Root health check
+      description: Implemented. Used by smoke tests and local demo checks.
+      operationId: getRootHealth
+      x-implementation-status: implemented
       responses:
         "200":
           description: Backend is reachable.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
+                $ref: "#/components/schemas/RootHealthResponse"
               examples:
                 ok:
                   value:
                     status: ok
                     service: zhihu-hackathon-backend
                     version: 0.1.0
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: API health check
+      description: Implemented. Keeps the existing wrapped API response shape.
+      operationId: getApiHealth
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Backend API is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiHealthResponse"
+              examples:
+                ok:
+                  value:
+                    success: true
+                    data:
+                      status: ok
+                      service: zhihu-hackathon-backend
+  /api/search:
+    get:
+      tags:
+        - Search
+      summary: Frontend-friendly search endpoint
+      description: >
+        Implemented. This is the current P0 main interface for frontend
+        integration. Without a real Zhihu key, the endpoint returns a clear
+        JSON error instead of crashing.
+      operationId: getSearch
+      x-implementation-status: implemented
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          example: 不工作了能去哪儿
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+          example: 1
+      responses:
+        "200":
+          description: Search succeeded and was mapped into frontend-friendly fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchSuccessResponse"
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      query: 不工作了能去哪儿
+                      count: 1
+                      hasMore: false
+                      searchHashId: ""
+                      items:
+                        - id: zhihu_item_1
+                          type: answer
+                          title: 裸辞以后可以去哪里
+                          text: 一段来自知乎内容或 mock 内容的摘要。
+                          url: https://www.zhihu.com/question/mock/answer/mock
+                          author:
+                            name: 知乎作者
+                            avatar: ""
+                            badge: ""
+                            badgeText: ""
+                          stats:
+                            commentCount: 0
+                            voteUpCount: 0
+                            rankingScore: 0
+                          comments: []
+                          editTime: 0
+                          authorityLevel: ""
+                          source:
+                            provider: zhihu
+                            url: https://www.zhihu.com/question/mock/answer/mock
+                          evidence:
+                            text: 一段来自知乎内容或 mock 内容的摘要。
+                            source:
+                              provider: zhihu
+                              url: https://www.zhihu.com/question/mock/answer/mock
+        "400":
+          description: Missing or invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Missing local Zhihu credentials or other backend error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                missingKey:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_AUTH_FAILED
+                      message: 知乎 API 鉴权失败
+  /api/zhihu/search:
+    get:
+      tags:
+        - Zhihu
+      summary: Raw Zhihu search proxy
+      description: >
+        Implemented. This endpoint is mainly for backend debugging because it
+        returns the raw upstream Zhihu response when credentials are configured.
+        Frontend should prefer GET /api/search.
+      operationId: getZhihuSearchRaw
+      x-implementation-status: implemented
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          example: 不工作了能去哪儿
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+          example: 1
+      responses:
+        "200":
+          description: Raw Zhihu response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ZhihuRawSearchResponse"
+              examples:
+                raw:
+                  value:
+                    Code: 200
+                    Message: OK
+                    Data:
+                      HasMore: false
+                      SearchHashId: ""
+                      Items: []
+        "400":
+          description: Missing or invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Missing local Zhihu credentials or other backend error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                missingKey:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_AUTH_FAILED
+                      message: 知乎 API 鉴权失败
   /api/demo/search:
     post:
       tags:
-        - Demo
-      summary: Create a mock demo search session
+        - Planned
+      summary: "[planned] Create a demo search session"
+      description: >
+        Planned/future endpoint. It is kept here to show the intended richer
+        demo contract, but it is not implemented in the current backend.
+        Frontend should not call this endpoint for P0 integration.
       operationId: createDemoSearch
+      x-implementation-status: planned
       requestBody:
         required: true
         content:
@@ -44,58 +235,33 @@ paths:
             examples:
               default:
                 value:
-                  query: "不工作了能去哪儿？"
+                  query: 不工作了能去哪儿？
                   sessionId: s_demo_001
                   mode: mock
       responses:
-        "200":
-          description: Search result shaped for frontend rendering.
+        "501":
+          description: Planned endpoint, not implemented yet.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DemoSearchResponse"
+                $ref: "#/components/schemas/ApiErrorResponse"
               examples:
-                mock:
+                planned:
                   value:
-                    schemaVersion: "0.1"
-                    sessionId: s_demo_001
-                    query:
-                      raw: "不工作了能去哪儿？"
-                      display: "想看看离开工作轨道的人后来去了哪里"
-                    sections:
-                      - id: paths
-                        title: "可能路径"
-                        cards:
-                          - id: c_mock_001
-                            type: content
-                            title: "小城市生活"
-                            summary: "一条来自知乎公开内容的占位摘要。"
-                            evidence:
-                              text: "这里放真实或 mock 的原文证据句。"
-                              source:
-                                provider: zhihu
-                                title: "知乎内容标题"
-                                url: "https://www.zhihu.com/question/mock"
-                                authorName: "知乎作者"
-                            actions:
-                              - type: open_url
-                                label: "查看原文"
-                                url: "https://www.zhihu.com/question/mock"
-                    meta:
-                      mode: mock
-                      generatedAt: "2026-05-12T00:00:00.000Z"
-        "400":
-          description: Invalid request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                    success: false
+                    error:
+                      code: NOT_IMPLEMENTED
+                      message: Planned endpoint, not implemented yet.
   /api/demo/session/{sessionId}:
     get:
       tags:
-        - Demo
-      summary: Fetch a demo session by id
+        - Planned
+      summary: "[planned] Fetch a demo session by id"
+      description: >
+        Planned/future endpoint. It is not implemented in the current backend.
+        Frontend should not call this endpoint for P0 integration.
       operationId: getDemoSession
+      x-implementation-status: planned
       parameters:
         - name: sessionId
           in: path
@@ -104,21 +270,22 @@ paths:
             type: string
           example: s_demo_001
       responses:
-        "200":
-          description: Previously generated demo session.
+        "501":
+          description: Planned endpoint, not implemented yet.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DemoSessionResponse"
-        "404":
-          description: Session not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                planned:
+                  value:
+                    success: false
+                    error:
+                      code: NOT_IMPLEMENTED
+                      message: Planned endpoint, not implemented yet.
 components:
   schemas:
-    HealthResponse:
+    RootHealthResponse:
       type: object
       required:
         - status
@@ -131,8 +298,205 @@ components:
             - ok
         service:
           type: string
+          enum:
+            - zhihu-hackathon-backend
         version:
           type: string
+    ApiHealthResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - status
+            - service
+          properties:
+            status:
+              type: string
+              enum:
+                - ok
+            service:
+              type: string
+              enum:
+                - zhihu-hackathon-backend
+    SearchSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/SearchResult"
+    SearchResult:
+      type: object
+      required:
+        - query
+        - count
+        - hasMore
+        - searchHashId
+        - items
+      properties:
+        query:
+          type: string
+          description: Trimmed user query.
+        count:
+          type: integer
+          description: Server-normalized requested result count.
+        hasMore:
+          type: boolean
+          description: Whether upstream reports more results.
+        searchHashId:
+          type: string
+          description: Upstream search cursor/hash. Can be an empty string.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchItem"
+    SearchItem:
+      type: object
+      required:
+        - id
+        - type
+        - title
+        - text
+        - url
+        - author
+        - stats
+        - comments
+        - editTime
+        - authorityLevel
+        - source
+        - evidence
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: Upstream content type. Can be an empty string.
+        title:
+          type: string
+          description: Content title. Can be an empty string.
+        text:
+          type: string
+          description: Main content text or excerpt. Can be an empty string.
+        url:
+          type: string
+          description: Original Zhihu URL. Can be an empty string if upstream omits it.
+        author:
+          $ref: "#/components/schemas/SearchAuthor"
+        stats:
+          $ref: "#/components/schemas/SearchStats"
+        comments:
+          type: array
+          items: {}
+          description: Raw comments array when provided by upstream. Usually empty for P0.
+        editTime:
+          type: number
+          description: Upstream edit timestamp. 0 when missing.
+        authorityLevel:
+          type: string
+          description: Upstream authority level. Can be an empty string.
+        source:
+          $ref: "#/components/schemas/SearchSource"
+        evidence:
+          $ref: "#/components/schemas/SearchEvidence"
+    SearchAuthor:
+      type: object
+      required:
+        - name
+        - avatar
+        - badge
+        - badgeText
+      properties:
+        name:
+          type: string
+          description: Author display name. Can be an empty string.
+        avatar:
+          type: string
+          description: Author avatar URL. Can be an empty string.
+        badge:
+          type: string
+          description: Raw author badge. Can be an empty string.
+        badgeText:
+          type: string
+          description: Human-readable author badge. Can be an empty string.
+    SearchStats:
+      type: object
+      required:
+        - commentCount
+        - voteUpCount
+        - rankingScore
+      properties:
+        commentCount:
+          type: number
+        voteUpCount:
+          type: number
+        rankingScore:
+          type: number
+    SearchSource:
+      type: object
+      required:
+        - provider
+        - url
+      properties:
+        provider:
+          type: string
+          enum:
+            - zhihu
+        url:
+          type: string
+          description: Original content URL. Can be an empty string for malformed upstream data.
+    SearchEvidence:
+      type: object
+      required:
+        - text
+        - source
+      properties:
+        text:
+          type: string
+          description: Evidence text derived from the original content. Can be empty in P0 errors or incomplete upstream data.
+        source:
+          $ref: "#/components/schemas/SearchSource"
+    ZhihuRawSearchResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        Code:
+          oneOf:
+            - type: integer
+            - type: string
+        Message:
+          type: string
+        Data:
+          description: Raw upstream payload.
+    ApiErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
     DemoSearchRequest:
       type: object
       required:
@@ -237,7 +601,7 @@ components:
           items:
             type: string
         evidence:
-          $ref: "#/components/schemas/Evidence"
+          $ref: "#/components/schemas/SearchEvidence"
         blocks:
           type: array
           items:
@@ -246,34 +610,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Action"
-    Evidence:
-      type: object
-      required:
-        - text
-        - source
-      properties:
-        text:
-          type: string
-        source:
-          $ref: "#/components/schemas/Source"
-    Source:
-      type: object
-      required:
-        - provider
-        - url
-      properties:
-        provider:
-          type: string
-          example: zhihu
-        title:
-          type: string
-        url:
-          type: string
-          format: uri
-        authorName:
-          type: string
-        contentId:
-          type: string
     Block:
       type: object
       required:
@@ -290,7 +626,7 @@ components:
         content:
           type: string
         source:
-          $ref: "#/components/schemas/Source"
+          $ref: "#/components/schemas/SearchSource"
     Action:
       type: object
       required:
@@ -307,7 +643,6 @@ components:
           type: string
         url:
           type: string
-          format: uri
         targetId:
           type: string
     ResponseMeta:
@@ -323,18 +658,3 @@ components:
           format: date-time
         traceId:
           type: string
-    ErrorResponse:
-      type: object
-      required:
-        - error
-      properties:
-        error:
-          type: object
-          required:
-            - code
-            - message
-          properties:
-            code:
-              type: string
-            message:
-              type: string
