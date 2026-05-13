@@ -365,6 +365,99 @@ paths:
                     error:
                       code: ZHIHU_AUTH_FAILED
                       message: 知乎 API 鉴权失败
+  /api/zhihu/ring/publish:
+    post:
+      tags:
+        - Zhihu
+      summary: Publish a pin to an allowlisted Zhihu ring
+      description: >
+        Implemented. Manual-only endpoint that publishes a pin to one of the
+        backend allowlisted Zhihu rings through POST /openapi/publish/pin. It
+        is not called by the demo search flow. The backend enforces a
+        per-process limit of 5 real publish attempts per hour.
+      operationId: publishZhihuRingPin
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZhihuRingPublishRequest"
+            examples:
+              default:
+                value:
+                  ringId: "2029619126742656657"
+                  title: 错位人生测试
+                  content: 这是一条后端链路测试内容，请忽略。
+                  imageUrls: []
+      responses:
+        "200":
+          description: Pin publish succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ZhihuRingPublishSuccessResponse"
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      contentToken: "1992012205256892542"
+                    meta:
+                      ringId: "2029619126742656657"
+                      logId: "0b624840-ae8f-4df6-af07-cd331c210e84"
+        "400":
+          description: Missing required field, invalid imageUrls, or non-allowlisted ringId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                ringNotAllowed:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_NOT_ALLOWED
+                      message: 圈子 ID 不在允许发布的白名单内
+        "429":
+          description: Local per-process publish limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                rateLimited:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_PUBLISH_RATE_LIMITED
+                      message: 本地进程内圈子发布限流：同一小时最多 5 次真实发布
+        "500":
+          description: Missing local Zhihu OpenAPI publish credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                missingConfig:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_PUBLISH_CONFIG_ERROR
+                      message: 知乎圈子发布 OpenAPI 配置缺失：ZHIHU_OPENAPI_APP_KEY, ZHIHU_OPENAPI_APP_SECRET
+        "502":
+          description: Upstream Zhihu publish failure or malformed upstream response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                upstreamFailed:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_PUBLISH_FAILED
+                      message: 知乎返回的失败信息
   /api/demo/search:
     post:
       tags:
@@ -807,6 +900,62 @@ components:
           description: Evidence text derived from the original content. Can be empty in P0 errors or incomplete upstream data.
         source:
           $ref: "#/components/schemas/SearchSource"
+    ZhihuRingPublishRequest:
+      type: object
+      required:
+        - ringId
+        - title
+        - content
+      properties:
+        ringId:
+          type: string
+          enum:
+            - "2001009660925334090"
+            - "2015023739549529606"
+            - "2029619126742656657"
+          description: Allowlisted Zhihu ring id.
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          minLength: 1
+        imageUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+          default: []
+          description: Optional existing image URLs only. The backend does not upload images.
+    ZhihuRingPublishSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - contentToken
+          properties:
+            contentToken:
+              type: string
+              description: content_token returned by Zhihu.
+        meta:
+          type: object
+          required:
+            - ringId
+            - logId
+          properties:
+            ringId:
+              type: string
+            logId:
+              type: string
+              description: X-Log-Id generated for the upstream OpenAPI request.
     ZhihuRawSearchResponse:
       type: object
       additionalProperties: true

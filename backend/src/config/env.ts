@@ -21,6 +21,10 @@ const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
+const zhihuOpenapiBase = firstNonEmpty(
+  process.env.ZHIHU_OPENAPI_BASE_URL,
+  process.env.ZHIHU_OPENAPI_BASE
+);
 const kimiApiKey = firstNonEmpty(process.env.KIMI_API_KEY);
 const deepseekApiKey = firstNonEmpty(process.env.DEEPSEEK_API_KEY);
 const legacyLlmApiKey = firstNonEmpty(process.env.LLM_API_KEY);
@@ -56,7 +60,9 @@ export const config = {
     appKey: process.env.ZHIHU_APP_KEY || "",
     redirectUri:
       process.env.ZHIHU_REDIRECT_URI || "http://127.0.0.1:3001/auth/zhihu/callback",
-    openapiBase: process.env.ZHIHU_OPENAPI_BASE || DEFAULT_ZHIHU_OPENAPI_BASE,
+    openapiBase: zhihuOpenapiBase || DEFAULT_ZHIHU_OPENAPI_BASE,
+    openapiAppKey: firstNonEmpty(process.env.ZHIHU_OPENAPI_APP_KEY),
+    openapiAppSecret: firstNonEmpty(process.env.ZHIHU_OPENAPI_APP_SECRET),
     userinfoPath: process.env.ZHIHU_USERINFO_PATH || "",
     searchApiUrl: process.env.ZH_SEARCH_API_URL || DEFAULT_ZHIHU_SEARCH_API_URL,
     timeoutMs: parsePositiveInteger(

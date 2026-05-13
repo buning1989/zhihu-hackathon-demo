@@ -47,7 +47,9 @@ ZH_API_TIMEOUT_MS=10000
 ZHIHU_APP_ID=你的知乎 OAuth App ID
 ZHIHU_APP_KEY=你的知乎 OAuth App Key
 ZHIHU_REDIRECT_URI=http://127.0.0.1:3001/auth/zhihu/callback
-ZHIHU_OPENAPI_BASE=https://openapi.zhihu.com
+ZHIHU_OPENAPI_BASE_URL=https://openapi.zhihu.com
+ZHIHU_OPENAPI_APP_KEY=你的知乎 OpenAPI App Key
+ZHIHU_OPENAPI_APP_SECRET=你的知乎 OpenAPI App Secret
 ZHIHU_USERINFO_PATH=
 FRONTEND_URL=http://127.0.0.1:5173
 SESSION_SECRET=replace-with-random-string
@@ -61,6 +63,8 @@ PORT=8000
 OAuth 相关配置只在访问 `/auth/zhihu/login` 和 callback 时需要；未配置
 `ZHIHU_APP_ID` / `ZHIHU_APP_KEY` 时服务仍可启动，登录入口会返回清晰 JSON 错误。
 `ZHIHU_USERINFO_PATH` 暂不猜测硬编码，配置后才会调用用户信息接口。
+圈子发布接口使用独立的 `ZHIHU_OPENAPI_APP_KEY` / `ZHIHU_OPENAPI_APP_SECRET`，
+缺失时只会让发布请求返回配置错误，不影响服务启动。
 
 ## 启动
 
@@ -99,6 +103,28 @@ curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&coun
 ```
 
 底层调试接口，会真实调用知乎搜索 API，并保留原始 `Code` / `Message` / `Data` 结构。
+
+### POST /api/zhihu/ring/publish
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/zhihu/ring/publish" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ringId":"2029619126742656657",
+    "title":"错位人生测试",
+    "content":"这是一条后端链路测试内容，请忽略。",
+    "imageUrls":[]
+  }'
+```
+
+手动发布一条想法到白名单圈子。当前允许的圈子 ID：
+
+- `2001009660925334090`：OpenClaw 人类观察员
+- `2015023739549529606`：A2A for Reconnect
+- `2029619126742656657`：黑客松脑洞补给站
+
+该接口不会接入 demo search 主链路；同一后端进程内每小时最多 5 次真实发布。
+成功时返回 `contentToken` 和本次请求的 `logId`。
 
 ### GET /api/search
 

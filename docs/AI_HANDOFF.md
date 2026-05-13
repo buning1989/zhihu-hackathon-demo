@@ -1,5 +1,44 @@
 # AI Handoff
 
+## 2026-05-13 - Zhihu ring publish/pin backend integration
+
+本轮目标：接入知乎 OpenAPI `POST /openapi/publish/pin`，让后端可以手动把内容发布到指定知乎圈子；不接入 `/api/demo/search` 主链路。
+
+已完成：
+
+- 新增 `zhihuProvider.publishPinToRing(params)`，请求 `ZHIHU_OPENAPI_BASE_URL/openapi/publish/pin`。
+- 请求头包含 `X-App-Key`、秒级 `X-Timestamp`、自动生成的 `X-Log-Id`、`X-Sign`、空字符串 `X-Extra-Info` 和 `Content-Type: application/json`。
+- `X-Sign` 使用 `app_key:${APP_KEY}|ts:${TIMESTAMP}|logid:${LOG_ID}|extra_info:` 做 HMAC-SHA256 后 base64。
+- 新增手动发布接口 `POST /api/zhihu/ring/publish`，请求体字段为 `ringId/title/content/imageUrls`。
+- 白名单圈子：
+  - `2001009660925334090`：OpenClaw 人类观察员
+  - `2015023739549529606`：A2A for Reconnect
+  - `2029619126742656657`：黑客松脑洞补给站
+- 本地进程内限流：同一小时最多 5 次真实发布。
+- `imageUrls` 只接受 URL 字符串数组，不包含图片上传能力。
+- 配置缺失返回 `ZHIHU_RING_PUBLISH_CONFIG_ERROR`；知乎业务失败返回 `ZHIHU_RING_PUBLISH_FAILED` 并透出上游 `msg`。
+
+环境变量：
+
+```env
+ZHIHU_OPENAPI_BASE_URL=https://openapi.zhihu.com
+ZHIHU_OPENAPI_APP_KEY=
+ZHIHU_OPENAPI_APP_SECRET=
+```
+
+curl 测试示例：
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/zhihu/ring/publish" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ringId":"2029619126742656657",
+    "title":"错位人生测试",
+    "content":"这是一条后端链路测试内容，请忽略。",
+    "imageUrls":[]
+  }'
+```
+
 ## 2026-05-13 - real demo search performance guardrails
 
 本轮目标：优化 `/api/demo/search` real 链路的首屏可控性，避免 Kimi / DeepSeek 慢响应拖垮主接口；不修改 paths 语义生成逻辑。

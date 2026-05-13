@@ -1,6 +1,19 @@
+import { createHmac, randomUUID } from "node:crypto";
 import { config } from "../../config/env.js";
 import { HttpError } from "../../utils/httpError.js";
-import type { ZhihuSearchParams, ZhihuSearchRawResponse } from "./zhihu.types.js";
+import type {
+  ZhihuPublishPinRawResponse,
+  ZhihuPublishPinToRingParams,
+  ZhihuPublishPinToRingResult,
+  ZhihuSearchParams,
+  ZhihuSearchRawResponse
+} from "./zhihu.types.js";
+
+const RING_PUBLISH_RATE_LIMIT = 5;
+const RING_PUBLISH_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+let ringPublishWindowStartedAt = Date.now();
+let ringPublishCount = 0;
 
 export class ZhihuProvider {
   async searchRaw(params: ZhihuSearchParams): Promise<ZhihuSearchRawResponse> {
@@ -59,6 +72,78 @@ export class ZhihuProvider {
       clearTimeout(timeout);
     }
   }
+
+  async publishPinToRing(
+    params: ZhihuPublishPinToRingParams
+  ): Promise<ZhihuPublishPinToRingResult> {
+    assertZhihuRingPublishConfigured();
+    consumeRingPublishRateLimitSlot();
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const logId = randomUUID();
+    const extraInfo = "";
+    const sign = buildOpenapiSignature(timestamp, logId, extraInfo);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.zhihu.timeoutMs);
+    const body = buildPublishPinRequestBody(params);
+
+    try {
+      const response = await fetch(new URL("/openapi/publish/pin", config.zhihu.openapiBase), {
+        method: "POST",
+        headers: {
+          "X-App-Key": config.zhihu.openapiAppKey,
+          "X-Timestamp": timestamp,
+          "X-Log-Id": logId,
+          "X-Sign": sign,
+          "X-Extra-Info": extraInfo,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      const responseBody = parseJsonBody(await response.text());
+      const apiStatus = readApiStatus(responseBody);
+      const apiCode = readApiCode(responseBody);
+      const failedByStatus = apiStatus !== null && apiStatus !== 0;
+      const failedByCode = apiStatus === null && apiCode !== null && apiCode !== 0;
+
+      if (!response.ok || failedByStatus || failedByCode) {
+        throw new HttpError(
+          mapZhihuPublishErrorStatus(response.status),
+          "ZHIHU_RING_PUBLISH_FAILED",
+          readZhihuErrorMessage(responseBody) || "知乎圈子想法发布失败"
+        );
+      }
+
+      const contentToken = readContentToken(responseBody);
+      if (!contentToken) {
+        throw new HttpError(
+          502,
+          "ZHIHU_RING_PUBLISH_BAD_RESPONSE",
+          "知乎圈子想法发布响应缺少 content_token"
+        );
+      }
+
+      return {
+        contentToken,
+        logId,
+        raw: isRecord(responseBody) ? responseBody : { status: response.status, data: responseBody }
+      };
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw error;
+      }
+
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new HttpError(504, "ZHIHU_RING_PUBLISH_TIMEOUT", "知乎圈子想法发布请求超时");
+      }
+
+      throw new HttpError(502, "ZHIHU_RING_PUBLISH_REQUEST_FAILED", "知乎圈子想法发布请求失败");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 export const zhihuProvider = new ZhihuProvider();
@@ -75,7 +160,7 @@ function parseJsonBody(bodyText: string): unknown {
   }
 }
 
-function isRecord(value: unknown): value is ZhihuSearchRawResponse {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -97,12 +182,20 @@ function readApiCode(body: unknown): number | null {
   return null;
 }
 
+function readApiStatus(body: unknown): number | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  return parseApiInteger(body.status);
+}
+
 function readZhihuErrorMessage(body: unknown): string | null {
   if (!isRecord(body)) {
     return null;
   }
 
-  const message = body.message ?? body.Message ?? body.data ?? body.Data;
+  const message = body.msg ?? body.message ?? body.Message ?? body.data ?? body.Data;
   return typeof message === "string" && message.trim() ? message : null;
 }
 
@@ -112,4 +205,122 @@ function buildRequestFailedMessage(error: unknown): string {
   }
 
   return "知乎 API 请求失败";
+}
+
+function assertZhihuRingPublishConfigured(): void {
+  const missing = [
+    ["ZHIHU_OPENAPI_APP_KEY", config.zhihu.openapiAppKey],
+    ["ZHIHU_OPENAPI_APP_SECRET", config.zhihu.openapiAppSecret]
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw new HttpError(
+      500,
+      "ZHIHU_RING_PUBLISH_CONFIG_ERROR",
+      `知乎圈子发布 OpenAPI 配置缺失：${missing.join(", ")}`
+    );
+  }
+}
+
+function buildOpenapiSignature(timestamp: string, logId: string, extraInfo: string): string {
+  const signString = `app_key:${config.zhihu.openapiAppKey}|ts:${timestamp}|logid:${logId}|extra_info:${extraInfo}`;
+
+  return createHmac("sha256", config.zhihu.openapiAppSecret)
+    .update(signString, "utf8")
+    .digest("base64");
+}
+
+function buildPublishPinRequestBody(params: ZhihuPublishPinToRingParams): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    ring_id: params.ringId,
+    title: params.title,
+    content: params.content
+  };
+
+  if (params.imageUrls && params.imageUrls.length > 0) {
+    body.image_urls = params.imageUrls;
+  }
+
+  return body;
+}
+
+function consumeRingPublishRateLimitSlot(): void {
+  const now = Date.now();
+  if (now - ringPublishWindowStartedAt >= RING_PUBLISH_RATE_LIMIT_WINDOW_MS) {
+    ringPublishWindowStartedAt = now;
+    ringPublishCount = 0;
+  }
+
+  if (ringPublishCount >= RING_PUBLISH_RATE_LIMIT) {
+    throw new HttpError(
+      429,
+      "ZHIHU_RING_PUBLISH_RATE_LIMITED",
+      "本地进程内圈子发布限流：同一小时最多 5 次真实发布"
+    );
+  }
+
+  ringPublishCount += 1;
+}
+
+function readContentToken(body: unknown): string {
+  const payload = unwrapData(body);
+  if (isRecord(payload)) {
+    return readString(payload, "content_token", "contentToken");
+  }
+
+  if (isRecord(body)) {
+    return readString(body, "content_token", "contentToken");
+  }
+
+  return "";
+}
+
+function unwrapData(body: unknown): unknown {
+  if (isRecord(body) && isRecord(body.data)) {
+    return body.data;
+  }
+
+  if (isRecord(body) && isRecord(body.Data)) {
+    return body.Data;
+  }
+
+  return body;
+}
+
+function readString(record: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function parseApiInteger(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function mapZhihuPublishErrorStatus(httpStatus: number): number {
+  if (httpStatus === 401 || httpStatus === 403 || httpStatus === 429) {
+    return httpStatus;
+  }
+
+  if (httpStatus >= 400 && httpStatus < 500) {
+    return httpStatus;
+  }
+
+  return 502;
 }
