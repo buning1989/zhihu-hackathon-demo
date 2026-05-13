@@ -1,0 +1,180 @@
+{
+  "success": true,
+  "data": {
+    "schemaVersion": "demo.v1",
+    "queryId": "query_demo_sample",
+    "query": "不工作了能去哪儿",
+    "dataMode": "mock",
+    "features": {
+      "aiPersona": true,
+      "personaChat": "mock",
+      "saveSample": false,
+      "articleBody": false,
+      "sourceEvidenceRequired": true
+    },
+    "analysis": {
+      "summary": "已基于公开内容样本，将问题拆成可停靠、可试错、可兜底的路径。",
+      "intent": "life_path_exploration",
+      "focusTags": ["离开工作轨道", "生活节奏", "现金流", "风险兜底"],
+      "steps": [
+        {
+          "id": "step_understand_query",
+          "label": "理解问题里的生活处境",
+          "status": "done",
+          "evidenceIds": ["ev_city_daily"],
+          "sourceRefs": ["source_mock_city_walk"]
+        }
+      ]
+    },
+    "paths": [
+      {
+        "id": "path_city_pause",
+        "title": "先停靠，把日常重新排稳",
+        "summary": "适合暂时不想立刻回到职场、需要先恢复生活秩序的人。",
+        "stance": "experience",
+        "evidenceIds": ["ev_city_daily", "ev_city_outdoor"],
+        "sourceRefs": ["source_mock_city_walk"]
+      }
+    ],
+    "people": [
+      {
+        "id": "person_city_pause",
+        "name": "城市停靠样本",
+        "pathId": "path_city_pause",
+        "role": "基于公开回答整理的生活节奏样本",
+        "badge": "先把日常排稳",
+        "avatar": "",
+        "oneLine": "这个样本提醒你，去哪里之前，可能先要知道一天怎么过。",
+        "who": "基于知乎公开回答整理出的前人样本，不等同于作者完整人生。",
+        "overlaps": ["都在离开工作结构后寻找新的日常秩序"],
+        "timeline": [
+          {
+            "date": "公开内容片段",
+            "event": "把做饭、休息、散步和户外活动放回每日节奏。",
+            "evidenceIds": ["ev_city_daily", "ev_city_outdoor"],
+            "sourceRefs": ["source_mock_city_walk"]
+          }
+        ],
+        "lesson": "地点能提供距离，但真正先稳住的是每天的生活节奏。",
+        "articles": [
+          {
+            "id": "article_city_walk",
+            "title": "失业不上班，你们都在干什么？",
+            "text": "公开回答提到，暂停上班后先把做饭、休息、散步和低成本生活重新排进每天。",
+            "url": "https://www.zhihu.com/question/mock-city-walk/answer/mock-001",
+            "author": "公开回答样本 A",
+            "avatar": "",
+            "sourceName": "知乎回答样本",
+            "sourceUrl": "https://www.zhihu.com/question/mock-city-walk/answer/mock-001",
+            "summary": "公开回答提到，暂停上班后先把做饭、休息、散步和低成本生活重新排进每天。",
+            "evidence": [
+              {
+                "id": "ev_city_daily",
+                "label": "日常节奏",
+                "text": "公开回答提到，暂停上班后先把做饭、休息、散步和低成本生活重新排进每天。",
+                "sourceRefId": "source_mock_city_walk",
+                "sourceUrl": "https://www.zhihu.com/question/mock-city-walk/answer/mock-001"
+              }
+            ],
+            "body": [
+              {
+                "type": "evidence",
+                "text": "公开回答提到，暂停上班后先把做饭、休息、散步和低成本生活重新排进每天。",
+                "evidenceIds": ["ev_city_daily"],
+                "sourceRefs": ["source_mock_city_walk"]
+              }
+            ],
+            "sourceRefs": ["source_mock_city_walk"]
+          }
+        ],
+        "match": {
+          "score": 0.88,
+          "level": "high",
+          "reasons": ["问题都指向离开工作结构后的生活安排"],
+          "matchedVariables": ["工作暂停", "生活节奏", "现金流"],
+          "riskNotes": ["公开内容只能说明片段经验，不能代表作者完整人生或长期结果"],
+          "contentRelevance": 0.88,
+          "experienceSimilarity": 0.84,
+          "evidenceQuality": 0.8,
+          "personaReadiness": 0.78,
+          "evidenceIds": ["ev_city_daily", "ev_city_outdoor"],
+          "sourceRefs": ["source_mock_city_walk"]
+        },
+        "aiPersona": {
+          "enabled": true,
+          "personaId": "persona_city_pause",
+          "displayName": "城市停靠样本的经验回声",
+          "label": "基于公开内容生成",
+          "openingLine": "你可以继续问这段公开经历里的选择、代价和下一步判断。",
+          "suggestedQuestions": ["你当时怎么让一天重新有节奏？", "低成本生活最先要注意什么？"],
+          "boundary": "该 AI 分身基于公开内容生成，不代表作者本人。",
+          "grounding": {
+            "personId": "person_city_pause",
+            "articleIds": ["article_city_walk"],
+            "evidenceRequired": true,
+            "sourceRefs": ["source_mock_city_walk"]
+          }
+        },
+        "evidenceIds": ["ev_city_daily", "ev_city_outdoor"],
+        "sourceRefs": ["source_mock_city_walk"]
+      }
+    ],
+    "personas": [
+      {
+        "id": "persona_city_pause",
+        "personId": "person_city_pause",
+        "displayName": "城市停靠样本的经验回声",
+        "avatar": "",
+        "personaType": "experience_echo",
+        "intro": "你可以继续问这段公开经历里的选择、代价和下一步判断。",
+        "boundaryNotice": "该 AI 分身基于公开内容生成，不代表作者本人。",
+        "sourceRefs": ["source_mock_city_walk"],
+        "suggestedQuestions": ["你当时怎么让一天重新有节奏？", "低成本生活最先要注意什么？"]
+      }
+    ],
+    "sections": [
+      {
+        "id": "section_paths",
+        "type": "paths",
+        "title": "可能路径",
+        "itemRefs": ["path_city_pause"]
+      },
+      {
+        "id": "section_people",
+        "type": "people",
+        "title": "前人样本",
+        "itemRefs": ["person_city_pause"]
+      },
+      {
+        "id": "section_personas",
+        "type": "personas",
+        "title": "可追问的经验回声",
+        "itemRefs": ["persona_city_pause"]
+      }
+    ],
+    "meta": {
+      "sourceRefs": [
+        {
+          "id": "source_mock_city_walk",
+          "provider": "mock",
+          "type": "mock_answer",
+          "title": "失业不上班，你们都在干什么？",
+          "url": "https://www.zhihu.com/question/mock-city-walk/answer/mock-001",
+          "author": "公开回答样本 A",
+          "evidenceIds": ["ev_city_daily", "ev_city_outdoor"]
+        }
+      ],
+      "evidenceCount": 2,
+      "generatedAt": "2026-05-13T00:00:00.000Z",
+      "latencyMs": 0,
+      "fallbackUsed": false
+    },
+    "debug": {
+      "composer": "mock",
+      "requestedDataMode": "mock",
+      "resolvedDataMode": "mock",
+      "itemCount": 1,
+      "notes": ["mock demo data; no LLM or Zhihu API required"]
+    }
+  }
+}
