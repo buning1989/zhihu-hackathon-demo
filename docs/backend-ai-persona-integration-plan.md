@@ -253,6 +253,37 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 - AI 分身不代表作者本人，不提供实时回应，不承诺还原作者意图。
 - 回答必须基于公开内容和 evidence。
 
+### 7.1 AI 分身 prompt 方案
+
+本轮补充两类 AI 分身 prompt，并纳入后端统一 prompt 管理：
+
+- Persona Composer：生成 `people[].aiPersona`，用于判断分身入口是否可展示，并输出开场白、推荐追问、边界说明、grounding 和 `personaReadiness`。
+- Persona Chat：支撑 `POST /api/personas/chat`，用于基于公开内容和 evidence 生成追问回答。
+
+核心原则：
+
+```text
+表达拟人化，事实不拟人化。
+```
+
+要求：
+
+- `people[].aiPersona` 是分身入口，不是另一套人物主数据。
+- `POST /api/personas/chat` 使用固定 system prompt + 动态 `persona_context`。
+- 每个分身的差异来自动态 `persona_context`，至少包含 `userQuery`、`person`、`articles`、`evidence`、`aiPersona`、`history`。
+- 不为每个作者生成独立 system prompt。
+- AI 分身不代表作者本人，不提供作者本人实时回应，不承诺还原作者真实意图。
+- 允许表达层更有人味，但事实必须来自公开内容、`articles[]`、`evidence[]` 或 `ContentText`。
+- evidence 不足时，不能强行生成可聊分身；追问回答应返回 `insufficient_evidence`。
+
+落地文件：
+
+- `docs/prompts/persona-composer.system.md`
+- `docs/prompts/persona-chat.system.md`
+- `backend/src/prompts/personaComposerPrompt.ts`
+- `backend/src/prompts/personaChatPrompt.ts`
+- `backend/src/prompts/personaPromptBuilder.ts`
+
 ## 8. personas 快捷索引
 
 顶层 `personas[]` 只作为前端快捷索引：

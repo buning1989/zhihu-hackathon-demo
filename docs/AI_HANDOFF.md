@@ -1,5 +1,59 @@
 # AI Handoff
 
+## 2026-05-13 - AI persona prompt assets
+
+### 本轮目标
+
+将前端新增 AI 分身能力需要的 Persona Composer 和 Persona Chat prompt 纳入后端 prompt 管理体系。本轮只做 prompt 文档与代码占位整理，不接真实 LLM，不开发复杂聊天，不改动既有 `GET /api/search` 主流程。
+
+本轮主结论：
+
+- AI 分身 prompt 采用固定 system prompt + 动态 `persona_context`。
+- 核心原则是“表达拟人化，事实不拟人化”。
+- `people[].aiPersona` 是分身入口，不是独立人物主数据。
+- `POST /api/personas/chat` 后续应使用固定 `PERSONA_CHAT_SYSTEM_PROMPT` + 动态 `persona_context`。
+- AI 分身不代表作者本人，不提供作者本人实时回应，不承诺还原作者真实意图。
+
+### 新增/更新文件
+
+新增：
+
+- `backend/src/prompts/personaComposerPrompt.ts`
+- `backend/src/prompts/personaChatPrompt.ts`
+- `backend/src/prompts/personaPromptBuilder.ts`
+- `docs/prompts/persona-composer.system.md`
+- `docs/prompts/persona-chat.system.md`
+
+更新：
+
+- `docs/backend-ai-persona-integration-plan.md`
+- `docs/frontend-field-guide.md`
+- `docs/AI_HANDOFF.md`
+
+### 已完成事项
+
+- 新增 Persona Composer system prompt，用于生成 `people[].aiPersona`。
+- 新增 Persona Chat system prompt，用于后续 `POST /api/personas/chat`。
+- 新增 `buildPersonaChatMessages(input)`，按固定 system prompt、动态 `persona_context`、`userMessage` 拼装消息。
+- 明确不为每个作者生成独立 system prompt。
+- 明确 evidence 不足时不能强行生成可聊分身，聊天回答应返回 `insufficient_evidence`。
+- 明确禁止伪装作者本人、编造作者经历或将观点包装成亲历故事。
+
+### 未完成事项
+
+- 尚未实现 `POST /api/personas/chat` 路由。
+- 尚未实现 Persona Composer 的真实运行链路。
+- 尚未接入真实 LLM。
+- 尚未实现复杂多轮聊天。
+- 尚未把 `people[].aiPersona` 接入实际 demo search 返回生成流程。
+
+### 下一步建议
+
+1. 在不影响 `GET /api/search` 的前提下实现 `POST /api/demo/search` 的 mock/stub 产品层结构。
+2. 用 Persona Composer stub 生成 `people[].aiPersona`，确保 `boundary`、`grounding.articleIds[]`、`personaReadiness` 完整。
+3. 新增 `POST /api/personas/chat` 的 grounded mock answer，复用 `buildPersonaChatMessages(input)` 作为未来真实 LLM 接入点。
+4. 为 Persona Chat 增加最小单元测试，覆盖 `persona_context` 字段完整性和固定 system prompt 复用。
+
 ## 2026-05-13 - AI persona product-layer docs
 
 ### 本轮目标
