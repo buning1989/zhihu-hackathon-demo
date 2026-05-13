@@ -115,6 +115,12 @@
         padding: 9px 11px;
       }
 
+      input[type="checkbox"] {
+        width: auto;
+        min-height: 0;
+        accent-color: var(--accent);
+      }
+
       input:focus,
       select:focus {
         border-color: var(--accent);
@@ -165,6 +171,14 @@
         gap: 6px;
       }
 
+      .debug-toggle {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
       .status-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -204,6 +218,13 @@
         border-radius: 8px;
         color: #244840;
         padding: 12px 14px;
+      }
+
+      .debug-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
       }
 
       .grid {
@@ -250,6 +271,23 @@
         color: #31433a;
         font-size: 12px;
         padding: 3px 8px;
+      }
+
+      .debug-only {
+        display: none;
+      }
+
+      body.debug-on .debug-only {
+        display: block;
+      }
+
+      body.debug-on .chips.debug-only,
+      body.debug-on .debug-strip.debug-only {
+        display: flex;
+      }
+
+      body.debug-on .panel.debug-only {
+        display: grid;
       }
 
       .source-box,
@@ -356,7 +394,7 @@
       <header>
         <h1>错位人生｜后端链路预览台</h1>
         <p class="subtitle">
-          给非技术同学看的临时验证页：输入一个模糊人生问题，确认后端能返回路径、人物样本、AI 分身入口和有边界的 mock 对话。
+          给非技术同学看的产品验收页：输入一个模糊人生问题，确认后端能返回人生路径、前人样本和可继续追问的经验回声。
         </p>
       </header>
 
@@ -380,6 +418,10 @@
           </div>
           <button id="search-button" type="submit">开始测试</button>
         </form>
+        <label class="debug-toggle" for="debug-toggle">
+          <input id="debug-toggle" type="checkbox" />
+          开发调试模式：显示技术 ID 与原始 JSON
+        </label>
       </section>
 
       <section class="panel" aria-labelledby="status-title">
@@ -407,7 +449,7 @@
 
       <section class="panel" aria-labelledby="paths-title">
         <div class="section-head">
-          <h2 id="paths-title">三、人生路径 paths</h2>
+          <h2 id="paths-title">三、人生路径</h2>
           <p class="section-note">测试系统是否能把一个模糊人生问题拆成不同选择路径</p>
         </div>
         <div class="grid" id="paths"></div>
@@ -415,7 +457,7 @@
 
       <section class="panel" aria-labelledby="people-title">
         <div class="section-head">
-          <h2 id="people-title">四、人物样本 people</h2>
+          <h2 id="people-title">四、前人样本</h2>
           <p class="section-note">测试系统是否能从知乎内容中提取可参考的人物样本</p>
         </div>
         <div class="grid" id="people"></div>
@@ -423,24 +465,24 @@
 
       <section class="panel" aria-labelledby="personas-title">
         <div class="section-head">
-          <h2 id="personas-title">五、AI 分身 personas</h2>
-          <p class="section-note">测试系统是否能生成可点击的 AI 分身卡</p>
+          <h2 id="personas-title">五、可以继续追问的经验回声</h2>
+          <p class="section-note">测试系统是否能生成可点击的追问入口，并明确不代表作者本人</p>
         </div>
         <div class="grid" id="personas"></div>
       </section>
 
       <section class="panel" aria-labelledby="chat-title">
         <div class="section-head">
-          <h2 id="chat-title">六、分身对话测试</h2>
-          <p class="section-note">测试点击 AI 分身后，是否能调用 /api/personas/chat</p>
+          <h2 id="chat-title">六、追问对话测试</h2>
+          <p class="section-note">测试点击经验回声后，是否能调用 /api/personas/chat</p>
         </div>
-        <div id="chat-result" class="empty">请先点击上方任意「和这个分身聊聊」。</div>
+        <div id="chat-result" class="empty">请先点击上方任意「继续追问」。</div>
       </section>
 
-      <section class="panel" aria-labelledby="raw-title">
+      <section class="panel debug-only" aria-labelledby="raw-title">
         <div class="section-head">
           <h2 id="raw-title">七、原始返回数据</h2>
-          <p class="section-note">仅用于开发排错，默认折叠</p>
+          <p class="section-note">仅用于开发排错，打开开发调试模式后可查看</p>
         </div>
         <details id="raw-details">
           <summary>查看完整 JSON</summary>
@@ -453,6 +495,7 @@
       const form = document.querySelector("#search-form");
       const queryInput = document.querySelector("#query");
       const dataModeSelect = document.querySelector("#data-mode");
+      const debugToggle = document.querySelector("#debug-toggle");
       const searchButton = document.querySelector("#search-button");
       const requestStatus = document.querySelector("#request-status");
       const requestLatency = document.querySelector("#request-latency");
@@ -473,6 +516,10 @@
         runSearch();
       });
 
+      debugToggle.addEventListener("change", () => {
+        document.body.classList.toggle("debug-on", debugToggle.checked);
+      });
+
       renderEmpty();
 
       async function runSearch() {
@@ -480,7 +527,7 @@
         setError("");
         searchButton.disabled = true;
         chatResult.className = "empty";
-        chatResult.textContent = "请先点击上方任意「和这个分身聊聊」。";
+        chatResult.textContent = "请先点击上方任意「继续追问」。";
 
         const startedAt = performance.now();
         const selectedDataMode = dataModeSelect.value || "mock";
@@ -516,7 +563,7 @@
           setStatus(
             "请求成功",
             latencyText,
-            `${currentData.paths?.length || 0} 条路径 / ${currentData.people?.length || 0} 个人物 / ${currentData.personas?.length || 0} 个分身`,
+            `${currentData.paths?.length || 0} 条路径 / ${currentData.people?.length || 0} 个人物 / ${currentData.personas?.length || 0} 个追问入口`,
             true
           );
         } catch (error) {
@@ -535,9 +582,9 @@
         const sourceMap = new Map((data.meta?.sourceRefs || []).map((source) => [source.id, source]));
 
         analysisSummary.innerHTML = renderAnalysisSummary(data);
-        pathsEl.innerHTML = renderList(data.paths, (path) => renderPath(path, sourceMap));
+        pathsEl.innerHTML = renderList(data.paths, (path) => renderPath(path, data.people || []));
         peopleEl.innerHTML = renderList(data.people, (person) => renderPerson(person, sourceMap));
-        personasEl.innerHTML = renderList(data.personas, (persona) => renderPersona(persona, sourceMap));
+        personasEl.innerHTML = renderList(data.personas, (persona) => renderPersona(persona, data.people || []));
 
         personasEl.querySelectorAll("[data-persona-id]").forEach((button) => {
           button.addEventListener("click", () => {
@@ -549,20 +596,23 @@
         });
       }
 
-      function renderPath(path, sourceMap) {
-        const sources = collectSources(path.sourceRefs, sourceMap);
+      function renderPath(path, people = []) {
+        const linkedPeopleCount = people.filter((person) => person.pathId === path.id).length;
         return `
           <article class="card">
             <div class="card-title">
               <h3>${escapeHtml(path.title || "未命名路径")}</h3>
-              <p class="small muted">字段：paths</p>
             </div>
             <p>${escapeHtml(path.summary || "暂无路径描述。")}</p>
             <div class="chips">
-              ${chip(`stance: ${path.stance || "-"}`)}
-              ${renderChips(path.personRefs || [], "person")}
+              ${chip(`关联人物 ${linkedPeopleCount} 个`)}
+              ${chip(`类型：${mapStance(path.stance)}`)}
             </div>
-            ${renderSourceSummary(sources, path.evidenceIds)}
+            <div class="chips debug-only">
+              ${chip(`path: ${path.id || "-"}`)}
+              ${renderChips(path.sourceRefs || [], "source")}
+              ${renderChips(path.evidenceIds || [], "evidence")}
+            </div>
           </article>
         `;
       }
@@ -579,19 +629,21 @@
           <article class="card">
             <div class="card-title">
               <h3>${escapeHtml(person.name || "知乎公开内容样本")}</h3>
-              <p class="small muted">${escapeHtml(person.role || person.badge || "字段：people")}</p>
+              <p class="small muted">${mapSampleType(person.sampleType, person)}</p>
             </div>
             <p>${escapeHtml(person.oneLine || person.who || "暂无人物摘要。")}</p>
-            <div class="chips">
-              ${chip(`sampleType: ${person.sampleType || "-"}`)}
-              ${chip(`badge: ${person.badge || "-"}`)}
-              ${chip(`path: ${person.pathId || "-"}`)}
-            </div>
             ${renderPointList("与问题的相关点", relatedPoints)}
+            ${person.lesson ? `<p><strong>可参考的提醒：</strong>${escapeHtml(person.lesson)}</p>` : ""}
             <div class="source-box">
-              <p class="small muted">来源标题或摘要</p>
-              <p>${escapeHtml(article?.title || sources[0]?.title || "暂无来源标题")}</p>
+              <p class="small muted">来源标题</p>
+              <p>${renderSourceLink(article, sources[0])}</p>
               <p class="small muted">${escapeHtml(article?.summary || sources[0]?.author || "")}</p>
+            </div>
+            <div class="chips debug-only">
+              ${chip(`person: ${person.id || "-"}`)}
+              ${chip(`path: ${person.pathId || "-"}`)}
+              ${renderChips(person.sourceRefs || [], "source")}
+              ${renderChips(person.evidenceIds || [], "evidence")}
             </div>
           </article>
         `;
@@ -603,40 +655,45 @@
 
         return `
           <p>${escapeHtml(data.analysis?.summary || "后端没有返回 analysis.summary。")}</p>
-          <div class="chips" style="margin-top:8px">
+          <div class="debug-strip">
             ${chip(`composer: ${debug.composer || "-"}`)}
-            ${chip(`mode: ${debug.requestedDataMode || "-"} -> ${debug.resolvedDataMode || "-"}`)}
-            ${chip(`sourceItems: ${debug.sourceItemCount ?? "-"}`)}
-            ${chip(`paths: ${debug.pathCount ?? data.paths?.length ?? 0}`)}
-            ${chip(`people: ${debug.peopleCount ?? data.people?.length ?? 0}`)}
-            ${chip(`personas: ${debug.personaCount ?? data.personas?.length ?? 0}`)}
-            ${chip(`llmUsed: ${Boolean(debug.llmUsed)}`)}
-            ${chip(`fallback: ${Boolean(meta.fallbackUsed || debug.fallbackUsed)}`)}
+            ${chip(`llmUsed: ${formatBool(debug.llmUsed || meta.llmUsed)}`)}
+            ${chip(`enhancedPeopleCount: ${debug.enhancedPeopleCount ?? meta.enhancedPeopleCount ?? "-"}`)}
+            ${chip(`enhancedPathCount: ${debug.enhancedPathCount ?? meta.enhancedPathCount ?? "-"}`)}
+            ${chip(`partialFallbackUsed: ${formatBool(debug.partialFallbackUsed || meta.partialFallbackUsed)}`)}
           </div>
         `;
       }
 
-      function renderPersona(persona, sourceMap) {
-        const sources = collectSources(persona.sourceRefs, sourceMap);
+      function renderPersona(persona, people = []) {
+        const linkedPerson = people.find((person) => person.aiPersona?.personaId === persona.id);
+        const intro = persona.intro || linkedPerson?.aiPersona?.openingLine || "可以基于公开内容继续追问。";
+        const suggestedQuestions = persona.suggestedQuestions || linkedPerson?.aiPersona?.suggestedQuestions || [];
+
         return `
           <article class="card">
             <div class="card-title">
-              <h3>${escapeHtml(persona.displayName || persona.id || "AI 分身")}</h3>
-              <p class="small muted">字段：personas</p>
+              <h3>${escapeHtml(persona.displayName || linkedPerson?.aiPersona?.displayName || "经验回声")}</h3>
+              <p class="small muted">基于公开内容生成，不代表作者本人</p>
             </div>
-            <p>${escapeHtml(persona.intro || "可基于公开内容继续追问。")}</p>
+            <p>${escapeHtml(intro)}</p>
+            ${renderPointList("可以这样追问", suggestedQuestions)}
             <div class="notice">
               <strong>边界提示：</strong>${escapeHtml(persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}
             </div>
-            ${renderSourceSummary(sources, [])}
-            <button class="persona-action" type="button" data-persona-id="${escapeAttr(persona.id)}">和这个分身聊聊</button>
+            <div class="chips debug-only">
+              ${chip(`persona: ${persona.id || "-"}`)}
+              ${chip(`person: ${persona.personId || linkedPerson?.id || "-"}`)}
+              ${renderChips(persona.sourceRefs || linkedPerson?.sourceRefs || [], "source")}
+            </div>
+            <button class="persona-action" type="button" data-persona-id="${escapeAttr(persona.id)}">继续追问</button>
           </article>
         `;
       }
 
       async function runPersonaChat(persona) {
         chatResult.className = "reply-box";
-        chatResult.textContent = "正在调用 /api/personas/chat...";
+        chatResult.textContent = "正在生成模拟回复...";
 
         try {
           const message = persona.suggestedQuestions?.[0] || "这段公开内容里最值得注意的边界是什么？";
@@ -666,7 +723,7 @@
           chatResult.className = "card";
           chatResult.innerHTML = `
             <div class="card-title">
-              <h3>${escapeHtml(persona.displayName || data.personaId || "AI 分身")}</h3>
+              <h3>${escapeHtml(persona.displayName || "经验回声")}</h3>
               <p class="small muted">已调用 /api/personas/chat</p>
             </div>
             <div class="reply-box">
@@ -677,10 +734,11 @@
               <strong>边界提示：</strong>${escapeHtml(data.boundaryNotice || persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}
             </div>
             <div>
-              <p class="small muted">引用来源 sourceRefs</p>
-              <div class="chips">${renderChips(data.sourceRefs || persona.sourceRefs || [], "source")}</div>
+              <p class="small muted">引用来源</p>
+              ${renderSourceRefsAsTitles(data.sourceRefs || persona.sourceRefs || [])}
+              <div class="chips debug-only">${renderChips(data.sourceRefs || persona.sourceRefs || [], "source")}</div>
             </div>
-            ${renderPointList("建议追问 suggestedQuestions", data.suggestedQuestions || persona.suggestedQuestions || [])}
+            ${renderPointList("建议追问", data.suggestedQuestions || persona.suggestedQuestions || [])}
           `;
         } catch (error) {
           chatResult.className = "error-box active";
@@ -717,6 +775,37 @@
         return `<a href="${escapeAttr(source.url)}" target="_blank" rel="noreferrer">${title}</a>`;
       }
 
+      function renderSourceLink(article, source) {
+        const title = article?.title || source?.title || "暂无来源标题";
+        const url = article?.url || article?.sourceUrl || source?.url || "";
+
+        if (!url) {
+          return escapeHtml(title);
+        }
+
+        return `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer">${escapeHtml(title)}</a>`;
+      }
+
+      function renderSourceRefsAsTitles(sourceRefs = []) {
+        const sourceMap = new Map((currentData?.meta?.sourceRefs || []).map((source) => [source.id, source]));
+        const sources = (sourceRefs || []).map((sourceRef) => sourceMap.get(sourceRef)).filter(Boolean);
+
+        if (sources.length === 0) {
+          if (sourceRefs.length > 0) {
+            return `<p class="muted small">已返回 ${sourceRefs.length} 个引用来源，打开开发调试模式可查看来源 ID。</p>`;
+          }
+
+          return '<p class="muted small">暂无可展示来源标题。</p>';
+        }
+
+        return sources.map((source) => `
+          <div class="source-box">
+            <p>${renderSourceTitle(source)}</p>
+            <p class="small muted">${escapeHtml(source.author || "公开内容来源")}</p>
+          </div>
+        `).join("");
+      }
+
       function renderPointList(title, items = []) {
         if (!Array.isArray(items) || items.length === 0) {
           return "";
@@ -741,11 +830,49 @@
       function renderEmpty() {
         pathsEl.innerHTML = empty("暂无人生路径。");
         peopleEl.innerHTML = empty("暂无人物样本。");
-        personasEl.innerHTML = empty("暂无 AI 分身。");
+        personasEl.innerHTML = empty("暂无经验回声。");
       }
 
       function collectSources(sourceRefs = [], sourceMap = new Map()) {
         return (sourceRefs || []).map((id) => sourceMap.get(id)).filter(Boolean);
+      }
+
+      function mapStance(stance) {
+        if (stance === "experience") {
+          return "经历";
+        }
+
+        if (stance === "viewpoint") {
+          return "观点";
+        }
+
+        return "混合";
+      }
+
+      function mapSampleType(sampleType, person) {
+        const normalized = String(sampleType || "").toLowerCase();
+
+        if (normalized.includes("experience") || normalized.includes("first")) {
+          return "亲历样本";
+        }
+
+        if (normalized.includes("viewpoint") || normalized.includes("opinion")) {
+          return "观点作者";
+        }
+
+        if (normalized.includes("content")) {
+          return "内容样本";
+        }
+
+        if (person?.timeline?.length || person?.lesson) {
+          return "亲历样本";
+        }
+
+        return "内容样本";
+      }
+
+      function formatBool(value) {
+        return value ? "是" : "否";
       }
 
       function setStatus(status, latency, count, isOk = false, isError = false) {
