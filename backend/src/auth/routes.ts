@@ -109,6 +109,7 @@ function buildSessionUser(userInfo: unknown, userInfoLoaded: boolean): AuthSessi
       provider: "zhihu",
       displayName: "知乎临时用户",
       avatar: "",
+      profileUrl: "",
       headline: "",
       isTemporary: true,
       userInfoLoaded: false,
@@ -123,6 +124,7 @@ function buildSessionUser(userInfo: unknown, userInfoLoaded: boolean): AuthSessi
     displayName:
       readString(record, "name", "nickname", "display_name", "username") || "知乎用户",
     avatar: readString(record, "avatar", "avatar_url", "image_url"),
+    profileUrl: readProfileUrl(record),
     headline: readString(record, "headline", "description", "bio"),
     isTemporary: false,
     userInfoLoaded: true,
@@ -139,6 +141,23 @@ function readString(record: Record<string, unknown>, ...keys: string[]): string 
   }
 
   return "";
+}
+
+function readProfileUrl(record: Record<string, unknown>): string {
+  const directUrl = readString(
+    record,
+    "profileUrl",
+    "profile_url",
+    "url",
+    "html_url",
+    "user_url"
+  );
+  if (directUrl) {
+    return directUrl;
+  }
+
+  const urlToken = readString(record, "urlToken", "url_token", "slug");
+  return urlToken ? `https://www.zhihu.com/people/${encodeURIComponent(urlToken)}` : "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

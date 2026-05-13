@@ -71,6 +71,31 @@ try {
     false,
     "logged-in demo response does not expose token"
   );
+
+  const authMe = await requestJson(`${baseUrl}/auth/me`, {
+    headers: {
+      cookie: createLoggedInSessionCookie()
+    }
+  });
+  assertEqual(authMe.status, 200, "GET /auth/me status");
+  assertEqual(authMe.body.success, true, "GET /auth/me success");
+  assertEqual(authMe.body.data.id, "zhihu-test-user", "GET /auth/me data.id");
+  assertEqual(authMe.body.data.name, "AI 产品经理", "GET /auth/me data.name");
+  assertEqual(
+    authMe.body.data.avatar,
+    "https://example.test/avatar.png",
+    "GET /auth/me data.avatar"
+  );
+  assertEqual(
+    authMe.body.data.profileUrl,
+    "https://www.zhihu.com/people/ai-product-manager",
+    "GET /auth/me data.profileUrl"
+  );
+  assertEqual(
+    JSON.stringify(authMe.body).includes("test-access-token"),
+    false,
+    "GET /auth/me does not expose token"
+  );
   await assertQueryAwareDemoPaths(baseUrl);
 
   const personaId = demoSearch.body.data.personas[0].id;
@@ -572,6 +597,7 @@ function createLoggedInSessionCookie(): string {
       provider: "zhihu",
       displayName: "AI 产品经理",
       avatar: "https://example.test/avatar.png",
+      profileUrl: "https://www.zhihu.com/people/ai-product-manager",
       headline: "AI 产品经理，关注自由职业",
       isTemporary: false,
       userInfoLoaded: true,

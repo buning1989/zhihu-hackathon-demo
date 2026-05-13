@@ -172,6 +172,8 @@ curl -i "http://127.0.0.1:8000/auth/me"
 ```
 
 未登录返回 401。已登录返回当前 session 用户信息，但不会返回 `access_token`。
+前端可直接读取 `success=true` 和 `data.id`、`data.name`、`data.avatar`、
+`data.profileUrl`；响应中也保留 `data.user.displayName` 等兼容字段。
 
 ### POST /auth/logout
 

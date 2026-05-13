@@ -32,6 +32,7 @@ export interface AuthSessionUser {
   provider: "zhihu";
   displayName: string;
   avatar: string;
+  profileUrl: string;
   headline: string;
   isTemporary: boolean;
   userInfoLoaded: boolean;
@@ -49,6 +50,10 @@ export interface AuthSession {
 }
 
 export interface PublicAuthSession {
+  id: string;
+  name: string;
+  avatar: string;
+  profileUrl: string;
   provider: "zhihu";
   userInfoLoaded: boolean;
   user: Omit<AuthSessionUser, "raw">;
@@ -179,6 +184,10 @@ export function destroyAuthSession(req: Request, res: Response): void {
 
 export function toPublicAuthSession(session: AuthSession): PublicAuthSession {
   return {
+    id: session.user.id,
+    name: session.user.displayName,
+    avatar: session.user.avatar,
+    profileUrl: session.user.profileUrl,
     provider: session.provider,
     userInfoLoaded: session.userInfoLoaded,
     user: {
@@ -186,6 +195,7 @@ export function toPublicAuthSession(session: AuthSession): PublicAuthSession {
       provider: session.user.provider,
       displayName: session.user.displayName,
       avatar: session.user.avatar,
+      profileUrl: session.user.profileUrl,
       headline: session.user.headline,
       isTemporary: session.user.isTemporary,
       userInfoLoaded: session.user.userInfoLoaded
