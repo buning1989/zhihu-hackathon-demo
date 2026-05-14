@@ -2876,11 +2876,22 @@
     const API_BASE = window.LIFE_PATH_API_BASE || DEFAULT_API_BASE;
     const AUTH_LOGIN_URL = new URL("/auth/zhihu/login", API_BASE).toString();
     const PAGE_PARAMS = new URLSearchParams(window.location.search);
-    const STATIC_MOCK_MODE = window.LIFE_PATH_STATIC_MOCK !== false;
+    const STATIC_MOCK_MODE = resolveStaticMockMode(PAGE_PARAMS);
     const ALLOWED_DATA_MODES = new Set(["mock", "cache_first", "real"]);
 
     function resolveDataMode(value) {
-      return ALLOWED_DATA_MODES.has(value) ? value : "cache_first";
+      return ALLOWED_DATA_MODES.has(value) ? value : "real";
+    }
+
+    function resolveStaticMockMode(params) {
+      const requested = String(params.get("mock") || params.get("staticMock") || "").toLowerCase();
+      if (["1", "true", "yes", "mock"].includes(requested)) return true;
+      if (["0", "false", "no", "real"].includes(requested)) return false;
+      return window.LIFE_PATH_STATIC_MOCK === true;
+    }
+
+    function resolveSearchMode(value) {
+      return value === "quick" ? "quick" : "agent";
     }
 
     function peepSrc(file) {
@@ -3139,7 +3150,7 @@
       focusTags: ["身份周期", "现金流", "工作边界", "回流代价"],
       backendStatus: "idle",
       dataMode: API_CONFIG.dataMode,
-      searchMode: PAGE_PARAMS.get("searchMode") === "agent" || PAGE_PARAMS.get("mode") === "agent" ? "agent" : "quick",
+      searchMode: resolveSearchMode(PAGE_PARAMS.get("searchMode") || PAGE_PARAMS.get("mode")),
       agentTask: createAgentTaskSnapshot(),
       savedQuestionGroups: [],
       hasSubmittedQuestion: false,
@@ -3796,6 +3807,13 @@
       state.authSource = source;
     }
 
+    function continueWithoutZhihuLogin() {
+      state.user = null;
+      state.loggedIn = false;
+      state.sessionChecked = true;
+      state.authSource = "anonymous";
+    }
+
     function redirectToZhihuLogin() {
       if (STATIC_MOCK_MODE) {
         applyUser(mockZhihuUser, "mock");
@@ -3822,20 +3840,20 @@
           applyUser(user, "real");
           return true;
         }
-        redirectToZhihuLogin();
-        return false;
+        continueWithoutZhihuLogin();
+        return true;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
-          redirectToZhihuLogin();
-          return false;
+          continueWithoutZhihuLogin();
+          return true;
         }
-        console.warn("Zhihu session API unavailable, using mock user fallback.", error);
+        console.warn("Zhihu session API unavailable, continuing anonymously.", error);
         if (API_CONFIG.useMockUserFallback) {
           applyUser(mockZhihuUser, "mock");
           return true;
         }
-        redirectToZhihuLogin();
-        return false;
+        continueWithoutZhihuLogin();
+        return true;
       }
     }
 
@@ -4292,10 +4310,18 @@
         return requestMockAgentSearchData(query);
       }
 
-      const task = await startAgentSearch(query);
-      state.agentTask = task;
-      if (state.page === "loading") render();
-      return pollAgentTask(task.taskId, query);
+      try {
+        const task = await startAgentSearch(query);
+        state.agentTask = task;
+        if (state.page === "loading") render();
+        return await pollAgentTask(task.taskId, query);
+      } catch (error) {
+        console.warn("Agent API unavailable, using mock fallback.", error);
+        state.backendStatus = "mock";
+        if (!API_CONFIG.useMockFallback) throw error;
+        showToast("真实 Agent 链路暂不可用，已降级到本地 mock。");
+        return requestMockAgentSearchData(query);
+      }
     }
 
     async function requestMockAgentSearchData(query) {
