@@ -1,0 +1,52 @@
+name: Agent DB Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - deploy/static-mock-demo
+  workflow_dispatch:
+
+jobs:
+  agent-db-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agent_runtime_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agent_runtime_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agent_runtime_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build -w backend
+
+      - name: Run database migrations
+        run: npm run db:migrate -w backend
+
+      - name: Run agent DB smoke
+        run: npm run db:smoke:agent -w backend
