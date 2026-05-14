@@ -250,7 +250,18 @@ export interface DemoMeta {
   evidenceCount: number;
   generatedAt: string;
   latencyMs: number;
+  totalDurationMs?: number;
   fallbackUsed: boolean;
+  fallbackStages?: string[];
+  llmStages?: DemoLlmStageMeta[];
+  timedOutStages?: string[];
+}
+
+export interface DemoLlmStageMeta {
+  taskType: DemoDebugTiming["stageName"] | string;
+  status: "success" | "fallback" | "timeout" | "skipped";
+  durationMs: number;
+  fallbackReason: string;
 }
 
 export interface DemoSearchQueryPlan {

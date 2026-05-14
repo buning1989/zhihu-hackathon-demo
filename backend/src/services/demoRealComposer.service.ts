@@ -190,7 +190,11 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       ),
       generatedAt: new Date().toISOString(),
       latencyMs: Date.now() - input.startedAt,
-      fallbackUsed: false
+      totalDurationMs: Date.now() - input.startedAt,
+      fallbackUsed: false,
+      fallbackStages: [],
+      llmStages: [],
+      timedOutStages: []
     },
     debug: {
       composer: "real_rule_composer",

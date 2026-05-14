@@ -46,6 +46,16 @@ export interface PersonaChatMeta {
   generatedAt: string;
   grounded: true;
   llmUsed: boolean;
+  totalDurationMs?: number;
+  fallbackReason?: string;
+  fallbackStages?: string[];
+  llmStages?: Array<{
+    taskType: "persona_chat";
+    status: "success" | "fallback" | "timeout" | "skipped";
+    durationMs: number;
+    fallbackReason: string;
+  }>;
+  timedOutStages?: string[];
   safetyNotes: string[];
 }
 

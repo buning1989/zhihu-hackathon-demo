@@ -84,7 +84,20 @@ export async function composeLlmDemoSearchResponse(
   const repairFailed = stageResults.some((item) => item.repairFailed > 0);
 
   response.meta.latencyMs = Date.now() - input.startedAt;
+  response.meta.totalDurationMs = response.meta.latencyMs;
   response.meta.fallbackUsed = totalSucceeded === 0;
+  response.meta.fallbackStages = stageResults
+    .filter((stage) => stage.attempted === 0 || stage.failed > 0)
+    .map((stage) => stage.stage);
+  response.meta.llmStages = stageResults.map((stage) => ({
+    taskType: stage.stage,
+    status: stage.succeeded > 0 ? "success" : "fallback",
+    durationMs: 0,
+    fallbackReason: stage.fallbackReasons.join("; ")
+  }));
+  response.meta.timedOutStages = stageResults
+    .filter((stage) => stage.fallbackReasons.some((reason) => /timeout|timed out|exceeded/i.test(reason)))
+    .map((stage) => stage.stage);
   response.debug = {
     ...response.debug,
     composer: totalSucceeded > 0 ? "real_llm_composer" : "real_rule_composer",

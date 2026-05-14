@@ -7,6 +7,11 @@ import {
   type LlmMessage,
   type LlmModelProvider
 } from "./clients/openaiCompatible.js";
+import {
+  getLlmTaskTimeoutMs,
+  isLlmTaskTimeoutError,
+  withLlmTaskTimeout
+} from "./llmTimeout.js";
 
 export type LlmTaskType =
   | "intent_expand"
@@ -56,6 +61,7 @@ export class LlmRouter {
   ): Promise<string> {
     const client = getClientForTask(taskType);
     const startedAt = Date.now();
+    const timeoutMs = input.timeoutMs ?? getLlmTaskTimeoutMs(taskType);
 
     if (!config.llm.enabled) {
       const error = new LlmRouterError(
@@ -80,14 +86,27 @@ export class LlmRouter {
     }
 
     try {
-      const content = await client.createJsonCompletion({
-        ...input,
-        taskType
-      });
-      logLlmCall(taskType, client, "success", startedAt);
+      const content = await withLlmTaskTimeout(
+        taskType,
+        client.createJsonCompletion({
+          ...input,
+          timeoutMs,
+          maxRetry: input.maxRetry ?? 0,
+          taskType
+        }),
+        timeoutMs
+      );
+      logLlmCall(taskType, client, "success", startedAt, undefined, timeoutMs);
       return content;
     } catch (error) {
-      logLlmCall(taskType, client, "fallback", startedAt, error);
+      logLlmCall(
+        taskType,
+        client,
+        isTimeoutError(error) ? "timeout" : "fallback",
+        startedAt,
+        error,
+        timeoutMs
+      );
       throw error;
     }
   }
@@ -110,17 +129,20 @@ function getClientForTask(taskType: LlmTaskType): RoutedClient {
 function logLlmCall(
   taskType: LlmTaskType,
   client: RoutedClient,
-  status: "success" | "fallback",
+  status: "success" | "fallback" | "timeout",
   startedAt: number,
-  error?: unknown
+  error?: unknown,
+  timeoutMs?: number
 ): void {
+  const safeError = error ? toSafeError(error) : undefined;
   const payload = {
     taskType,
     modelProvider: client.provider,
     model: client.model,
     status,
     durationMs: Date.now() - startedAt,
-    ...(error ? { error: toSafeError(error) } : {})
+    ...(timeoutMs ? { timeoutMs } : {}),
+    ...(safeError ? { fallbackReason: safeError.message, error: safeError } : {})
   };
 
   if (status === "success") {
@@ -131,6 +153,13 @@ function logLlmCall(
 }
 
 function toSafeError(error: unknown): { code: string; message: string; responseBody?: string } {
+  if (isLlmTaskTimeoutError(error)) {
+    return {
+      code: error.code,
+      message: error.message
+    };
+  }
+
   if (error instanceof LlmRouterError) {
     return {
       code: error.code,
@@ -158,6 +187,13 @@ function toSafeError(error: unknown): { code: string; message: string; responseB
     code: "LLM_ERROR",
     message: "Unknown LLM error"
   };
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return (
+    isLlmTaskTimeoutError(error) ||
+    (error instanceof LlmClientError && error.code === "LLM_TIMEOUT")
+  );
 }
 
 function truncateText(value: string, maxLength: number): string {

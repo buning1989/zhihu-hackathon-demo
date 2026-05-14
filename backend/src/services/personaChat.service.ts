@@ -19,11 +19,16 @@ import {
   type PersonaChatResponse
 } from "../types/persona.types.js";
 import { HttpError } from "../utils/httpError.js";
+import {
+  isRequestBudgetTimeoutError,
+  withRequestBudget
+} from "../utils/requestBudget.js";
 import { demoSessionCacheService } from "./demoSessionCache.service.js";
 
 const PERSONA_CHAT_FALLBACK_REPLY =
   "我能说的不多，只能基于这段公开内容聊。对我来说，那段经历里真正重要的不是一下子找到标准答案，而是先把眼前最消耗自己的部分拆开，看清楚自己到底是在逃避，还是确实需要换一种活法。";
 const MAX_HISTORY_MESSAGES = 6;
+const PERSONA_CHAT_BUDGET_MS = 8000;
 
 interface ChatGroundingContext {
   articles: PersonaChatArticleContext[];
@@ -55,53 +60,99 @@ interface PersonaChatEvidenceContext {
 
 export class PersonaChatService {
   async chat(request: PersonaChatRequest): Promise<PersonaChatResponse> {
+    const startedAt = Date.now();
+    try {
+      return await withRequestBudget(
+        this.chatWithinBudget(request, startedAt),
+        PERSONA_CHAT_BUDGET_MS,
+        "PERSONA_CHAT_BUDGET_TIMEOUT",
+        `/api/personas/chat exceeded ${PERSONA_CHAT_BUDGET_MS}ms request budget`
+      );
+    } catch (error) {
+      logPersonaChatFallback(error, request);
+      return finalizePersonaChatResponse(
+        createFallbackFromCache(
+          request,
+          `PERSONA_CHAT_BUDGET_FAILED: ${toErrorMessage(error)}`
+        ),
+        startedAt,
+        {
+          fallbackReason: `PERSONA_CHAT_BUDGET_FAILED: ${toErrorMessage(error)}`,
+          timedOut: isRequestBudgetTimeoutError(error)
+        }
+      );
+    }
+  }
+
+  private async chatWithinBudget(
+    request: PersonaChatRequest,
+    startedAt: number
+  ): Promise<PersonaChatResponse> {
     const cachedResponse = demoSessionCacheService.get(request.queryId);
     if (!cachedResponse) {
-      return createMockFallback(request, "CACHE_MISSING: queryId not found in demo session cache");
+      return finalizePersonaChatResponse(
+        createMockFallback(request, "CACHE_MISSING: queryId not found in demo session cache"),
+        startedAt
+      );
     }
 
     const person = findPersonByPersonaId(cachedResponse, request.personaId);
     if (!person) {
-      return createMockFallback(
-        request,
-        "PERSONA_NOT_FOUND: personaId did not match cached demo search people"
+      return finalizePersonaChatResponse(
+        createMockFallback(
+          request,
+          "PERSONA_NOT_FOUND: personaId did not match cached demo search people"
+        ),
+        startedAt
       );
     }
 
     if (!person.aiPersona.enabled) {
-      return createMockFallback(
-        request,
-        "PERSONA_DISABLED: aiPersona.enabled is false; grounded LLM chat skipped",
-        undefined,
-        person
+      return finalizePersonaChatResponse(
+        createMockFallback(
+          request,
+          "PERSONA_DISABLED: aiPersona.enabled is false; grounded LLM chat skipped",
+          undefined,
+          person
+        ),
+        startedAt
       );
     }
 
     if (person.canChat === false || person.aiPersona.canChat === false) {
-      return createMockFallback(
-        request,
-        "PERSONA_GATED: display canChat is false; grounded LLM chat skipped",
-        undefined,
-        person
+      return finalizePersonaChatResponse(
+        createMockFallback(
+          request,
+          "PERSONA_GATED: display canChat is false; grounded LLM chat skipped",
+          undefined,
+          person
+        ),
+        startedAt
       );
     }
 
     const grounding = buildChatGrounding(cachedResponse, person);
     if (grounding.sourceRefs.length === 0 || grounding.evidence.length === 0) {
-      return createMockFallback(
-        request,
-        "SOURCE_REFS_INSUFFICIENT: grounded persona chat requires sourceRefs and evidence",
-        grounding,
-        person
+      return finalizePersonaChatResponse(
+        createMockFallback(
+          request,
+          "SOURCE_REFS_INSUFFICIENT: grounded persona chat requires sourceRefs and evidence",
+          grounding,
+          person
+        ),
+        startedAt
       );
     }
 
     if (!llmRouter.isTaskConfigured("persona_chat")) {
-      return createMockFallback(
-        request,
-        "KIMI_API_KEY not configured; mock persona chat fallback used",
-        grounding,
-        person
+      return finalizePersonaChatResponse(
+        createMockFallback(
+          request,
+          "KIMI_API_KEY not configured; mock persona chat fallback used",
+          grounding,
+          person
+        ),
+        startedAt
       );
     }
 
@@ -109,6 +160,7 @@ export class PersonaChatService {
       const content = await llmRouter.runJsonTask("persona_chat", {
         temperature: 0.1,
         maxTokens: 1600,
+        maxRetry: 0,
         messages: buildPersonaChatMessages({
           userQuery: cachedResponse.query,
           person: toPersonPromptContext(person),
@@ -144,14 +196,24 @@ export class PersonaChatService {
         ...payload.followupQuestions
       ]);
 
-      return toRealPersonaChatResponse(request, person, grounding, payload, reply);
+      return finalizePersonaChatResponse(
+        toRealPersonaChatResponse(request, person, grounding, payload, reply),
+        startedAt
+      );
     } catch (error) {
       logPersonaChatFallback(error, request);
-      return createMockFallback(
-        request,
-        `LLM_PERSONA_CHAT_FAILED: ${toErrorMessage(error)}`,
-        grounding,
-        person
+      return finalizePersonaChatResponse(
+        createMockFallback(
+          request,
+          `LLM_PERSONA_CHAT_FAILED: ${toErrorMessage(error)}`,
+          grounding,
+          person
+        ),
+        startedAt,
+        {
+          fallbackReason: `LLM_PERSONA_CHAT_FAILED: ${toErrorMessage(error)}`,
+          timedOut: isTimeoutLikeError(error)
+        }
       );
     }
   }
@@ -234,7 +296,7 @@ function toArticlePromptContext(article: DemoArticle): PersonaChatArticleContext
           {
             id: `${article.id}_content`,
             label: "公开内容正文",
-            text: truncateText(article.text, 700),
+            text: truncateText(article.text, 1200),
             articleId: article.id,
             sourceRefId: article.sourceRefs[0] ?? "",
             sourceUrl: article.sourceUrl || article.url
@@ -245,7 +307,7 @@ function toArticlePromptContext(article: DemoArticle): PersonaChatArticleContext
   return {
     id: article.id,
     title: article.title,
-    text: truncateText(article.text || article.summary, 1600),
+    text: truncateText(article.text || article.summary, 1800),
     url: article.url,
     author: article.author,
     sourceName: article.sourceName,
@@ -263,7 +325,7 @@ function toEvidencePromptContext(
   return {
     id: evidence.id,
     label: evidence.label,
-    text: truncateText(evidence.text, 700),
+    text: truncateText(evidence.text, 1200),
     articleId: article.id,
     sourceRefId: evidence.sourceRefId,
     sourceUrl: evidence.sourceUrl
@@ -314,6 +376,16 @@ function toRealPersonaChatResponse(
       generatedAt: new Date().toISOString(),
       grounded: true,
       llmUsed: true,
+      fallbackStages: [],
+      llmStages: [
+        {
+          taskType: "persona_chat",
+          status: "success",
+          durationMs: 0,
+          fallbackReason: ""
+        }
+      ],
+      timedOutStages: [],
       safetyNotes: [
         "grounded LLM reply",
         `answerType: ${payload.answerType}`,
@@ -335,12 +407,13 @@ function createMockFallback(
   grounding?: ChatGroundingContext,
   person?: DemoPerson
 ): PersonaChatResponse {
+  const sourceRefs = deriveFallbackSourceRefs(grounding, person);
   return {
     schemaVersion: PERSONA_CHAT_SCHEMA_VERSION,
     personaId: person?.aiPersona.personaId ?? request.personaId,
     reply: PERSONA_CHAT_FALLBACK_REPLY,
     boundaryNotice: PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE,
-    sourceRefs: [],
+    sourceRefs,
     suggestedQuestions: chooseSuggestedQuestions(person),
     meta: {
       mode: "mock",
@@ -348,6 +421,17 @@ function createMockFallback(
       generatedAt: new Date().toISOString(),
       grounded: true,
       llmUsed: false,
+      fallbackReason,
+      fallbackStages: ["persona_chat"],
+      llmStages: [
+        {
+          taskType: "persona_chat",
+          status: "fallback",
+          durationMs: 0,
+          fallbackReason
+        }
+      ],
+      timedOutStages: [],
       safetyNotes: [
         "minimal persona chat fallback",
         "no new facts beyond cached public content",
@@ -360,6 +444,85 @@ function createMockFallback(
       evidenceCount: grounding?.evidence.length ?? 0
     }
   };
+}
+
+function createFallbackFromCache(
+  request: PersonaChatRequest,
+  fallbackReason: string
+): PersonaChatResponse {
+  const cachedResponse = demoSessionCacheService.get(request.queryId);
+  const person = cachedResponse
+    ? findPersonByPersonaId(cachedResponse, request.personaId)
+    : undefined;
+  const grounding = cachedResponse && person ? buildChatGrounding(cachedResponse, person) : undefined;
+
+  return createMockFallback(request, fallbackReason, grounding, person);
+}
+
+function finalizePersonaChatResponse(
+  response: PersonaChatResponse,
+  startedAt: number,
+  options: {
+    fallbackReason?: string;
+    timedOut?: boolean;
+  } = {}
+): PersonaChatResponse {
+  const durationMs = Date.now() - startedAt;
+  const fallbackReason = options.fallbackReason ?? response.meta.fallbackReason ?? "";
+  response.meta.totalDurationMs = durationMs;
+  response.meta.fallbackReason = fallbackReason || undefined;
+  response.meta.fallbackStages = response.meta.fallbackStages ?? [];
+  response.meta.llmStages =
+    response.meta.llmStages?.map((stage) => ({
+      ...stage,
+      durationMs: stage.durationMs || durationMs,
+      status: options.timedOut ? "timeout" : stage.status,
+      fallbackReason: stage.fallbackReason || fallbackReason
+    })) ?? [];
+  response.meta.timedOutStages = options.timedOut
+    ? unique([...(response.meta.timedOutStages ?? []), "persona_chat"])
+    : response.meta.timedOutStages ?? [];
+
+  if (!response.meta.llmUsed && response.meta.llmStages.length === 0) {
+    response.meta.llmStages = [
+      {
+        taskType: "persona_chat",
+        status: options.timedOut ? "timeout" : "fallback",
+        durationMs,
+        fallbackReason
+      }
+    ];
+  }
+
+  if (!response.meta.llmUsed && response.meta.fallbackStages.length === 0) {
+    response.meta.fallbackStages = ["persona_chat"];
+  }
+
+  if (fallbackReason && response.debug) {
+    response.debug.fallbackReason = fallbackReason;
+  }
+
+  console[response.meta.llmUsed ? "info" : "warn"]("[LLMStage]", {
+    taskType: "persona_chat",
+    status: response.meta.llmUsed ? "success" : options.timedOut ? "timeout" : "fallback",
+    durationMs,
+    fallbackReason
+  });
+
+  return response;
+}
+
+function deriveFallbackSourceRefs(
+  grounding?: ChatGroundingContext,
+  person?: DemoPerson
+): string[] {
+  return unique([
+    ...(grounding?.sourceRefs ?? []),
+    ...(person?.sourceRefs ?? []),
+    ...(person?.aiPersona.grounding.sourceRefs ?? []),
+    ...(person?.articles.flatMap((article) => article.sourceRefs) ?? []),
+    ...(grounding?.evidence.map((item) => item.sourceRefId) ?? [])
+  ]).filter(Boolean).slice(0, 6);
 }
 
 function deriveSourceRefs(
@@ -701,10 +864,24 @@ function logPersonaChatFallback(error: unknown, request: PersonaChatRequest): vo
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
-    return error.message;
+    const code = "code" in error && typeof error.code === "string" ? `${error.code}: ` : "";
+    return `${code}${error.message}`;
   }
 
   return "Unknown error";
+}
+
+function isTimeoutLikeError(error: unknown): boolean {
+  if (isRequestBudgetTimeoutError(error)) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code = "code" in error && typeof error.code === "string" ? error.code : "";
+  return /timeout|timed out|exceeded/i.test(`${code} ${error.name} ${error.message}`);
 }
 
 function truncateText(value: string, maxLength: number): string {

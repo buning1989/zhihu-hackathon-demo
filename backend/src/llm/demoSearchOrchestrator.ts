@@ -43,6 +43,7 @@ import type { UserContext } from "../auth/session.js";
 import type { SearchItem } from "../types/api.types.js";
 import { HttpError } from "../utils/httpError.js";
 import { llmRouter, type LlmTaskType } from "./llmRouter.js";
+import { getLlmTaskTimeoutMs } from "./llmTimeout.js";
 import { DEMO_RESPONSE_COMPOSE_SYSTEM_PROMPT } from "./prompts/demoResponseComposePrompt.js";
 import { EVIDENCE_EXTRACT_SYSTEM_PROMPT } from "./prompts/evidenceExtractPrompt.js";
 import { EXPERIENCE_SUMMARY_SYSTEM_PROMPT } from "./prompts/experienceSummaryPrompt.js";
@@ -71,6 +72,7 @@ interface ComposeMultiLlmDemoSearchInput {
   count: number;
   dataMode: DemoDataMode;
   startedAt: number;
+  requestBudgetMs?: number;
   userContext?: UserContext;
 }
 
@@ -185,22 +187,21 @@ interface CandidatePipelineResult {
   droppedCandidates: NonNullable<DemoSearchResponse["debug"]["droppedCandidates"]>;
 }
 
+interface PipelineBudget {
+  startedAt: number;
+  budgetMs: number;
+}
+
 const MAX_SEARCH_QUERIES = 12;
 const MAX_REAL_ITEMS = 12;
+const MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES = 5;
+const EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET = 4200;
 const MAX_EXPERIENCE_SUMMARY_PEOPLE = 3;
 const MIN_CONTENT_LENGTH = 8;
 const EXPERIENCE_SUMMARY_MIN_CONTENT_LENGTH = 60;
 const EXPERIENCE_SUMMARY_MIN_QUALITY_SCORE = 0.38;
 const EXPERIENCE_SUMMARY_MIN_EXPERIENCE_SIGNAL_SCORE = 0.26;
 const EXPERIENCE_SUMMARY_CACHE_TTL_MS = 15 * 60 * 1000;
-const DEMO_LLM_STAGE_TIMEOUT_MS: Partial<Record<LlmTaskType, number>> = {
-  intent_expand: 3000,
-  candidate_rerank: 10000,
-  evidence_extract: 9000,
-  demo_response_compose: 7000,
-  experience_summary: 12000,
-  grounding_guard: 3000
-};
 
 const PATH_DISPLAY_COPY: Record<DemoContentRole, {
   title: string;
@@ -255,8 +256,11 @@ export async function composeMultiLlmDemoSearchResponse(
   const stageResults: DemoDebugLlmStageResult[] = [];
   const timings: DemoDebugTiming[] = [];
   const guardWarnings: string[] = [];
+  const budget = createPipelineBudget(input.startedAt, input.requestBudgetMs);
 
-  const intentStage = await runTimedStage(() => runIntentExpandStage(input.query, input.userContext));
+  const intentStage = await runTimedStage(() =>
+    runIntentExpandStage(input.query, input.userContext, budget)
+  );
   stageResults.push(intentStage.stageResult);
   timings.push(createStageTiming(intentStage));
 
@@ -271,17 +275,18 @@ export async function composeMultiLlmDemoSearchResponse(
     intentStage.output,
     recalledSearch,
     input.count,
-    input.userContext
+    input.userContext,
+    budget
   );
   stageResults.push(candidatePipeline.stageResult);
-  timings.push({
+  timings.push(logAndCreateStageTiming({
     stageName: candidatePipeline.stageResult.stage,
     durationMs: candidatePipeline.durationMs,
     llmUsed: candidatePipeline.rerankUsed,
     fallbackUsed:
       candidatePipeline.stageResult.attempted === 0 || candidatePipeline.stageResult.failed > 0,
     fallbackReason: candidatePipeline.stageResult.fallbackReasons.join("; ")
-  });
+  }));
 
   const cleanedSearchItems = candidatePipeline.items;
   if (cleanedSearchItems.length === 0) {
@@ -304,7 +309,7 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const candidates = buildCleanedCandidatesFromResponse(response);
   const evidenceStage = await runTimedStage(() =>
-    runEvidenceExtractStage(input.query, intentStage.output, candidates)
+    runEvidenceExtractStage(input.query, intentStage.output, candidates, budget)
   );
   stageResults.push(evidenceStage.stageResult);
   timings.push(createStageTiming(evidenceStage));
@@ -321,7 +326,8 @@ export async function composeMultiLlmDemoSearchResponse(
       evidenceStage.output,
       response,
       candidates,
-      input.userContext
+      input.userContext,
+      budget
     )
   );
   stageResults.push(composeStage.stageResult);
@@ -343,13 +349,13 @@ export async function composeMultiLlmDemoSearchResponse(
   syncTopLevelPersonas(response);
 
   const experienceSummaryStage = await runTimedStage(() =>
-    runExperienceSummaryStage(input.query, response)
+    runExperienceSummaryStage(input.query, response, budget)
   );
   stageResults.push(experienceSummaryStage.stageResult);
   timings.push(createStageTiming(experienceSummaryStage));
   applyExperienceSummaryOutput(response, experienceSummaryStage.output);
 
-  const groundingStage = await runTimedStage(() => runGroundingGuardStage(response));
+  const groundingStage = await runTimedStage(() => runGroundingGuardStage(response, budget));
   stageResults.push(groundingStage.stageResult);
   timings.push(createStageTiming(groundingStage));
   applyGroundingGuardOutput(response, groundingStage.output, guardWarnings);
@@ -360,9 +366,14 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const successfulStages = stageResults.reduce((total, item) => total + item.succeeded, 0);
   const fallbackSummary = summarizeLlmFallback(stageResults);
+  const llmStageMeta = buildLlmStageMeta(timings);
 
   response.meta.latencyMs = Date.now() - input.startedAt;
+  response.meta.totalDurationMs = response.meta.latencyMs;
   response.meta.fallbackUsed = fallbackSummary.used;
+  response.meta.fallbackStages = llmStageMeta.fallbackStages;
+  response.meta.llmStages = llmStageMeta.llmStages;
+  response.meta.timedOutStages = llmStageMeta.timedOutStages;
   response.contextUsed = createDemoContextUsed(input.userContext, [
     "intent_expand",
     "search_query_expand",
@@ -462,67 +473,119 @@ async function runTimedStage<T>(
 
 function createStageTiming(result: TimedStageRunResult<unknown>): DemoDebugTiming {
   const fallbackUsed = result.stageResult.attempted === 0 || result.stageResult.failed > 0;
-  return {
+  return logAndCreateStageTiming({
     stageName: result.stageResult.stage,
     durationMs: result.durationMs,
     llmUsed: result.stageResult.succeeded > 0,
     fallbackUsed,
     fallbackReason: fallbackUsed ? result.stageResult.fallbackReasons.join("; ") : ""
+  });
+}
+
+function logAndCreateStageTiming(timing: DemoDebugTiming): DemoDebugTiming {
+  const status = timing.llmUsed
+    ? "success"
+    : isTimeoutFallbackReason(timing.fallbackReason)
+      ? "timeout"
+      : "fallback";
+  const payload = {
+    taskType: timing.stageName,
+    status,
+    durationMs: timing.durationMs,
+    fallbackReason: timing.fallbackReason
   };
+
+  if (timing.fallbackUsed) {
+    console.warn("[LLMStage]", payload);
+  } else {
+    console.info("[LLMStage]", payload);
+  }
+
+  return timing;
+}
+
+function buildLlmStageMeta(timings: DemoDebugTiming[]): {
+  fallbackStages: string[];
+  llmStages: NonNullable<DemoSearchResponse["meta"]["llmStages"]>;
+  timedOutStages: string[];
+} {
+  const llmStages = timings.map((timing) => {
+    const timedOut = isTimeoutFallbackReason(timing.fallbackReason);
+    return {
+      taskType: timing.stageName,
+      status: timing.llmUsed ? "success" : timedOut ? "timeout" : "fallback",
+      durationMs: timing.durationMs,
+      fallbackReason: timing.fallbackReason
+    } as const;
+  });
+
+  return {
+    fallbackStages: unique(
+      timings.filter((timing) => timing.fallbackUsed).map((timing) => timing.stageName)
+    ),
+    llmStages,
+    timedOutStages: unique(
+      timings
+        .filter((timing) => isTimeoutFallbackReason(timing.fallbackReason))
+        .map((timing) => timing.stageName)
+    )
+  };
+}
+
+function isTimeoutFallbackReason(reason: string): boolean {
+  return /timeout|timed out|exceeded|LLM_TASK_TIMEOUT|LLM_TIMEOUT/i.test(reason);
+}
+
+function createPipelineBudget(
+  startedAt: number,
+  requestBudgetMs: number | undefined
+): PipelineBudget {
+  return {
+    startedAt,
+    budgetMs: requestBudgetMs ?? 15000
+  };
+}
+
+function hasBudgetForLlmStage(taskType: LlmTaskType, budget?: PipelineBudget): boolean {
+  if (!budget) {
+    return true;
+  }
+
+  const remainingMs = budget.budgetMs - (Date.now() - budget.startedAt);
+  return remainingMs > getLlmTaskTimeoutMs(taskType) + 350;
+}
+
+function createBudgetSkippedStage(stage: LlmTaskType): DemoDebugLlmStageResult {
+  return createSkippedStage(
+    stage,
+    `request budget has insufficient remaining time for ${stage}; deterministic fallback used`
+  );
 }
 
 async function runJsonTaskWithStageTimeout(
   taskType: LlmTaskType,
   input: Parameters<typeof llmRouter.runJsonTask>[1]
 ): Promise<string> {
-  const timeoutMs = DEMO_LLM_STAGE_TIMEOUT_MS[taskType] ?? 8000;
-  return withTimeout(
-    llmRouter.runJsonTask(taskType, {
-      ...input,
-      timeoutMs,
-      maxRetry: 0
-    }),
-    taskType,
-    timeoutMs
-  );
-}
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  taskType: LlmTaskType,
-  timeoutMs: number
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new LlmStageTimeoutError(taskType, timeoutMs)),
-          timeoutMs
-        );
-      })
-    ]);
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}
-
-class LlmStageTimeoutError extends Error {
-  constructor(taskType: LlmTaskType, timeoutMs: number) {
-    super(`${taskType} exceeded ${timeoutMs}ms stage timeout`);
-    this.name = "LlmStageTimeoutError";
-  }
+  return llmRouter.runJsonTask(taskType, {
+    ...input,
+    timeoutMs: getLlmTaskTimeoutMs(taskType),
+    maxRetry: 0
+  });
 }
 
 async function runIntentExpandStage(
   query: string,
-  userContext?: UserContext
+  userContext?: UserContext,
+  budget?: PipelineBudget
 ): Promise<StageRunResult<IntentExpandOutput>> {
   const fallback = createFallbackIntent(query);
+  if (!hasBudgetForLlmStage("intent_expand", budget)) {
+    return {
+      output: fallback,
+      stageResult: createBudgetSkippedStage("intent_expand")
+    };
+  }
+
   if (!llmRouter.isTaskConfigured("intent_expand")) {
     return {
       output: fallback,
@@ -564,7 +627,8 @@ async function runIntentExpandStage(
 async function runEvidenceExtractStage(
   query: string,
   intent: IntentExpandOutput,
-  candidates: CleanedCandidate[]
+  candidates: CleanedCandidate[],
+  budget?: PipelineBudget
 ): Promise<StageRunResult<EvidenceExtractOutput>> {
   const fallback = createFallbackEvidenceExtract(candidates);
   if (candidates.length === 0) {
@@ -581,7 +645,15 @@ async function runEvidenceExtractStage(
     };
   }
 
+  if (!hasBudgetForLlmStage("evidence_extract", budget)) {
+    return {
+      output: fallback,
+      stageResult: createBudgetSkippedStage("evidence_extract")
+    };
+  }
+
   try {
+    const promptCandidates = toEvidenceExtractPromptCandidates(candidates);
     const content = await runJsonTaskWithStageTimeout("evidence_extract", {
       temperature: 0.1,
       maxTokens: 3000,
@@ -595,7 +667,13 @@ async function runEvidenceExtractStage(
           content: JSON.stringify({
             query: truncateText(query, 120),
             intent,
-            candidates
+            promptBudget: {
+              model: "moonshot-v1-8k",
+              maxContextTokens: 6500,
+              candidateCount: promptCandidates.length,
+              evidenceCharBudget: EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET
+            },
+            candidates: promptCandidates
           })
         }
       ]
@@ -619,7 +697,8 @@ async function runDemoResponseComposeStage(
   evidence: EvidenceExtractOutput,
   response: DemoSearchResponse,
   candidates: CleanedCandidate[],
-  userContext?: UserContext
+  userContext?: UserContext,
+  budget?: PipelineBudget
 ): Promise<StageRunResult<DemoResponseComposeOutput>> {
   const fallback = createEmptyDemoComposeOutput();
   if (!llmRouter.isTaskConfigured("demo_response_compose")) {
@@ -629,6 +708,13 @@ async function runDemoResponseComposeStage(
         "demo_response_compose",
         "DeepSeek not configured; deterministic display fields preserved"
       )
+    };
+  }
+
+  if (!hasBudgetForLlmStage("demo_response_compose", budget)) {
+    return {
+      output: fallback,
+      stageResult: createBudgetSkippedStage("demo_response_compose")
     };
   }
 
@@ -682,7 +768,8 @@ async function runDemoResponseComposeStage(
 
 async function runExperienceSummaryStage(
   query: string,
-  response: DemoSearchResponse
+  response: DemoSearchResponse,
+  budget?: PipelineBudget
 ): Promise<StageRunResult<ExperienceSummaryStageOutput>> {
   const candidates = buildExperienceSummaryCandidates(query, response);
   const debug = initializeExperienceSummaryDebug(response, candidates);
@@ -763,6 +850,25 @@ async function runExperienceSummaryStage(
     };
   }
 
+  if (!hasBudgetForLlmStage("experience_summary", budget)) {
+    for (const candidate of uncachedCandidates) {
+      markExperienceSummaryDebug(debug, candidate.personId, {
+        status: "failed",
+        source: "none",
+        reason: "request budget had insufficient remaining time for experienceSummary",
+        cacheHit: false
+      });
+    }
+
+    return {
+      output: {
+        summaries: { summaries: cachedSummaries },
+        debug
+      },
+      stageResult: createBudgetSkippedStage("experience_summary")
+    };
+  }
+
   try {
     const content = await runJsonTaskWithStageTimeout("experience_summary", {
       temperature: 0.15,
@@ -835,13 +941,21 @@ async function runExperienceSummaryStage(
 }
 
 async function runGroundingGuardStage(
-  response: DemoSearchResponse
+  response: DemoSearchResponse,
+  budget?: PipelineBudget
 ): Promise<StageRunResult<GroundingGuardOutput>> {
   const fallback = createPassingGroundingGuard();
   if (!llmRouter.isTaskConfigured("grounding_guard")) {
     return {
       output: fallback,
       stageResult: createSkippedStage("grounding_guard", "DeepSeek not configured; rule guard used")
+    };
+  }
+
+  if (!hasBudgetForLlmStage("grounding_guard", budget)) {
+    return {
+      output: fallback,
+      stageResult: createBudgetSkippedStage("grounding_guard")
     };
   }
 
@@ -943,7 +1057,8 @@ async function runCandidatePipeline(
   intent: IntentExpandOutput,
   recalledSearch: SearchByExpandedQueriesResult,
   count: number,
-  userContext?: UserContext
+  userContext?: UserContext,
+  budget?: PipelineBudget
 ): Promise<CandidatePipelineResult> {
   const startedAt = Date.now();
   const context = {
@@ -961,11 +1076,16 @@ async function runCandidatePipeline(
   let rerankFailedReason = "";
   let rerankDropReasonById = new Map<string, string>();
   const rerankEnabled = llmRouter.isTaskConfigured("candidate_rerank");
+  const rerankHasBudget = hasBudgetForLlmStage("candidate_rerank", budget);
 
   if (rerankCandidates.length === 0) {
     stageResult = createSkippedStage("candidate_rerank", "no rough-filtered candidates for rerank");
   } else if (!rerankEnabled) {
     stageResult = createSkippedStage("candidate_rerank", "DeepSeek not configured; rule rerank fallback used");
+  } else if (!rerankHasBudget) {
+    rerankFailedReason =
+      "request budget has insufficient remaining time for candidate_rerank; rule rerank fallback used";
+    stageResult = createBudgetSkippedStage("candidate_rerank");
   } else {
     try {
       const content = await runJsonTaskWithStageTimeout("candidate_rerank", {
@@ -1181,6 +1301,45 @@ function toCandidateRerankPromptItem(candidate: CandidateAssessment): Record<str
     roughScore: candidate.roughScore,
     roughReason: candidate.roughReason
   };
+}
+
+function toEvidenceExtractPromptCandidates(
+  candidates: CleanedCandidate[]
+): Array<Record<string, unknown>> {
+  const selected = candidates.slice(0, MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES);
+  const perCandidateEvidenceChars = Math.min(
+    1000,
+    Math.max(800, Math.floor(EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET / Math.max(selected.length, 1)))
+  );
+
+  return selected.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    personId: candidate.personId,
+    articleId: candidate.articleId,
+    sourceRefId: candidate.sourceRefId,
+    title: truncateText(candidate.title, 90),
+    author: truncateText(candidate.author, 40),
+    sourceUrl: candidate.sourceUrl,
+    sampleType: candidate.sampleType,
+    matchedQuery: candidate.matchedQuery,
+    queryType: candidate.queryType,
+    queryPurpose: candidate.queryPurpose,
+    contentRole: candidate.contentRole,
+    relationToUserIntent: truncateText(candidate.relationToUserIntent ?? "", 120),
+    summaryAngle: truncateText(candidate.summaryAngle ?? "", 90),
+    diversityKey: truncateText(candidate.diversityKey ?? "", 40),
+    keepReason: truncateText(candidate.keepReason ?? candidate.filterReason, 120),
+    relevanceScore: candidate.relevanceScore,
+    qualityScore: candidate.qualityScore,
+    experienceSignalScore: candidate.experienceSignalScore,
+    contentLength: candidate.contentLength,
+    filterReason: truncateText(candidate.filterReason, 120),
+    text: truncateText(candidate.text, 240),
+    evidenceText: truncateText(
+      candidate.text || candidate.evidenceText || candidate.title,
+      perCandidateEvidenceChars
+    )
+  }));
 }
 
 function toDemoResponseComposeFinalCandidate(candidate: CleanedCandidate): Record<string, unknown> {

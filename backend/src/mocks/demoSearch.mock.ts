@@ -207,7 +207,11 @@ export function createMockDemoSearchResponse(
       ),
       generatedAt: new Date().toISOString(),
       latencyMs: 0,
-      fallbackUsed: options.fallbackUsed ?? false
+      totalDurationMs: 0,
+      fallbackUsed: options.fallbackUsed ?? false,
+      fallbackStages: options.fallbackUsed ? ["mock_demo_search"] : [],
+      llmStages: [],
+      timedOutStages: []
     },
     debug: {
       composer: "mock",

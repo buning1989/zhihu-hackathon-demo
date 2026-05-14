@@ -14,6 +14,10 @@ import { createDemoContextUsed } from "./userContext.service.js";
 import type { UserContext } from "../auth/session.js";
 import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
+import {
+  isRequestBudgetTimeoutError,
+  withRequestBudget
+} from "../utils/requestBudget.js";
 
 export interface DemoSearchRequest {
   query: string;
@@ -25,6 +29,7 @@ const DEFAULT_COUNT = 5;
 const MAX_COUNT = 20;
 const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "real"]);
 const DEMO_SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+const DEMO_SEARCH_BUDGET_MS = 14000;
 
 interface DemoSearchCacheEntry {
   expiresAt: number;
@@ -52,15 +57,21 @@ export class DemoSearchService {
 
     if (request.dataMode === "real") {
       try {
-        const response = await composeMultiLlmDemoSearchResponse({
-          query: request.query,
-          count: request.count,
-          dataMode: request.dataMode,
-          startedAt,
-          userContext
-        });
+        const response = await withRequestBudget(
+          composeMultiLlmDemoSearchResponse({
+            query: request.query,
+            count: request.count,
+            dataMode: request.dataMode,
+            startedAt,
+            requestBudgetMs: DEMO_SEARCH_BUDGET_MS,
+            userContext
+          }),
+          DEMO_SEARCH_BUDGET_MS,
+          "DEMO_SEARCH_BUDGET_TIMEOUT",
+          `/api/demo/search exceeded ${DEMO_SEARCH_BUDGET_MS}ms request budget`
+        );
         assertDemoSearchGrounding(response);
-        return cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
+        return cacheDemoResponse(writeCachedDemoResponse(cacheKey, finalizeDemoMeta(response, startedAt), false));
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
 
@@ -81,6 +92,25 @@ export class DemoSearchService {
           "fit_reason"
         ]);
         response.meta.latencyMs = Date.now() - startedAt;
+        response.meta.totalDurationMs = response.meta.latencyMs;
+        response.meta.fallbackStages = unique([
+          ...(response.meta.fallbackStages ?? []),
+          isRequestBudgetTimeoutError(error) ? "request_budget" : "real_demo_search"
+        ]);
+        response.meta.timedOutStages = unique([
+          ...(response.meta.timedOutStages ?? []),
+          ...(isRequestBudgetTimeoutError(error) ? ["request_budget"] : [])
+        ]);
+        response.meta.llmStages = response.meta.llmStages?.length
+          ? response.meta.llmStages
+          : [
+              {
+                taskType: isRequestBudgetTimeoutError(error) ? "request_budget" : "real_demo_search",
+                status: isRequestBudgetTimeoutError(error) ? "timeout" : "fallback",
+                durationMs: response.meta.latencyMs,
+                fallbackReason: formatErrorSummary(error)
+              }
+            ];
         response.debug.timings = [];
         assertDemoSearchGrounding(response);
         return cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
@@ -95,7 +125,7 @@ export class DemoSearchService {
       pathSource: "fallback"
     });
     response.contextUsed = createDemoContextUsed(userContext);
-    response.meta.latencyMs = Date.now() - startedAt;
+    finalizeDemoMeta(response, startedAt);
     assertDemoSearchGrounding(response);
     return cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
   }
@@ -187,7 +217,9 @@ function toLoggableError(error: unknown): {
 
   if (error instanceof Error) {
     return {
-      code: error.name || "ERROR",
+      code: "code" in error && typeof error.code === "string"
+        ? error.code
+        : error.name || "ERROR",
       statusCode: null,
       message: error.message || "Unknown error"
     };
@@ -198,6 +230,15 @@ function toLoggableError(error: unknown): {
     statusCode: null,
     message: "Unknown error"
   };
+}
+
+function finalizeDemoMeta(response: DemoSearchResponse, startedAt: number): DemoSearchResponse {
+  response.meta.latencyMs = Date.now() - startedAt;
+  response.meta.totalDurationMs = response.meta.latencyMs;
+  response.meta.fallbackStages = response.meta.fallbackStages ?? [];
+  response.meta.llmStages = response.meta.llmStages ?? [];
+  response.meta.timedOutStages = response.meta.timedOutStages ?? [];
+  return response;
 }
 
 function formatErrorSummary(error: unknown): string {
@@ -228,6 +269,10 @@ function readCachedDemoResponse(
 
   const response = cloneDemoSearchResponse(entry.response);
   response.meta.latencyMs = Date.now() - startedAt;
+  response.meta.totalDurationMs = response.meta.latencyMs;
+  response.meta.fallbackStages = response.meta.fallbackStages ?? [];
+  response.meta.llmStages = response.meta.llmStages ?? [];
+  response.meta.timedOutStages = response.meta.timedOutStages ?? [];
   response.debug.cacheHit = true;
   response.debug.originalQuery = identity.originalQuery;
   response.debug.normalizedQuery = identity.normalizedQuery;
