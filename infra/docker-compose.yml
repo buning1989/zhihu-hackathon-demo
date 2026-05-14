@@ -35,6 +35,13 @@ services:
       AGENT_LLM_TIMEOUT_MS: ${AGENT_LLM_TIMEOUT_MS:-90000}
       AGENT_LLM_RETRIES: ${AGENT_LLM_RETRIES:-1}
       AGENT_LLM_TEST_MODE: ${AGENT_LLM_TEST_MODE:-mock}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.cn/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-8k}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_JSON_MODE: ${DEEPSEEK_JSON_MODE:-true}
     ports:
       - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
     volumes:
@@ -63,6 +70,13 @@ services:
       AGENT_LLM_TIMEOUT_MS: ${AGENT_LLM_TIMEOUT_MS:-90000}
       AGENT_LLM_RETRIES: ${AGENT_LLM_RETRIES:-1}
       AGENT_LLM_TEST_MODE: ${AGENT_LLM_TEST_MODE:-mock}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.cn/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-8k}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_JSON_MODE: ${DEEPSEEK_JSON_MODE:-true}
       ZHIHU_API_KEY: ${ZHIHU_API_KEY:-}
       ZH_ACCESS_SECRET: ${ZHIHU_API_KEY:-}
     volumes:
