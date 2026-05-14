@@ -1032,8 +1032,8 @@
     }
 
     .single-person-panel .inline-reader {
-      height: auto;
-      min-height: 100%;
+      height: 100%;
+      min-height: 620px;
     }
 
     .single-person-panel .inline-ask-panel {
@@ -1756,11 +1756,17 @@
     }
 
     .card-actions .primary {
-      flex: 1 1 100%;
+      flex: 1 1 0;
+      min-width: 0;
+      padding-inline: 14px;
+      white-space: nowrap;
     }
 
     .card-actions .text-button {
-      flex: 1 1 calc(50% - 5px);
+      flex: 1 1 0;
+      min-width: 0;
+      padding-inline: 14px;
+      white-space: nowrap;
     }
 
     .card-actions [data-action="continue-people"] {
@@ -1797,8 +1803,10 @@
     }
 
     .inline-reader {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
       height: 100%;
-      overflow: auto;
+      overflow: hidden;
       padding: 38px 48px;
       border: 1px solid var(--line);
       border-radius: 24px;
@@ -1808,12 +1816,14 @@
     }
 
     .inline-reader h2 {
+      grid-row: 1;
       max-width: 760px;
       font-size: 38px;
       line-height: 1.2;
     }
 
     .inline-reader .reader-meta {
+      grid-row: 2;
       margin: 12px 0 26px;
     }
 
@@ -1906,7 +1916,10 @@
     }
 
     .reader-body {
+      grid-row: 3;
       max-width: 820px;
+      min-height: 0;
+      overflow: auto;
       font-size: 18px;
       line-height: 2;
     }
@@ -1916,12 +1929,12 @@
     }
 
     .reader-actions {
+      grid-row: 4;
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-top: 32px;
-      padding-top: 20px;
-      border-top: 1px solid var(--line);
+      margin-top: 28px;
+      padding-top: 0;
     }
 
     .question-card-page {
@@ -2055,9 +2068,9 @@
     .message {
       width: fit-content;
       max-width: min(68%, 720px);
-      padding: 14px 18px;
+      padding: 10px 14px;
       border-radius: 24px;
-      line-height: 1.78;
+      line-height: 1.68;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       animation: msgIn 340ms var(--ease) both;
@@ -4122,7 +4135,7 @@
           <div class="reader-body">${body.map((p) => `<p>${escapeHtml(p)}</p>`).join("")}</div>
           <div class="reader-actions">
             <button class="primary" type="button" data-action="question-from-reader">基于这篇原文继续提问</button>
-            <button class="ghost-text-button" type="button" data-action="close-reader">收起原文</button>
+            <button class="ghost-text-button" type="button" data-action="close-reader">返回</button>
           </div>
         </article>
       `;
