@@ -41,12 +41,40 @@ try {
 
   assert(completedSnapshot.task.status === "completed", "task did not complete");
   assert(
-    completedSnapshot.stages.some((stage) => stage.stageName === "mock_stage" && stage.status === "succeeded"),
-    "mock_stage did not succeed"
+    completedSnapshot.stages.some(
+      (stage) => stage.stageName === "understand_goal_rule" && stage.status === "succeeded"
+    ),
+    "understand_goal_rule stage did not succeed"
   );
   assert(
-    completedSnapshot.artifacts.some((artifact) => artifact.type === "mock_result"),
-    "mock_result artifact was not found"
+    completedSnapshot.stages.some(
+      (stage) =>
+        stage.stageName === "retrieve_sources" &&
+        (stage.status === "succeeded" || stage.status === "fallback")
+    ),
+    "retrieve_sources stage did not succeed or fallback"
+  );
+  assert(
+    completedSnapshot.stages.some(
+      (stage) => stage.stageName === "normalize_candidates" && stage.status === "succeeded"
+    ),
+    "normalize_candidates stage did not succeed"
+  );
+  assert(
+    completedSnapshot.artifacts.some((artifact) => artifact.type === "intent"),
+    "intent artifact was not found"
+  );
+  assert(
+    completedSnapshot.artifacts.some((artifact) => artifact.type === "raw_sources"),
+    "raw_sources artifact was not found"
+  );
+  const candidatesArtifact = completedSnapshot.artifacts.find(
+    (artifact) => artifact.type === "candidates"
+  );
+  assert(candidatesArtifact, "candidates artifact was not found");
+  assert(
+    completedSnapshot.task.resultArtifactId === candidatesArtifact.id,
+    "task.resultArtifactId does not point to candidates artifact"
   );
   assert(
     completedSnapshot.events.some((event) => event.type === "task.completed"),
@@ -58,6 +86,7 @@ try {
   console.log(`stageCount=${completedSnapshot.stages.length}`);
   console.log(`artifactCount=${completedSnapshot.artifacts.length}`);
   console.log(`eventCount=${completedSnapshot.events.length}`);
+  console.log(`resultArtifactId=${completedSnapshot.task.resultArtifactId}`);
 } catch (error) {
   console.error("agent worker smoke failed");
   console.error(error);

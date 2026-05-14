@@ -5,7 +5,7 @@ import {
   getAgentTaskQueueName,
   type AgentTaskJobData
 } from "./agentQueue.js";
-import { runMockAgentStage } from "./stages/mockAgentStage.js";
+import { runAgentTaskStageWorkflow } from "./stages/agentStageExecutor.js";
 
 export interface StartAgentWorkerOptions {
   concurrency?: number;
@@ -53,7 +53,7 @@ async function processAgentTaskJob(job: Job<AgentTaskJobData>): Promise<{
   }
 
   const taskId = readTaskId(job.data);
-  await runMockAgentStage(taskId);
+  await runAgentTaskStageWorkflow(taskId);
 
   return {
     taskId,

@@ -581,12 +581,16 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 2 persistent Agent Runtime skeleton. Creates a queued task in
+        Phase 3 persistent Agent Runtime. Creates a queued task in
         Postgres, writes task.created, enqueues a BullMQ job, and writes
-        task.enqueued. A separate worker consumes the job and runs a mock stage.
-        It does not run real search, call LLMs, or stream events.
+        task.enqueued. A separate worker consumes the job and runs the
+        rule-based business stage workflow: understand_goal_rule,
+        retrieve_sources, and normalize_candidates. retrieve_sources reuses
+        the existing search service when Zhihu config is available and writes a
+        fallback stage/artifact otherwise. It does not call LLMs, run the demo
+        search orchestrator, or stream events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase2
+      x-implementation-status: implemented-phase3
       requestBody:
         required: true
         content:
@@ -1175,7 +1179,7 @@ components:
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for Phase 3 SSE; endpoint is not implemented in Phase 2.
+              description: Reserved for future SSE; endpoint is not implemented in Phase 3.
     AgentTaskResponse:
       type: object
       required:
@@ -1371,10 +1375,142 @@ components:
         type:
           type: string
         data:
-          additionalProperties: true
+          oneOf:
+            - $ref: "#/components/schemas/PersistentAgentIntentArtifact"
+            - $ref: "#/components/schemas/PersistentAgentRawSourcesArtifact"
+            - $ref: "#/components/schemas/PersistentAgentCandidatesArtifact"
+            - type: object
+              additionalProperties: true
         createdAt:
           type: string
           format: date-time
+    PersistentAgentIntentArtifact:
+      type: object
+      required:
+        - originalQuery
+        - normalizedQuery
+        - expandedQueries
+        - strategy
+        - llmUsed
+      properties:
+        originalQuery:
+          type: string
+        normalizedQuery:
+          type: string
+        expandedQueries:
+          type: array
+          items:
+            type: string
+        strategy:
+          type: string
+          const: rule_based
+        llmUsed:
+          type: boolean
+          const: false
+    PersistentAgentRawSourcesArtifact:
+      type: object
+      required:
+        - query
+        - expandedQueries
+        - sources
+        - sourceCount
+        - provider
+        - fallbackUsed
+      properties:
+        query:
+          type: string
+        expandedQueries:
+          type: array
+          items:
+            type: string
+        sources:
+          type: array
+          items:
+            type: object
+            required:
+              - sourceId
+              - provider
+              - title
+              - url
+              - author
+              - excerpt
+              - score
+            properties:
+              sourceId:
+                type: string
+              provider:
+                type: string
+                enum:
+                  - zhihu
+                  - mock
+                  - empty
+              type:
+                type: string
+              title:
+                type: string
+              url:
+                type: string
+              author:
+                type: string
+              excerpt:
+                type: string
+              score:
+                type: number
+        sourceCount:
+          type: integer
+        provider:
+          type: string
+          enum:
+            - zhihu
+            - mock
+            - empty
+        fallbackUsed:
+          type: boolean
+        fallbackReason:
+          type:
+            - string
+            - "null"
+    PersistentAgentCandidatesArtifact:
+      type: object
+      required:
+        - candidates
+        - candidateCount
+        - strategy
+      properties:
+        candidates:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - sourceId
+              - title
+              - author
+              - excerpt
+              - url
+              - score
+            properties:
+              id:
+                type: string
+              sourceId:
+                type: string
+              title:
+                type: string
+              author:
+                type: string
+              excerpt:
+                type: string
+              url:
+                type: string
+              score:
+                type: number
+              provider:
+                type: string
+        candidateCount:
+          type: integer
+        strategy:
+          type: string
+          const: rule_based
     PersistentAgentEvent:
       type: object
       required:
