@@ -554,7 +554,13 @@ function classifyGatewayError(error: unknown): {
 }
 
 function isRetryableError(errorType: LlmGatewayErrorType): boolean {
-  return errorType === "TIMEOUT" || errorType === "REQUEST_FAILED" || errorType === "UNKNOWN_ERROR";
+  return (
+    errorType === "TIMEOUT" ||
+    errorType === "REQUEST_FAILED" ||
+    errorType === "JSON_PARSE_FAILED" ||
+    errorType === "SCHEMA_VALIDATION_FAILED" ||
+    errorType === "UNKNOWN_ERROR"
+  );
 }
 
 function readRawText(error: unknown): string {

@@ -85,6 +85,26 @@ try {
     "schema invalid did not expose SCHEMA_VALIDATION_FAILED"
   );
 
+  const malformedJson = await llmGateway.runJson({
+    stageName: "smoke_llm_gateway_malformed_json_retry",
+    schemaName: "agent.search_plan.v1",
+    messages: [{ role: "user", content: "simulate malformed JSON" }],
+    timeoutMs: 1000,
+    retries: 1,
+    validate: isSearchPlanArtifactData,
+    fallback: (context) => buildFallback(originalQuery, context.fallbackReason),
+    metadata: {
+      originalQuery,
+      mockScenario: "malformed_json"
+    }
+  });
+  assert(malformedJson.status === "fallback", "malformed JSON did not return fallback status");
+  assert(malformedJson.attempts === 2, "malformed JSON did not retry once");
+  assert(
+    malformedJson.errorType === "JSON_PARSE_FAILED",
+    "malformed JSON did not expose JSON_PARSE_FAILED"
+  );
+
   const evidenceSuccess = await llmGateway.runJson({
     stageName: "smoke_llm_gateway_evidence_success",
     schemaName: "agent.evidence.v1",
@@ -251,6 +271,7 @@ try {
   console.log(`successAttempts=${success.attempts}`);
   console.log(`timeoutStatus=${timeout.status}`);
   console.log(`schemaInvalidErrorType=${schemaInvalid.errorType}`);
+  console.log(`malformedJsonAttempts=${malformedJson.attempts}`);
   console.log(`evidenceItemCount=${evidenceSuccess.data.evidenceItems.length}`);
   console.log(`finalResultStrategy=${finalResultSuccess.data.strategy}`);
   console.log(`groundingGuardStatus=${groundingGuardSuccess.data.guard.status}`);

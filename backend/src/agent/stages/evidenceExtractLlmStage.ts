@@ -13,9 +13,11 @@ import {
   type SearchPlanArtifactData
 } from "./stageTypes.js";
 
-const MAX_LLM_CANDIDATES = 8;
-const MAX_EXCERPT_LENGTH = 420;
+const MAX_LLM_CANDIDATES = 6;
+const MAX_EXCERPT_LENGTH = 240;
 const MAX_EVIDENCE_TEXT_LENGTH = 320;
+const MAX_LLM_EVIDENCE_TEXT_LENGTH = 140;
+const MAX_REASON_LENGTH = 80;
 
 export async function runEvidenceExtractLlmStage(
   taskId: string,
@@ -58,8 +60,8 @@ export async function runEvidenceExtractLlmStage(
       candidateCount: limitedCandidates.length,
       candidates: limitedCandidates.map(toGatewayCandidateMetadata)
     },
-    maxTokens: 1600,
-    temperature: 0.1,
+    maxTokens: 2200,
+    temperature: 0,
     onEvent: async (type, payload) => {
       await agentRepository.createEvent({
         taskId,
@@ -71,7 +73,7 @@ export async function runEvidenceExtractLlmStage(
 
   return {
     artifactType: AGENT_ARTIFACT_EVIDENCE,
-    data: result.data,
+    data: normalizeEvidenceArtifactData(result.data),
     status: result.status === "success" ? "succeeded" : "fallback",
     fallbackUsed: result.fallbackUsed,
     fallbackReason: result.fallbackReason || null
@@ -110,8 +112,12 @@ function buildEvidenceExtractMessages(
         },
         constraints: [
           "evidenceText 必须来自 candidate.excerpt 或 title 的可见信息",
-          "最多返回 8 条 evidenceItems",
+          "最多返回 6 条 evidenceItems，证据不足时返回更少条",
+          "每条 evidenceText 不超过 140 个中文字符",
+          "每条 reason 不超过 80 个中文字符",
+          "所有字符串必须是单行文本，不要包含换行符",
           "confidence 必须在 0 到 1 之间",
+          "必须返回完整 JSON object，不要输出 Markdown 代码块",
           "不要生成最终回答",
           "不要生成 AI 分身",
           "不要推断作者真实身份或经历"
@@ -167,6 +173,20 @@ function toFallbackEvidenceItem(candidate: CandidateItem): EvidenceItem {
       "使用 candidate.excerpt 作为规则证据",
     reason: "rule_fallback_from_excerpt",
     confidence: 0.4
+  };
+}
+
+function normalizeEvidenceArtifactData(data: EvidenceArtifactData): EvidenceArtifactData {
+  return {
+    ...data,
+    evidenceItems: data.evidenceItems.slice(0, MAX_LLM_CANDIDATES).map((item) => ({
+      ...item,
+      title: truncateText(item.title, 120),
+      author: truncateText(item.author, 80),
+      evidenceText: truncateText(item.evidenceText, MAX_LLM_EVIDENCE_TEXT_LENGTH),
+      reason: truncateText(item.reason, MAX_REASON_LENGTH),
+      confidence: Math.max(0, Math.min(1, item.confidence))
+    }))
   };
 }
 
