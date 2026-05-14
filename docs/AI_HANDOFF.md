@@ -1,5 +1,24 @@
 # AI Handoff
 
+## 2026-05-14 - Visible persistent Agent product loop
+
+本轮目标：把已完成的持久化 Agent Runtime 接到用户可见前端，让页面不再只跑旧内存 Agent 或快速搜索，而是创建 Postgres task、入 Redis 队列、由独立 worker 执行 7 阶段 workflow，并轮询展示最终结果。
+
+已完成：
+
+- 新增 `GET /api/agent/tasks/:taskId/view`，只读 Postgres snapshot，并把 `guarded_final_result + candidates + evidence` 适配为前端可渲染的 `analysis / paths / people / sections / meta`。
+- 前端主体验收敛为 Agent 模式：发送问题时调用 `POST /api/agent/tasks`，轮询 `/api/agent/tasks/:taskId/view`，展示持久化 workflow 的 7 个阶段。
+- Agent Runtime 未配置或 Postgres/Redis/worker 不可用时，前端显示明确不可用提示，不再把真实 Agent 链路静默伪装成本地 mock。
+- Docker Compose 增加 `migrate` 和独立 `agent-worker` service，并为 Postgres/Redis 增加 healthcheck。
+- 新增 `npm run smoke:agent-view -w backend`，通过 HTTP 创建持久化任务、等待完成、校验 view 中的 `analysis / paths / people / meta.guard`。
+
+验证建议：
+
+- `npm run build -w backend`
+- `npm run smoke:llm-gateway -w backend`
+- 在有 Postgres + Redis + backend + worker 的环境中运行 `npm run smoke:agent-view -w backend`
+- 手动启动 `docker compose -f infra/docker-compose.yml up`，打开 `http://localhost:3000/` 输入问题，确认能看到阶段进度和最终路径/人物结果。
+
 ## 2026-05-14 - Agent search timeout profile and orchestration guardrails
 
 本轮目标：优先修复 `/api/agent/search` 真实 Agent 链路的运转稳定性，让 Agent 模式获得更长、更可观测的大模型执行窗口，同时不放大全局 `/api/demo/search` 同步接口超时。

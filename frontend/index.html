@@ -443,35 +443,6 @@
       box-shadow: 0 22px 46px rgba(216, 154, 69, 0.28);
     }
 
-    .search-mode-toggle {
-      display: inline-flex;
-      gap: 6px;
-      margin-top: 18px;
-      padding: 5px;
-      border: 1px solid rgba(42, 36, 28, 0.1);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.72);
-      box-shadow: 0 14px 34px rgba(52, 43, 32, 0.06);
-    }
-
-    .search-mode-toggle button {
-      min-width: 108px;
-      min-height: 38px;
-      padding: 8px 16px;
-      border: 0;
-      border-radius: 999px;
-      color: var(--muted);
-      background: transparent;
-      font-weight: 850;
-      transition: 180ms ease;
-    }
-
-    .search-mode-toggle button.is-active {
-      color: #3f2b0f;
-      background: var(--accent-warm-soft);
-      box-shadow: 0 10px 22px rgba(216, 154, 69, 0.14);
-    }
-
     .hint {
       margin-top: 12px;
       color: var(--faint);
@@ -2890,10 +2861,6 @@
       return window.LIFE_PATH_STATIC_MOCK === true;
     }
 
-    function resolveSearchMode(value) {
-      return value === "quick" ? "quick" : "agent";
-    }
-
     function peepSrc(file) {
       const name = String(file).endsWith(".svg") ? file : `openpeeps${file}.svg`;
       return `${peepBase}${name}`;
@@ -2911,9 +2878,6 @@
       apiBase: API_BASE,
       loginUrl: AUTH_LOGIN_URL,
       meEndpoint: "/auth/me",
-      searchEndpoint: "/api/demo/search",
-      demoSearchEndpoint: "/api/demo/search",
-      agentSearchEndpoint: "/api/agent/search",
       agentTaskEndpoint: "/api/agent/tasks",
       saveEndpoint: "/api/samples/save",
       savedEndpoint: "/api/samples/saved",
@@ -2921,6 +2885,8 @@
       dataMode: STATIC_MOCK_MODE ? "mock" : resolveDataMode(PAGE_PARAMS.get("dataMode")),
       requestTimeoutMs: 12000,
       agentPollIntervalMs: 1400,
+      agentQueueWaitTimeoutMs: 30000,
+      agentPollTimeoutMs: 180000,
       useMockFallback: true,
       useMockUserFallback: STATIC_MOCK_MODE || PAGE_PARAMS.get("mockAuth") === "1"
     };
@@ -3119,13 +3085,13 @@
     let people = mockPeople.map((item, index) => normalizePerson(item, index));
 
     const AGENT_STAGE_UI = [
-      { name: "intent_expand", label: "理解问题" },
-      { name: "content_search", label: "搜索内容" },
-      { name: "candidate_rank", label: "筛选样本" },
-      { name: "evidence_extract", label: "抽取证据" },
-      { name: "response_compose", label: "整理结果" },
-      { name: "persona_prepare", label: "准备追问" },
-      { name: "grounding_guard", label: "边界检查" }
+      { name: "understand_goal_rule", label: "理解问题" },
+      { name: "plan_search_llm", label: "规划检索" },
+      { name: "retrieve_sources", label: "检索来源" },
+      { name: "normalize_candidates", label: "整理候选" },
+      { name: "evidence_extract_llm", label: "抽取证据" },
+      { name: "response_compose_llm", label: "生成结果" },
+      { name: "grounding_guard_llm", label: "边界检查" }
     ];
 
     const state = {
@@ -3150,7 +3116,6 @@
       focusTags: ["身份周期", "现金流", "工作边界", "回流代价"],
       backendStatus: "idle",
       dataMode: API_CONFIG.dataMode,
-      searchMode: resolveSearchMode(PAGE_PARAMS.get("searchMode") || PAGE_PARAMS.get("mode")),
       agentTask: createAgentTaskSnapshot(),
       savedQuestionGroups: [],
       hasSubmittedQuestion: false,
@@ -3158,6 +3123,7 @@
       questionText: defaultQuestionText(),
       messages: [],
       aiTyping: false,
+      searchError: "",
     };
 
     const previewParams = PAGE_PARAMS;
@@ -3257,6 +3223,7 @@
     function agentStatusText(status) {
       return {
         idle: "待启动",
+        queued: "排队中",
         running: "运行中",
         completed: "已完成",
         failed: "已失败",
@@ -3725,7 +3692,7 @@
           body: JSON.stringify(payload),
           signal: controller.signal
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) throw await buildApiError(response);
         return await response.json();
       } finally {
         clearTimeout(timer);
@@ -3742,33 +3709,68 @@
           credentials: "include",
           signal: controller.signal
         });
-        if (!response.ok) {
-          const error = new Error(`HTTP ${response.status}`);
-          error.status = response.status;
-          throw error;
-        }
+        if (!response.ok) throw await buildApiError(response);
         return await response.json();
       } finally {
         clearTimeout(timer);
       }
     }
 
+    async function buildApiError(response) {
+      let body = null;
+      try {
+        const text = await response.text();
+        body = text ? JSON.parse(text) : null;
+      } catch (_error) {
+        body = null;
+      }
+
+      const apiError = body?.error || {};
+      const error = new Error(apiError.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.code = apiError.code || "";
+      error.body = body;
+      return error;
+    }
+
+    function buildAgentRuntimeErrorMessage(error) {
+      const code = error?.code || error?.body?.error?.code || "";
+      if (code === "AGENT_DATABASE_UNCONFIGURED" || code === "AGENT_DATABASE_UNAVAILABLE") {
+        return "Agent Runtime 需要 Postgres 数据库。请用 Docker Compose 启动完整演示环境后再试。";
+      }
+      if (code === "AGENT_QUEUE_UNCONFIGURED" || code === "AGENT_QUEUE_UNAVAILABLE") {
+        return "Agent Runtime 需要 Redis 队列和独立 worker。请确认完整演示环境已经启动。";
+      }
+      if (code === "AGENT_WORKER_UNAVAILABLE") {
+        return "Agent task 已创建，但 worker 还没有开始消费。请确认 agent-worker 服务正在运行。";
+      }
+      if (code === "AGENT_POLL_TIMEOUT") {
+        return "Agent task 执行时间超过当前页面等待上限，请稍后刷新或检查 worker 日志。";
+      }
+      if (error?.name === "AbortError") {
+        return "Agent Runtime 请求超时，请确认后端服务、Postgres、Redis 和 worker 都在运行。";
+      }
+      return error?.message || "Agent Runtime 暂不可用，请确认完整演示环境已经启动。";
+    }
+
     async function startAgentSearch(query) {
-      const payload = await postJson(API_CONFIG.agentSearchEndpoint, {
+      const payload = await postJson(API_CONFIG.agentTaskEndpoint, {
         query,
-        count: 5,
-        dataMode: state.dataMode
+        metadata: {
+          source: "frontend_agent_mode",
+          dataMode: state.dataMode
+        }
       });
       const body = getResponseBody(payload) || {};
       return createAgentTaskSnapshot({
         ...body,
         taskId: body.taskId || body.id,
-        status: body.status || "running"
+        status: body.status || "queued"
       });
     }
 
     async function getAgentTask(taskId) {
-      const payload = await getJson(`${API_CONFIG.agentTaskEndpoint}/${encodeURIComponent(taskId)}`);
+      const payload = await getJson(`${API_CONFIG.agentTaskEndpoint}/${encodeURIComponent(taskId)}/view`);
       return createAgentTaskSnapshot(getResponseBody(payload) || {});
     }
 
@@ -4215,18 +4217,8 @@
               <div class="query-placeholder" id="queryPlaceholder">${escapeHtml(prompt)}</div>
               <button class="send-query" type="button" data-action="start" aria-label="发送当前问题">→</button>
             </div>
-            ${renderSearchModeToggle()}
           </div>
         </section>
-      `;
-    }
-
-    function renderSearchModeToggle() {
-      return `
-        <div class="search-mode-toggle" role="group" aria-label="搜索模式">
-          <button class="${state.searchMode === "quick" ? "is-active" : ""}" type="button" data-action="set-search-mode" data-mode="quick">快速搜索</button>
-          <button class="${state.searchMode === "agent" ? "is-active" : ""}" type="button" data-action="set-search-mode" data-mode="agent">Agent 模式</button>
-        </div>
       `;
     }
 
@@ -4246,7 +4238,7 @@
                 </div>
               `).join("")}
             </div>
-            ${state.searchMode === "agent" ? renderAgentProgressPanel() : ""}
+            ${renderAgentProgressPanel()}
           </div>
           ${renderCrowd()}
         </section>
@@ -4316,14 +4308,19 @@
     }
 
     function renderEmptyResults() {
+      const hasRuntimeError = Boolean(state.searchError);
+      const title = hasRuntimeError ? "Agent Runtime 暂不可用" : "暂时没找到足够相似的人";
+      const description = hasRuntimeError
+        ? state.searchError
+        : "这个问题可能还需要补充一些关键信息，或者先发到知乎圈子，等更多有经历的人回应。";
       return `
         <section class="screen paths-screen">
           <div class="empty-result-panel">
-            <h1>暂时没找到足够相似的人</h1>
-            <p>这个问题可能还需要补充一些关键信息，或者先发到知乎圈子，等更多有经历的人回应。</p>
+            <h1>${escapeHtml(title)}</h1>
+            <p>${escapeHtml(description)}</p>
             <div class="action-row">
-              <button class="primary" type="button" data-action="refine-question">补充问题信息</button>
-              <button class="secondary" type="button" data-action="community">发到知乎圈子问问更多人</button>
+              <button class="primary" type="button" data-action="refine-question">${hasRuntimeError ? "回到问题页" : "补充问题信息"}</button>
+              ${hasRuntimeError ? "" : '<button class="secondary" type="button" data-action="community">发到知乎圈子问问更多人</button>'}
               <button class="text-button" type="button" data-action="home">回到首页</button>
             </div>
           </div>
@@ -4346,11 +4343,18 @@
         if (state.page === "loading") render();
         return await pollAgentTask(task.taskId, query);
       } catch (error) {
-        console.warn("Agent API unavailable, using mock fallback.", error);
-        state.backendStatus = "mock";
-        if (!API_CONFIG.useMockFallback) throw error;
-        showToast("真实 Agent 链路暂不可用，已降级到本地 mock。");
-        return requestMockAgentSearchData(query);
+        console.warn("Persistent Agent Runtime unavailable.", error);
+        const message = buildAgentRuntimeErrorMessage(error);
+        state.backendStatus = "error";
+        state.searchError = message;
+        state.agentTask = createAgentTaskSnapshot({
+          ...state.agentTask,
+          status: "failed",
+          error: { message }
+        });
+        if (state.page === "loading") render();
+        showToast(message);
+        throw new Error(message);
       }
     }
 
@@ -4408,6 +4412,7 @@
       if (!taskId) throw new Error("Agent taskId missing");
 
       const runId = ++agentPollRunId;
+      const startedAt = Date.now();
       let consecutivePollErrors = 0;
       while (runId === agentPollRunId) {
         let task;
@@ -4428,6 +4433,22 @@
         state.agentTask = task;
         state.backendStatus = task.status === "completed" ? "ready" : "loading";
         if (state.page === "loading") render();
+
+        const elapsedMs = Date.now() - startedAt;
+        const hasStartedStage = task.stages.some((stage) => stage.status !== "pending");
+        if (task.status === "queued" && !hasStartedStage && elapsedMs > API_CONFIG.agentQueueWaitTimeoutMs) {
+          stopAgentPolling();
+          const error = new Error("Agent worker did not start consuming the task");
+          error.code = "AGENT_WORKER_UNAVAILABLE";
+          throw error;
+        }
+
+        if (elapsedMs > API_CONFIG.agentPollTimeoutMs) {
+          stopAgentPolling();
+          const error = new Error("Agent polling timed out");
+          error.code = "AGENT_POLL_TIMEOUT";
+          throw error;
+        }
 
         if (task.status === "completed") {
           stopAgentPolling();
@@ -4454,39 +4475,16 @@
       agentPollTimer = null;
     }
 
-    async function requestSearchData(query) {
-      state.backendStatus = STATIC_MOCK_MODE ? "mock" : "loading";
-      if (STATIC_MOCK_MODE) {
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        return normalizeSearchResponse(mockSearchPayload(query), query);
-      }
-
-      try {
-        const payload = await postJson(API_CONFIG.demoSearchEndpoint, { query, count: 5, dataMode: state.dataMode });
-        const body = getResponseBody(payload) || {};
-        const explicitFailure = payload?.success === false || body?.success === false;
-        const data = normalizeSearchResponse(payload, query);
-        state.backendStatus = explicitFailure ? "mock" : "ready";
-        return data;
-      } catch (error) {
-        console.warn("Search API unavailable, using mock fallback.", error);
-        state.backendStatus = "mock";
-        if (!API_CONFIG.useMockFallback) throw error;
-        return normalizeSearchResponse(mockSearchPayload(query), query);
-      }
-    }
-
     async function startLoading() {
       stopAgentPolling();
       state.loadingStep = 0;
+      state.searchError = "";
       state.analysisSteps = defaultAnalysisSteps(state.question);
       state.focusTags = ["身份周期", "现金流", "工作边界", "回流代价"];
       state.agentTask = createAgentTaskSnapshot();
       setPage("loading");
       clearLoadingTimers();
-      const searchPromise = state.searchMode === "agent"
-        ? requestAgentSearchData(state.question)
-        : requestSearchData(state.question);
+      const searchPromise = requestAgentSearchData(state.question);
       searchPromise.then((data) => {
         state.analysisSteps = data.analysisSteps.length ? data.analysisSteps : defaultAnalysisSteps(state.question);
         state.focusTags = data.focusTags.length ? data.focusTags : state.focusTags;
@@ -4499,10 +4497,18 @@
           if (state.page === "loading") updateLoadingSteps();
         }, 850 * (index + 1)));
       });
-      const [searchData] = await Promise.all([searchPromise, minimumLoading]);
-      clearLoadingTimers();
-      applySearchData(searchData, state.question);
-      routeAfterSearchData();
+      try {
+        const [searchData] = await Promise.all([searchPromise, minimumLoading]);
+        clearLoadingTimers();
+        state.searchError = "";
+        applySearchData(searchData, state.question);
+        routeAfterSearchData();
+      } catch (error) {
+        clearLoadingTimers();
+        state.searchError = state.searchError || buildAgentRuntimeErrorMessage(error);
+        state.backendStatus = "error";
+        setPage("empty");
+      }
     }
 
     function updateLoadingSteps() {
@@ -5265,10 +5271,6 @@
           }
           if (action === "paths") setPage("paths");
           if (action === "library") setPage("library");
-          if (action === "set-search-mode") {
-            state.searchMode = target.dataset.mode === "agent" ? "agent" : "quick";
-            render();
-          }
           if (action === "samples") {
             if (state.pathExpanded) setPage("paths");
             else setPage("samples");

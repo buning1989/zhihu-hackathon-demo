@@ -3,6 +3,7 @@ import { getCurrentUserContext, type UserContext } from "../auth/session.js";
 import { assertAgentTaskQueueReady, enqueueAgentTask } from "../agent/agentQueue.js";
 import { agentRepository } from "../agent/agentRepository.js";
 import { completeTask, createTask, failTask, getTask } from "../agent/agentTaskStore.js";
+import { buildPersistentAgentTaskView } from "../agent/agentTaskView.js";
 import type {
   AgentSearchTaskStartApiResponse,
   AgentTaskApiResponse,
@@ -91,6 +92,28 @@ agentRoutes.get("/tasks/:taskId", async (req, res, next) => {
     res.json({
       success: true,
       data: snapshot
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+agentRoutes.get("/tasks/:taskId/view", async (req, res, next) => {
+  try {
+    const taskId = req.params.taskId.trim();
+
+    if (!agentRepository.isConfigured()) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    const snapshot = await agentRepository.getTaskSnapshot(taskId);
+    if (!snapshot) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    res.json({
+      success: true,
+      data: buildPersistentAgentTaskView(snapshot)
     });
   } catch (error) {
     next(error);

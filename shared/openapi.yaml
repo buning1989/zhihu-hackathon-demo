@@ -581,7 +581,7 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 7 persistent Agent Runtime. Creates a queued task in
+        Persistent Agent Runtime. Creates a queued task in
         Postgres, writes task.created, enqueues a BullMQ job, and writes
         task.enqueued. A separate worker consumes the job and runs the
         rule-based business stage workflow: understand_goal_rule,
@@ -598,7 +598,7 @@ paths:
         rule fallback artifact without failing the task. It does not run
         persona build, the demo search orchestrator, or stream events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase7
+      x-implementation-status: implemented
       requestBody:
         required: true
         content:
@@ -656,6 +656,39 @@ paths:
                 $ref: "#/components/schemas/AgentTaskResponse"
         "404":
           description: Task does not exist or expired from the in-memory store and was not found in Postgres.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/view:
+    get:
+      tags:
+        - Agent
+      summary: Get persistent Agent task view for the frontend
+      description: >
+        Phase 8 read-only adapter for visible product demos. Reads the
+        persistent Postgres task snapshot and maps guarded_final_result,
+        candidates and evidence artifacts into a frontend-friendly task view.
+        The result field reuses the demo display shape with analysis, paths,
+        people, personas, sections and meta. This endpoint does not check the
+        legacy in-memory task store and does not mutate task state.
+      operationId: getPersistentAgentTaskView
+      x-implementation-status: implemented-phase8
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Frontend-friendly persistent Agent task view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistentAgentTaskViewResponse"
+        "404":
+          description: Persistent task was not found.
           content:
             application/json:
               schema:
@@ -1187,7 +1220,7 @@ components:
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for future SSE; endpoint is not implemented in Phase 7.
+              description: Reserved for future SSE; endpoint is not implemented in Phase 8.
     AgentTaskResponse:
       type: object
       required:
@@ -1201,6 +1234,115 @@ components:
           oneOf:
             - $ref: "#/components/schemas/AgentTask"
             - $ref: "#/components/schemas/PersistentAgentTaskSnapshot"
+    PersistentAgentTaskViewResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PersistentAgentTaskView"
+    PersistentAgentTaskView:
+      type: object
+      required:
+        - taskId
+        - status
+        - stages
+        - partial
+      properties:
+        taskId:
+          type: string
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - waiting_retry
+            - completed
+            - failed
+            - cancelled
+        currentStage:
+          type: string
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersistentAgentTaskViewStage"
+        partial:
+          type: object
+          additionalProperties: true
+          description: Small live preview data for the loading page.
+        result:
+          allOf:
+            - $ref: "#/components/schemas/DemoSearchResponse"
+          nullable: true
+          description: Present when final_result or guarded_final_result artifacts exist.
+        error:
+          type: object
+          nullable: true
+          properties:
+            message:
+              type: string
+        debug:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PersistentAgentTaskViewStage:
+      type: object
+      required:
+        - name
+        - label
+        - status
+      properties:
+        name:
+          type: string
+          enum:
+            - understand_goal_rule
+            - plan_search_llm
+            - retrieve_sources
+            - normalize_candidates
+            - evidence_extract_llm
+            - response_compose_llm
+            - grounding_guard_llm
+        label:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - fallback
+            - error
+            - skipped
+        fallbackReason:
+          type: string
+        durationMs:
+          type: integer
+          minimum: 0
+        effectiveTimeoutMs:
+          type: integer
+          minimum: 0
+        provider:
+          type: string
+        model:
+          type: string
+        attempts:
+          type: integer
+          minimum: 0
     PersistentAgentTaskSnapshot:
       type: object
       required:

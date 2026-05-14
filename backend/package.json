@@ -12,6 +12,7 @@
     "db:smoke:agent": "node scripts/smoke-agent-db.mjs",
     "smoke:llm-gateway": "node scripts/smoke-llm-gateway.mjs",
     "smoke:agent-worker": "node scripts/smoke-agent-worker.mjs",
+    "smoke:agent-view": "node scripts/smoke-agent-view.mjs",
     "smoke": "npm run build && node dist/tests/smoke.test.js"
   },
   "dependencies": {

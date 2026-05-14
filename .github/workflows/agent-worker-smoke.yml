@@ -84,3 +84,4 @@ jobs:
             sleep 1
           done
           npm run smoke:agent-worker -w backend
+          npm run smoke:agent-view -w backend
