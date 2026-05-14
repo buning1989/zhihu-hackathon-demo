@@ -1,13 +1,16 @@
 export const AGENT_STAGE_UNDERSTAND_GOAL_RULE = "understand_goal_rule";
+export const AGENT_STAGE_PLAN_SEARCH_LLM = "plan_search_llm";
 export const AGENT_STAGE_RETRIEVE_SOURCES = "retrieve_sources";
 export const AGENT_STAGE_NORMALIZE_CANDIDATES = "normalize_candidates";
 
 export type AgentBusinessStageName =
   | typeof AGENT_STAGE_UNDERSTAND_GOAL_RULE
+  | typeof AGENT_STAGE_PLAN_SEARCH_LLM
   | typeof AGENT_STAGE_RETRIEVE_SOURCES
   | typeof AGENT_STAGE_NORMALIZE_CANDIDATES;
 
 export const AGENT_ARTIFACT_INTENT = "intent";
+export const AGENT_ARTIFACT_SEARCH_PLAN = "search_plan";
 export const AGENT_ARTIFACT_RAW_SOURCES = "raw_sources";
 export const AGENT_ARTIFACT_CANDIDATES = "candidates";
 
@@ -25,6 +28,17 @@ export interface IntentArtifactData {
   expandedQueries: string[];
   strategy: "rule_based";
   llmUsed: false;
+}
+
+export interface SearchPlanArtifactData {
+  originalQuery: string;
+  expandedQueries: string[];
+  searchAngles: string[];
+  negativeKeywords: string[];
+  targetPersonTypes: string[];
+  strategy: "llm_planned" | "rule_fallback";
+  llmUsed: boolean;
+  fallbackReason?: string;
 }
 
 export interface RawSourceItem {

@@ -10,6 +10,7 @@
     "agent:worker": "node scripts/agent-worker.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:smoke:agent": "node scripts/smoke-agent-db.mjs",
+    "smoke:llm-gateway": "node scripts/smoke-llm-gateway.mjs",
     "smoke:agent-worker": "node scripts/smoke-agent-worker.mjs",
     "smoke": "npm run build && node dist/tests/smoke.test.js"
   },

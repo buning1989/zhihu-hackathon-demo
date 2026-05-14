@@ -49,6 +49,14 @@ try {
   assert(
     completedSnapshot.stages.some(
       (stage) =>
+        stage.stageName === "plan_search_llm" &&
+        (stage.status === "succeeded" || stage.status === "fallback")
+    ),
+    "plan_search_llm stage did not succeed or fallback"
+  );
+  assert(
+    completedSnapshot.stages.some(
+      (stage) =>
         stage.stageName === "retrieve_sources" &&
         (stage.status === "succeeded" || stage.status === "fallback")
     ),
@@ -63,6 +71,10 @@ try {
   assert(
     completedSnapshot.artifacts.some((artifact) => artifact.type === "intent"),
     "intent artifact was not found"
+  );
+  assert(
+    completedSnapshot.artifacts.some((artifact) => artifact.type === "search_plan"),
+    "search_plan artifact was not found"
   );
   assert(
     completedSnapshot.artifacts.some((artifact) => artifact.type === "raw_sources"),

@@ -4,16 +4,19 @@ import type {
   PersistentAgentStageRun
 } from "../agentModels.js";
 import { runNormalizeCandidatesStage } from "./normalizeCandidatesStage.js";
+import { runPlanSearchLlmStage } from "./planSearchLlmStage.js";
 import { runRetrieveSourcesStage } from "./retrieveSourcesStage.js";
 import type {
   AgentBusinessStageName,
   AgentStageOutput,
   CandidatesArtifactData,
   IntentArtifactData,
-  RawSourcesArtifactData
+  RawSourcesArtifactData,
+  SearchPlanArtifactData
 } from "./stageTypes.js";
 import {
   AGENT_STAGE_NORMALIZE_CANDIDATES,
+  AGENT_STAGE_PLAN_SEARCH_LLM,
   AGENT_STAGE_RETRIEVE_SOURCES,
   AGENT_STAGE_UNDERSTAND_GOAL_RULE
 } from "./stageTypes.js";
@@ -77,13 +80,23 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
     });
     const intent = intentStage.output.data;
 
+    const searchPlanStage = await executeAgentStage<SearchPlanArtifactData>({
+      taskId,
+      stageName: AGENT_STAGE_PLAN_SEARCH_LLM,
+      inputArtifactIds: [intentStage.artifact.id],
+      progressStarted: 32,
+      progressCompleted: 45,
+      run: () => runPlanSearchLlmStage(taskId, intent)
+    });
+    const searchPlan = searchPlanStage.output.data;
+
     const rawSourcesStage = await executeAgentStage<RawSourcesArtifactData>({
       taskId,
       stageName: AGENT_STAGE_RETRIEVE_SOURCES,
-      inputArtifactIds: [intentStage.artifact.id],
-      progressStarted: 40,
-      progressCompleted: 65,
-      run: () => runRetrieveSourcesStage(intent)
+      inputArtifactIds: [searchPlanStage.artifact.id],
+      progressStarted: 52,
+      progressCompleted: 70,
+      run: () => runRetrieveSourcesStage(searchPlan, intent)
     });
     const rawSources = rawSourcesStage.output.data;
 
@@ -201,7 +214,7 @@ async function executeAgentStage<TData>(
 
     await agentRepository.createEvent({
       taskId: input.taskId,
-      type: "stage.completed",
+      type: status === "fallback" ? "stage.fallback" : "stage.completed",
       payload: {
         stageRunId: stage.id,
         stageName: input.stageName,

@@ -20,6 +20,8 @@ const DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
+const AGENT_LLM_PROVIDERS = new Set(["deepseek", "kimi"]);
+const AGENT_LLM_TEST_MODES = new Set(["mock", "real"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
 const zhihuOpenapiBase = firstNonEmpty(
   process.env.ZHIHU_OPENAPI_BASE_URL,
@@ -54,7 +56,15 @@ export const config = {
   redisUrl: firstNonEmpty(process.env.REDIS_URL),
   agent: {
     taskTtlHours: parsePositiveInteger(process.env.AGENT_TASK_TTL_HOURS, 24),
-    queueName: firstNonEmpty(process.env.AGENT_QUEUE_NAME) || "agent-tasks"
+    queueName: firstNonEmpty(process.env.AGENT_QUEUE_NAME) || "agent-tasks",
+    llm: {
+      enabled: parseBoolean(process.env.AGENT_LLM_ENABLED, false),
+      provider: parseAgentLlmProvider(process.env.AGENT_LLM_PROVIDER),
+      model: firstNonEmpty(process.env.AGENT_LLM_MODEL),
+      timeoutMs: parsePositiveInteger(process.env.AGENT_LLM_TIMEOUT_MS, 90000),
+      retries: parseNonNegativeInteger(process.env.AGENT_LLM_RETRIES, 1),
+      testMode: parseAgentLlmTestMode(process.env.AGENT_LLM_TEST_MODE)
+    }
   },
   host: process.env.HOST || "127.0.0.1",
   port: parsePositiveInteger(process.env.PORT ?? process.env.BACKEND_PORT, 8000),
@@ -131,4 +141,12 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 
 function parseLlmProvider(value: string | undefined): "openai_compatible" {
   return value && LLM_PROVIDERS.has(value) ? (value as "openai_compatible") : "openai_compatible";
+}
+
+function parseAgentLlmProvider(value: string | undefined): "deepseek" | "kimi" {
+  return value && AGENT_LLM_PROVIDERS.has(value) ? (value as "deepseek" | "kimi") : "deepseek";
+}
+
+function parseAgentLlmTestMode(value: string | undefined): "mock" | "real" {
+  return value && AGENT_LLM_TEST_MODES.has(value) ? (value as "mock" | "real") : "real";
 }

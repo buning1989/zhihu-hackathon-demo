@@ -581,16 +581,20 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 3 persistent Agent Runtime. Creates a queued task in
+        Phase 4 persistent Agent Runtime. Creates a queued task in
         Postgres, writes task.created, enqueues a BullMQ job, and writes
         task.enqueued. A separate worker consumes the job and runs the
         rule-based business stage workflow: understand_goal_rule,
-        retrieve_sources, and normalize_candidates. retrieve_sources reuses
-        the existing search service when Zhihu config is available and writes a
-        fallback stage/artifact otherwise. It does not call LLMs, run the demo
-        search orchestrator, or stream events.
+        plan_search_llm, retrieve_sources, and normalize_candidates.
+        plan_search_llm is the only Agent LLM stage in Phase 4 and must go
+        through the LLM Gateway for timeout, retry, JSON parse, schema
+        validation, and fallback control. retrieve_sources reuses the existing
+        search service when Zhihu config is available and writes a fallback
+        stage/artifact otherwise. It does not run evidence extraction, response
+        composition, grounding guard, the demo search orchestrator, or stream
+        events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase3
+      x-implementation-status: implemented-phase4
       requestBody:
         required: true
         content:
@@ -1179,7 +1183,7 @@ components:
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for future SSE; endpoint is not implemented in Phase 3.
+              description: Reserved for future SSE; endpoint is not implemented in Phase 4.
     AgentTaskResponse:
       type: object
       required:
@@ -1377,6 +1381,7 @@ components:
         data:
           oneOf:
             - $ref: "#/components/schemas/PersistentAgentIntentArtifact"
+            - $ref: "#/components/schemas/PersistentAgentSearchPlanArtifact"
             - $ref: "#/components/schemas/PersistentAgentRawSourcesArtifact"
             - $ref: "#/components/schemas/PersistentAgentCandidatesArtifact"
             - type: object
@@ -1407,6 +1412,45 @@ components:
         llmUsed:
           type: boolean
           const: false
+    PersistentAgentSearchPlanArtifact:
+      type: object
+      required:
+        - originalQuery
+        - expandedQueries
+        - searchAngles
+        - negativeKeywords
+        - targetPersonTypes
+        - strategy
+        - llmUsed
+      properties:
+        originalQuery:
+          type: string
+        expandedQueries:
+          type: array
+          items:
+            type: string
+        searchAngles:
+          type: array
+          items:
+            type: string
+        negativeKeywords:
+          type: array
+          items:
+            type: string
+        targetPersonTypes:
+          type: array
+          items:
+            type: string
+        strategy:
+          type: string
+          enum:
+            - llm_planned
+            - rule_fallback
+        llmUsed:
+          type: boolean
+        fallbackReason:
+          type: string
+          description: Present when plan_search_llm used Gateway fallback.
     PersistentAgentRawSourcesArtifact:
       type: object
       required:

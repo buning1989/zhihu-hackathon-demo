@@ -8,19 +8,23 @@ import {
   type AgentStageOutput,
   type IntentArtifactData,
   type RawSourceItem,
-  type RawSourcesArtifactData
+  type RawSourcesArtifactData,
+  type SearchPlanArtifactData
 } from "./stageTypes.js";
 
 const RETRIEVE_SOURCE_COUNT = 10;
 
 export async function runRetrieveSourcesStage(
+  searchPlan: SearchPlanArtifactData | undefined,
   intent: IntentArtifactData
 ): Promise<AgentStageOutput<RawSourcesArtifactData>> {
-  const query = intent.expandedQueries[0] || intent.normalizedQuery || intent.originalQuery;
+  const expandedQueries = selectExpandedQueries(searchPlan, intent);
+  const query = expandedQueries[0] || intent.normalizedQuery || intent.originalQuery;
 
   if (!config.zhihu.accessSecret) {
     return buildFallbackRawSources(
       intent,
+      expandedQueries,
       "ZHIHU_AUTH_FAILED: missing ZH_ACCESS_SECRET/ZHIHU_API_KEY; mock sources used"
     );
   }
@@ -33,7 +37,7 @@ export async function runRetrieveSourcesStage(
       artifactType: AGENT_ARTIFACT_RAW_SOURCES,
       data: {
         query,
-        expandedQueries: intent.expandedQueries,
+        expandedQueries,
         sources,
         sourceCount: sources.length,
         provider: "zhihu",
@@ -42,12 +46,13 @@ export async function runRetrieveSourcesStage(
       }
     };
   } catch (error) {
-    return buildFallbackRawSources(intent, summarizeSearchFallbackReason(error));
+    return buildFallbackRawSources(intent, expandedQueries, summarizeSearchFallbackReason(error));
   }
 }
 
 function buildFallbackRawSources(
   intent: IntentArtifactData,
+  expandedQueries: string[],
   fallbackReason: string
 ): AgentStageOutput<RawSourcesArtifactData> {
   const resolvedDataMode = config.dataMode === "cache_first" ? "cache_first" : "mock";
@@ -103,7 +108,7 @@ function buildFallbackRawSources(
     fallbackReason,
     data: {
       query: intent.normalizedQuery || intent.originalQuery,
-      expandedQueries: intent.expandedQueries,
+      expandedQueries,
       sources,
       sourceCount: sources.length,
       provider: sources.length > 0 ? "mock" : "empty",
@@ -111,6 +116,18 @@ function buildFallbackRawSources(
       fallbackReason
     }
   };
+}
+
+function selectExpandedQueries(
+  searchPlan: SearchPlanArtifactData | undefined,
+  intent: IntentArtifactData
+): string[] {
+  return uniqueNonEmpty([
+    ...(searchPlan?.expandedQueries ?? []),
+    ...intent.expandedQueries,
+    intent.normalizedQuery,
+    intent.originalQuery
+  ]);
 }
 
 function mapSearchItemToRawSource(item: SearchItem, index: number): RawSourceItem {
@@ -165,4 +182,19 @@ function truncateText(value: string, maxLength: number): string {
 
 function clampScore(value: number): number {
   return Math.min(Math.max(Number(value.toFixed(2)), 0), 1);
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+
+  return result;
 }

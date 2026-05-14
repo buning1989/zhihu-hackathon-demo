@@ -39,6 +39,12 @@ jobs:
       REDIS_URL: redis://localhost:6379
       AGENT_QUEUE_NAME: agent-tasks
       AGENT_API_BASE_URL: http://127.0.0.1:8000
+      AGENT_LLM_ENABLED: "true"
+      AGENT_LLM_PROVIDER: deepseek
+      AGENT_LLM_MODEL: mock-agent-model
+      AGENT_LLM_TIMEOUT_MS: "1000"
+      AGENT_LLM_RETRIES: "1"
+      AGENT_LLM_TEST_MODE: mock
 
     steps:
       - name: Checkout
@@ -56,6 +62,9 @@ jobs:
 
       - name: Build backend
         run: npm run build -w backend
+
+      - name: Run LLM Gateway smoke
+        run: npm run smoke:llm-gateway -w backend
 
       - name: Run database migrations
         run: npm run db:migrate -w backend
