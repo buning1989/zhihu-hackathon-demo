@@ -2,8 +2,10 @@ import { config } from "../config/env.js";
 import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
 import {
   composeMultiLlmDemoSearchResponse,
+  type DemoSearchPipelineCallbacks,
   hasPersonaChatLlm
 } from "../llm/demoSearchOrchestrator.js";
+import type { LlmTaskType } from "../llm/llmRouter.js";
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import {
   createDemoSearchIdentity,
@@ -25,6 +27,14 @@ export interface DemoSearchRequest {
   dataMode: DemoDataMode;
 }
 
+export interface DemoSearchOptions {
+  bypassCache?: boolean;
+  requestBudgetMs?: number;
+  stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  searchStageTimeoutMs?: number;
+  pipelineCallbacks?: DemoSearchPipelineCallbacks;
+}
+
 const DEFAULT_COUNT = 5;
 const MAX_COUNT = 20;
 const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "real"]);
@@ -41,7 +51,8 @@ const demoSearchResponseCache = new Map<string, DemoSearchCacheEntry>();
 export class DemoSearchService {
   async search(
     request: DemoSearchRequest,
-    userContext?: UserContext
+    userContext?: UserContext,
+    options: DemoSearchOptions = {}
   ): Promise<DemoSearchResponse> {
     const startedAt = Date.now();
     const identity = createDemoSearchIdentity(request.query, {
@@ -49,13 +60,18 @@ export class DemoSearchService {
       dataMode: request.dataMode
     });
     const cacheKey = buildDemoSearchCacheKey(request, identity, userContext);
-    const cachedResponse = readCachedDemoResponse(cacheKey, identity, startedAt);
+    const cachedResponse = options.bypassCache
+      ? undefined
+      : readCachedDemoResponse(cacheKey, identity, startedAt);
 
     if (cachedResponse) {
-      return cacheDemoResponse(cachedResponse);
+      const response = cacheDemoResponse(cachedResponse);
+      options.pipelineCallbacks?.onFinalResult?.(response);
+      return response;
     }
 
     if (request.dataMode === "real") {
+      const requestBudgetMs = options.requestBudgetMs ?? DEMO_SEARCH_BUDGET_MS;
       try {
         const response = await withRequestBudget(
           composeMultiLlmDemoSearchResponse({
@@ -63,15 +79,20 @@ export class DemoSearchService {
             count: request.count,
             dataMode: request.dataMode,
             startedAt,
-            requestBudgetMs: DEMO_SEARCH_BUDGET_MS,
-            userContext
+            requestBudgetMs,
+            stageTimeoutMs: options.stageTimeoutMs,
+            searchStageTimeoutMs: options.searchStageTimeoutMs,
+            userContext,
+            callbacks: options.pipelineCallbacks
           }),
-          DEMO_SEARCH_BUDGET_MS,
+          requestBudgetMs,
           "DEMO_SEARCH_BUDGET_TIMEOUT",
-          `/api/demo/search exceeded ${DEMO_SEARCH_BUDGET_MS}ms request budget`
+          `/api/demo/search exceeded ${requestBudgetMs}ms request budget`
         );
         assertDemoSearchGrounding(response);
-        return cacheDemoResponse(writeCachedDemoResponse(cacheKey, finalizeDemoMeta(response, startedAt), false));
+        const finalResponse = cacheDemoResponse(writeCachedDemoResponse(cacheKey, finalizeDemoMeta(response, startedAt), false));
+        options.pipelineCallbacks?.onFinalResult?.(finalResponse);
+        return finalResponse;
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
 
@@ -113,7 +134,9 @@ export class DemoSearchService {
             ];
         response.debug.timings = [];
         assertDemoSearchGrounding(response);
-        return cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
+        const finalResponse = cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
+        options.pipelineCallbacks?.onFinalResult?.(finalResponse);
+        return finalResponse;
       }
     }
 
@@ -127,7 +150,9 @@ export class DemoSearchService {
     response.contextUsed = createDemoContextUsed(userContext);
     finalizeDemoMeta(response, startedAt);
     assertDemoSearchGrounding(response);
-    return cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
+    const finalResponse = cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
+    options.pipelineCallbacks?.onFinalResult?.(finalResponse);
+    return finalResponse;
   }
 }
 

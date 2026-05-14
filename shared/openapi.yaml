@@ -22,6 +22,8 @@ tags:
     description: Implemented raw Zhihu proxy endpoints.
   - name: Demo
     description: Product-layer demo contracts for analysis, paths, people and AI personas.
+  - name: Agent
+    description: Lightweight in-memory agent task wrapper around demo search.
   - name: Personas
     description: AI persona chat contracts grounded in public content evidence.
   - name: Planned
@@ -543,6 +545,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/search:
+    post:
+      tags:
+        - Agent
+      summary: Start a lightweight demo search agent task
+      description: >
+        Creates an in-memory task, starts the existing demo search pipeline in
+        the background, and returns immediately with a taskId. The final result
+        keeps the existing demo.v1 response shape used by /api/demo/search.
+      operationId: startDemoSearchAgent
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemoSearchRequest"
+      responses:
+        "200":
+          description: Agent task accepted and running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskStartResponse"
+        "400":
+          description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}:
+    get:
+      tags:
+        - Agent
+      summary: Get current agent task state
+      description: >
+        Returns stage progress, currentStage, partial result, final result,
+        error, debug, createdAt and updatedAt for an in-memory agent task.
+      operationId: getDemoSearchAgentTask
+      x-implementation-status: implemented
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current agent task state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskResponse"
+        "404":
+          description: Task does not exist or expired from the in-memory store.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/personas/chat:
     post:
       tags:
@@ -1008,6 +1069,184 @@ components:
               type: string
             message:
               type: string
+    AgentTaskStartResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - taskId
+            - status
+            - createdAt
+          properties:
+            taskId:
+              type: string
+            status:
+              type: string
+              const: running
+            createdAt:
+              type: string
+              format: date-time
+    AgentTaskResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AgentTask"
+    AgentTask:
+      type: object
+      required:
+        - id
+        - taskId
+        - type
+        - status
+        - input
+        - stages
+        - partial
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+          const: demo_search
+        status:
+          type: string
+          enum:
+            - running
+            - completed
+            - failed
+        input:
+          $ref: "#/components/schemas/DemoSearchRequest"
+        currentStage:
+          type: string
+          enum:
+            - intent_expand
+            - content_search
+            - candidate_rank
+            - evidence_extract
+            - response_compose
+            - grounding_guard
+            - persona_prepare
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentStage"
+        partial:
+          $ref: "#/components/schemas/AgentPartialResult"
+        result:
+          $ref: "#/components/schemas/DemoSearchResponse"
+        error:
+          $ref: "#/components/schemas/AgentTaskError"
+        debug:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AgentStage:
+      type: object
+      required:
+        - name
+        - label
+        - status
+      properties:
+        name:
+          type: string
+          enum:
+            - intent_expand
+            - content_search
+            - candidate_rank
+            - evidence_extract
+            - response_compose
+            - grounding_guard
+            - persona_prepare
+        label:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - fallback
+            - timeout
+            - error
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+        fallbackReason:
+          type: string
+        error:
+          $ref: "#/components/schemas/AgentTaskError"
+    AgentPartialResult:
+      type: object
+      additionalProperties: true
+      properties:
+        expandedQueries:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        searchStats:
+          type: object
+          additionalProperties: true
+        candidates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        paths:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoPath"
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoPerson"
+        personas:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonaIndex"
+    AgentTaskError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        stage:
+          type: string
     DemoSearchRequest:
       type: object
       required:

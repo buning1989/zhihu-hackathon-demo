@@ -443,6 +443,35 @@
       box-shadow: 0 22px 46px rgba(216, 154, 69, 0.28);
     }
 
+    .search-mode-toggle {
+      display: inline-flex;
+      gap: 6px;
+      margin-top: 18px;
+      padding: 5px;
+      border: 1px solid rgba(42, 36, 28, 0.1);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: 0 14px 34px rgba(52, 43, 32, 0.06);
+    }
+
+    .search-mode-toggle button {
+      min-width: 108px;
+      min-height: 38px;
+      padding: 8px 16px;
+      border: 0;
+      border-radius: 999px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 850;
+      transition: 180ms ease;
+    }
+
+    .search-mode-toggle button.is-active {
+      color: #3f2b0f;
+      background: var(--accent-warm-soft);
+      box-shadow: 0 10px 22px rgba(216, 154, 69, 0.14);
+    }
+
     .hint {
       margin-top: 12px;
       color: var(--faint);
@@ -790,6 +819,128 @@
 
     .fingerprint-step strong {
       color: var(--text);
+    }
+
+    .agent-progress-panel {
+      display: grid;
+      gap: 18px;
+      margin-top: 22px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .agent-progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .agent-progress-head strong {
+      font-size: 18px;
+    }
+
+    .agent-status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      color: #3f2b0f;
+      background: var(--accent-warm-soft);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .agent-stage-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .agent-stage-item {
+      display: grid;
+      grid-template-columns: 104px 1fr;
+      gap: 10px;
+      align-items: start;
+      min-height: 42px;
+      padding: 10px 12px;
+      border: 1px solid rgba(38, 35, 31, 0.08);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.64);
+    }
+
+    .agent-stage-state {
+      display: inline-flex;
+      justify-content: center;
+      width: 84px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: var(--faint);
+      background: rgba(38, 35, 31, 0.05);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .agent-stage-item.is-running .agent-stage-state {
+      color: #2f5c9a;
+      background: rgba(23, 114, 246, 0.1);
+    }
+
+    .agent-stage-item.is-completed .agent-stage-state {
+      color: #28664d;
+      background: var(--green-soft);
+    }
+
+    .agent-stage-item.is-fallback .agent-stage-state,
+    .agent-stage-item.is-timeout .agent-stage-state {
+      color: #765111;
+      background: rgba(255, 241, 199, 0.9);
+    }
+
+    .agent-stage-item.is-error .agent-stage-state {
+      color: #8c2f28;
+      background: rgba(255, 221, 216, 0.88);
+    }
+
+    .agent-stage-copy strong,
+    .agent-stage-copy span {
+      display: block;
+      line-height: 1.55;
+    }
+
+    .agent-stage-copy span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .agent-partial-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .agent-partial-card {
+      min-height: 88px;
+      padding: 12px;
+      border: 1px solid rgba(38, 35, 31, 0.08);
+      border-radius: 14px;
+      background: rgba(255, 253, 248, 0.72);
+    }
+
+    .agent-partial-card strong,
+    .agent-partial-card span {
+      display: block;
+    }
+
+    .agent-partial-card strong {
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .agent-partial-card span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
     }
 
     .loading .crowd-stage {
@@ -2751,11 +2902,14 @@
       meEndpoint: "/auth/me",
       searchEndpoint: "/api/demo/search",
       demoSearchEndpoint: "/api/demo/search",
+      agentSearchEndpoint: "/api/agent/search",
+      agentTaskEndpoint: "/api/agent/tasks",
       saveEndpoint: "/api/samples/save",
       savedEndpoint: "/api/samples/saved",
       chatEndpoint: "/api/personas/chat",
       dataMode: STATIC_MOCK_MODE ? "mock" : resolveDataMode(PAGE_PARAMS.get("dataMode")),
       requestTimeoutMs: 12000,
+      agentPollIntervalMs: 1400,
       useMockFallback: true,
       useMockUserFallback: STATIC_MOCK_MODE || PAGE_PARAMS.get("mockAuth") === "1"
     };
@@ -2953,6 +3107,16 @@
     let paths = mockPaths.map(normalizePath);
     let people = mockPeople.map((item, index) => normalizePerson(item, index));
 
+    const AGENT_STAGE_UI = [
+      { name: "intent_expand", label: "理解问题" },
+      { name: "content_search", label: "搜索内容" },
+      { name: "candidate_rank", label: "筛选样本" },
+      { name: "evidence_extract", label: "抽取证据" },
+      { name: "response_compose", label: "整理结果" },
+      { name: "grounding_guard", label: "边界检查" },
+      { name: "persona_prepare", label: "准备追问" }
+    ];
+
     const state = {
       page: "home",
       question: "不工作了之后，我想去新西兰生活",
@@ -2975,6 +3139,8 @@
       focusTags: ["身份周期", "现金流", "工作边界", "回流代价"],
       backendStatus: "idle",
       dataMode: API_CONFIG.dataMode,
+      searchMode: PAGE_PARAMS.get("searchMode") === "agent" || PAGE_PARAMS.get("mode") === "agent" ? "agent" : "quick",
+      agentTask: createAgentTaskSnapshot(),
       savedQuestionGroups: [],
       hasSubmittedQuestion: false,
       submittedQuestion: "",
@@ -3010,6 +3176,8 @@
     }
 
     let loadingTimers = [];
+    let agentPollTimer = null;
+    let agentPollRunId = 0;
     let spotlightTimer = null;
     let chatReplyTimer = null;
     let homePromptTimer = null;
@@ -3031,6 +3199,48 @@
         { title: "生成待确认问题", text: "是短暂停靠、长期迁移，还是想重建工作边界？" },
         { title: "匹配公开经历", text: "正在从真实分享里寻找走过相似道路的人..." }
       ];
+    }
+
+    function createAgentTaskSnapshot(task = {}) {
+      const stages = toArray(task.stages).length
+        ? toArray(task.stages).map((stage) => ({
+            name: textOf(stage.name),
+            label: textOf(stage.label || agentStageLabel(stage.name)),
+            status: textOf(stage.status || "pending"),
+            fallbackReason: textOf(stage.fallbackReason || stage.error?.message),
+            durationMs: numberOf(stage.durationMs, 0)
+          }))
+        : AGENT_STAGE_UI.map((stage) => ({ ...stage, status: "pending", fallbackReason: "", durationMs: 0 }));
+
+      return {
+        taskId: textOf(task.taskId || task.id),
+        status: textOf(task.status || "idle"),
+        currentStage: textOf(task.currentStage || ""),
+        stages,
+        partial: task.partial || {},
+        result: task.result || null,
+        error: task.error || null,
+        debug: task.debug || {},
+        createdAt: textOf(task.createdAt),
+        updatedAt: textOf(task.updatedAt)
+      };
+    }
+
+    function agentStageLabel(name) {
+      return AGENT_STAGE_UI.find((stage) => stage.name === name)?.label || "执行阶段";
+    }
+
+    function agentStatusText(status) {
+      return {
+        idle: "待启动",
+        running: "运行中",
+        completed: "已完成",
+        failed: "已失败",
+        pending: "等待",
+        fallback: "兜底",
+        timeout: "超时兜底",
+        error: "异常"
+      }[status] || status || "等待";
     }
 
     function toArray(value) {
@@ -3519,6 +3729,25 @@
       }
     }
 
+    async function startAgentSearch(query) {
+      const payload = await postJson(API_CONFIG.agentSearchEndpoint, {
+        query,
+        count: 5,
+        dataMode: state.dataMode
+      });
+      const body = getResponseBody(payload) || {};
+      return createAgentTaskSnapshot({
+        ...body,
+        taskId: body.taskId || body.id,
+        status: body.status || "running"
+      });
+    }
+
+    async function getAgentTask(taskId) {
+      const payload = await getJson(`${API_CONFIG.agentTaskEndpoint}/${encodeURIComponent(taskId)}`);
+      return createAgentTaskSnapshot(getResponseBody(payload) || {});
+    }
+
     function normalizeZhihuUser(payload) {
       const body = getResponseBody(payload) || {};
       const nestedUser = body.user || body.profile || body.me || {};
@@ -3804,6 +4033,7 @@
     function clearLoadingTimers() {
       loadingTimers.forEach((timer) => clearTimeout(timer));
       loadingTimers = [];
+      stopAgentPolling();
     }
 
     function clearChatReplyTimer() {
@@ -3951,8 +4181,18 @@
               <div class="query-placeholder" id="queryPlaceholder">${escapeHtml(prompt)}</div>
               <button class="send-query" type="button" data-action="start" aria-label="发送当前问题">→</button>
             </div>
+            ${renderSearchModeToggle()}
           </div>
         </section>
+      `;
+    }
+
+    function renderSearchModeToggle() {
+      return `
+        <div class="search-mode-toggle" role="group" aria-label="搜索模式">
+          <button class="${state.searchMode === "quick" ? "is-active" : ""}" type="button" data-action="set-search-mode" data-mode="quick">快速搜索</button>
+          <button class="${state.searchMode === "agent" ? "is-active" : ""}" type="button" data-action="set-search-mode" data-mode="agent">Agent 模式</button>
+        </div>
       `;
     }
 
@@ -3972,9 +4212,59 @@
                 </div>
               `).join("")}
             </div>
+            ${state.searchMode === "agent" ? renderAgentProgressPanel() : ""}
           </div>
           ${renderCrowd()}
         </section>
+      `;
+    }
+
+    function renderAgentProgressPanel() {
+      const task = state.agentTask || createAgentTaskSnapshot();
+      const activeStage = task.stages.find((stage) => stage.name === task.currentStage)
+        || task.stages.find((stage) => stage.status === "running")
+        || task.stages.find((stage) => stage.status === "pending")
+        || task.stages.at(-1);
+      const partial = task.partial || {};
+      const candidates = toArray(partial.candidates || partial.people).slice(0, 3);
+      const evidence = toArray(partial.evidence).slice(0, 3);
+      const personas = toArray(partial.personas).slice(0, 3);
+
+      return `
+        <div class="agent-progress-panel">
+          <div class="agent-progress-head">
+            <strong>${escapeHtml(activeStage?.label || "准备启动")}</strong>
+            <span class="agent-status-pill">${escapeHtml(agentStatusText(task.status))}</span>
+          </div>
+          <div class="agent-stage-list">
+            ${task.stages.map((stage) => `
+              <div class="agent-stage-item is-${escapeHtml(stage.status)}">
+                <span class="agent-stage-state">${escapeHtml(agentStatusText(stage.status))}</span>
+                <span class="agent-stage-copy">
+                  <strong>${escapeHtml(stage.label)}</strong>
+                  <span>${escapeHtml(stage.fallbackReason || (stage.durationMs ? `${stage.durationMs}ms` : ""))}</span>
+                </span>
+              </div>
+            `).join("")}
+          </div>
+          <div class="agent-partial-grid">
+            ${renderAgentPartialCard("候选样本", candidates, (item) => textOf(item.title || item.oneLine || item.name || item.author))}
+            ${renderAgentPartialCard("证据片段", evidence, (item) => textOf(item.title || item.text || item.label || item))}
+            ${renderAgentPartialCard("经验回声", personas, (item) => textOf(item.displayName || item.name || item.personId || item.id))}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAgentPartialCard(title, items, reader) {
+      const content = items.length
+        ? items.map((item) => `<span>${escapeHtml(reader(item) || "已找到一条公开内容")}</span>`).join("")
+        : `<span>等待当前阶段返回</span>`;
+      return `
+        <div class="agent-partial-card">
+          <strong>${escapeHtml(title)}</strong>
+          ${content}
+        </div>
       `;
     }
 
@@ -3992,6 +4282,105 @@
           </div>
         </section>
       `;
+    }
+
+    async function requestAgentSearchData(query) {
+      state.backendStatus = STATIC_MOCK_MODE ? "mock" : "loading";
+      state.agentTask = createAgentTaskSnapshot({ status: "running" });
+
+      if (STATIC_MOCK_MODE) {
+        return requestMockAgentSearchData(query);
+      }
+
+      const task = await startAgentSearch(query);
+      state.agentTask = task;
+      if (state.page === "loading") render();
+      return pollAgentTask(task.taskId, query);
+    }
+
+    async function requestMockAgentSearchData(query) {
+      state.agentTask = createAgentTaskSnapshot({ status: "running" });
+      for (let index = 0; index < AGENT_STAGE_UI.length; index += 1) {
+        state.agentTask = createAgentTaskSnapshot({
+          ...state.agentTask,
+          status: "running",
+          currentStage: AGENT_STAGE_UI[index].name,
+          stages: state.agentTask.stages.map((stage, stageIndex) => ({
+            ...stage,
+            status: stageIndex < index ? "completed" : stageIndex === index ? "running" : "pending"
+          })),
+          partial: buildMockAgentPartial(index)
+        });
+        if (state.page === "loading") render();
+        await new Promise((resolve) => {
+          agentPollTimer = setTimeout(resolve, 430);
+        });
+      }
+
+      const result = mockSearchPayload(query);
+      state.agentTask = createAgentTaskSnapshot({
+        ...state.agentTask,
+        status: "completed",
+        currentStage: "",
+        stages: state.agentTask.stages.map((stage) => ({ ...stage, status: "completed" })),
+        partial: {
+          ...state.agentTask.partial,
+          paths: result.paths,
+          people: result.people,
+          personas: result.people
+        },
+        result
+      });
+      state.backendStatus = "mock";
+      if (state.page === "loading") render();
+      return normalizeSearchResponse(result, query);
+    }
+
+    function buildMockAgentPartial(stageIndex) {
+      return {
+        expandedQueries: stageIndex >= 0 ? [{ query: state.question, type: "original" }] : [],
+        searchStats: stageIndex >= 1 ? { finalCandidateCount: mockPeople.length } : {},
+        candidates: stageIndex >= 2 ? mockPeople.slice(0, 3).map((person) => ({ title: person.oneLine, author: person.name })) : [],
+        evidence: stageIndex >= 3 ? mockPeople.slice(0, 3).flatMap((person) => person.articles.slice(0, 1)) : [],
+        paths: stageIndex >= 4 ? mockPaths : [],
+        people: stageIndex >= 4 ? mockPeople.slice(0, 3) : [],
+        personas: stageIndex >= 6 ? mockPeople.slice(0, 3) : []
+      };
+    }
+
+    async function pollAgentTask(taskId, query) {
+      if (!taskId) throw new Error("Agent taskId missing");
+
+      const runId = ++agentPollRunId;
+      while (runId === agentPollRunId) {
+        const task = await getAgentTask(taskId);
+        state.agentTask = task;
+        state.backendStatus = task.status === "completed" ? "ready" : "loading";
+        if (state.page === "loading") render();
+
+        if (task.status === "completed") {
+          stopAgentPolling();
+          if (!task.result) throw new Error("Agent task completed without result");
+          return normalizeSearchResponse({ success: true, data: task.result }, query);
+        }
+
+        if (task.status === "failed") {
+          stopAgentPolling();
+          throw new Error(task.error?.message || "Agent task failed");
+        }
+
+        await new Promise((resolve) => {
+          agentPollTimer = setTimeout(resolve, API_CONFIG.agentPollIntervalMs);
+        });
+      }
+
+      throw new Error("Agent polling stopped");
+    }
+
+    function stopAgentPolling() {
+      agentPollRunId += 1;
+      if (agentPollTimer) clearTimeout(agentPollTimer);
+      agentPollTimer = null;
     }
 
     async function requestSearchData(query) {
@@ -4020,9 +4409,12 @@
       state.loadingStep = 0;
       state.analysisSteps = defaultAnalysisSteps(state.question);
       state.focusTags = ["身份周期", "现金流", "工作边界", "回流代价"];
+      state.agentTask = createAgentTaskSnapshot();
       setPage("loading");
       clearLoadingTimers();
-      const searchPromise = requestSearchData(state.question);
+      const searchPromise = state.searchMode === "agent"
+        ? requestAgentSearchData(state.question)
+        : requestSearchData(state.question);
       searchPromise.then((data) => {
         state.analysisSteps = data.analysisSteps.length ? data.analysisSteps : defaultAnalysisSteps(state.question);
         state.focusTags = data.focusTags.length ? data.focusTags : state.focusTags;
@@ -4801,6 +5193,10 @@
           }
           if (action === "paths") setPage("paths");
           if (action === "library") setPage("library");
+          if (action === "set-search-mode") {
+            state.searchMode = target.dataset.mode === "agent" ? "agent" : "quick";
+            render();
+          }
           if (action === "samples") {
             if (state.pathExpanded) setPage("paths");
             else setPage("samples");

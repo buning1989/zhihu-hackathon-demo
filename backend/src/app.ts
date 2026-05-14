@@ -1,5 +1,6 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
+import { agentRoutes } from "./routes/agent.routes.js";
 import { authRoutes } from "./auth/routes.js";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware.js";
 import { demoRoutes } from "./routes/demo.routes.js";
@@ -46,6 +47,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/zhihu", zhihuRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/demo", demoRoutes);
+app.use("/api/agent", agentRoutes);
 app.use("/api/personas", personasRoutes);
 app.use("/auth", authRoutes);
 

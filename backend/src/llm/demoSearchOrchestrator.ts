@@ -73,7 +73,54 @@ interface ComposeMultiLlmDemoSearchInput {
   dataMode: DemoDataMode;
   startedAt: number;
   requestBudgetMs?: number;
+  stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  searchStageTimeoutMs?: number;
   userContext?: UserContext;
+  callbacks?: DemoSearchPipelineCallbacks;
+}
+
+export type DemoSearchPipelineStageName =
+  | "intent_expand"
+  | "content_search"
+  | "candidate_rank"
+  | "evidence_extract"
+  | "response_compose"
+  | "grounding_guard"
+  | "persona_prepare";
+
+export interface DemoSearchPipelinePartialResult {
+  expandedQueries?: DemoSearchQueryPlan[];
+  searchStats?: Record<string, unknown>;
+  candidates?: unknown[];
+  evidence?: unknown[];
+  paths?: DemoSearchResponse["paths"];
+  people?: DemoSearchResponse["people"];
+  personas?: DemoSearchResponse["personas"];
+}
+
+export interface DemoSearchPipelineCallbacks {
+  onStageStart?: (stageName: DemoSearchPipelineStageName) => void;
+  onStageComplete?: (
+    stageName: DemoSearchPipelineStageName,
+    payload?: Record<string, unknown>
+  ) => void;
+  onStageFallback?: (
+    stageName: DemoSearchPipelineStageName,
+    reason: string,
+    payload?: Record<string, unknown>
+  ) => void;
+  onStageTimeout?: (
+    stageName: DemoSearchPipelineStageName,
+    reason: string,
+    payload?: Record<string, unknown>
+  ) => void;
+  onStageError?: (
+    stageName: DemoSearchPipelineStageName,
+    error: unknown,
+    payload?: Record<string, unknown>
+  ) => void;
+  onPartialResult?: (partial: DemoSearchPipelinePartialResult) => void;
+  onFinalResult?: (response: DemoSearchResponse) => void;
 }
 
 interface CleanedCandidate {
@@ -190,6 +237,7 @@ interface CandidatePipelineResult {
 interface PipelineBudget {
   startedAt: number;
   budgetMs: number;
+  stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
 }
 
 const MAX_SEARCH_QUERIES = 12;
@@ -256,20 +304,60 @@ export async function composeMultiLlmDemoSearchResponse(
   const stageResults: DemoDebugLlmStageResult[] = [];
   const timings: DemoDebugTiming[] = [];
   const guardWarnings: string[] = [];
-  const budget = createPipelineBudget(input.startedAt, input.requestBudgetMs);
+  const callbacks = input.callbacks;
+  const budget = createPipelineBudget(input.startedAt, input.requestBudgetMs, input.stageTimeoutMs);
 
+  callbacks?.onStageStart?.("intent_expand");
   const intentStage = await runTimedStage(() =>
     runIntentExpandStage(input.query, input.userContext, budget)
   );
   stageResults.push(intentStage.stageResult);
   timings.push(createStageTiming(intentStage));
+  emitStageResult(callbacks, "intent_expand", intentStage.stageResult, {
+    durationMs: intentStage.durationMs
+  });
+  emitPartialResult(callbacks, {
+    expandedQueries: intentStage.output.searchQueries
+  });
 
-  const recalledSearch = await searchByExpandedQueries(
-    input.query,
-    intentStage.output,
-    input.count,
-    input.userContext
-  );
+  callbacks?.onStageStart?.("content_search");
+  let recalledSearch: SearchByExpandedQueriesResult;
+  try {
+    recalledSearch = await withPipelineStageTimeout(
+      searchByExpandedQueries(
+        input.query,
+        intentStage.output,
+        input.count,
+        input.userContext
+      ),
+      input.searchStageTimeoutMs,
+      "content_search"
+    );
+    callbacks?.onStageComplete?.("content_search", {
+      rawCandidateCount: recalledSearch.rawCandidateCount,
+      mergedCandidateCount: recalledSearch.mergedCandidateCount,
+      dedupedCandidateCount: recalledSearch.dedupedCandidateCount
+    });
+    emitPartialResult(callbacks, {
+      expandedQueries: recalledSearch.searchQueries,
+      searchStats: {
+        rawCandidateCount: recalledSearch.rawCandidateCount,
+        mergedCandidateCount: recalledSearch.mergedCandidateCount,
+        dedupedCandidateCount: recalledSearch.dedupedCandidateCount,
+        searchQueryResults: recalledSearch.searchQueryResults
+      }
+    });
+  } catch (error) {
+    const reason = formatErrorSummary(error);
+    if (isTimeoutFallbackReason(reason)) {
+      callbacks?.onStageTimeout?.("content_search", reason);
+    } else {
+      callbacks?.onStageError?.("content_search", error);
+    }
+    throw error;
+  }
+
+  callbacks?.onStageStart?.("candidate_rank");
   const candidatePipeline = await runCandidatePipeline(
     input.query,
     intentStage.output,
@@ -287,6 +375,23 @@ export async function composeMultiLlmDemoSearchResponse(
       candidatePipeline.stageResult.attempted === 0 || candidatePipeline.stageResult.failed > 0,
     fallbackReason: candidatePipeline.stageResult.fallbackReasons.join("; ")
   }));
+  emitStageResult(callbacks, "candidate_rank", candidatePipeline.stageResult, {
+    durationMs: candidatePipeline.durationMs,
+    selectedCandidatesCount: candidatePipeline.selectedCandidatesCount,
+    droppedCandidatesCount: candidatePipeline.droppedCandidatesCount,
+    finalCandidateCount: candidatePipeline.finalCandidateCount
+  });
+  emitPartialResult(callbacks, {
+    searchStats: {
+      rawCandidateCount: recalledSearch.rawCandidateCount,
+      mergedCandidateCount: recalledSearch.mergedCandidateCount,
+      dedupedCandidateCount: recalledSearch.dedupedCandidateCount,
+      selectedCandidatesCount: candidatePipeline.selectedCandidatesCount,
+      droppedCandidatesCount: candidatePipeline.droppedCandidatesCount,
+      finalCandidateCount: candidatePipeline.finalCandidateCount
+    },
+    candidates: candidatePipeline.finalCandidates
+  });
 
   const cleanedSearchItems = candidatePipeline.items;
   if (cleanedSearchItems.length === 0) {
@@ -306,8 +411,14 @@ export async function composeMultiLlmDemoSearchResponse(
     userContext: input.userContext,
     candidateQuality: candidatePipeline.candidateQuality
   });
+  emitPartialResult(callbacks, {
+    paths: response.paths,
+    people: response.people,
+    personas: response.personas
+  });
 
   const candidates = buildCleanedCandidatesFromResponse(response);
+  callbacks?.onStageStart?.("evidence_extract");
   const evidenceStage = await runTimedStage(() =>
     runEvidenceExtractStage(input.query, intentStage.output, candidates, budget)
   );
@@ -318,7 +429,15 @@ export async function composeMultiLlmDemoSearchResponse(
     evidenceStage.output,
     evidenceStage.stageResult.succeeded > 0
   );
+  emitStageResult(callbacks, "evidence_extract", evidenceStage.stageResult, {
+    durationMs: evidenceStage.durationMs
+  });
+  emitPartialResult(callbacks, {
+    evidence: collectEvidencePartial(response),
+    people: response.people
+  });
 
+  callbacks?.onStageStart?.("response_compose");
   const composeStage = await runTimedStage(() =>
     runDemoResponseComposeStage(
       input.query,
@@ -347,14 +466,34 @@ export async function composeMultiLlmDemoSearchResponse(
   response.debug.pathDuplicateFound = response.debug.pathDiversityCheck.duplicateFound;
   applyDisplayGateFields(response);
   syncTopLevelPersonas(response);
+  emitStageResult(callbacks, "response_compose", composeStage.stageResult, {
+    durationMs: composeStage.durationMs,
+    paths: applyStats.pathCount,
+    people: applyStats.peopleCount,
+    personas: applyStats.personaCount
+  });
+  emitPartialResult(callbacks, {
+    paths: response.paths,
+    people: response.people,
+    personas: response.personas
+  });
 
+  callbacks?.onStageStart?.("persona_prepare");
   const experienceSummaryStage = await runTimedStage(() =>
     runExperienceSummaryStage(input.query, response, budget)
   );
   stageResults.push(experienceSummaryStage.stageResult);
   timings.push(createStageTiming(experienceSummaryStage));
   applyExperienceSummaryOutput(response, experienceSummaryStage.output);
+  emitStageResult(callbacks, "persona_prepare", experienceSummaryStage.stageResult, {
+    durationMs: experienceSummaryStage.durationMs
+  });
+  emitPartialResult(callbacks, {
+    people: response.people,
+    personas: response.personas
+  });
 
+  callbacks?.onStageStart?.("grounding_guard");
   const groundingStage = await runTimedStage(() => runGroundingGuardStage(response, budget));
   stageResults.push(groundingStage.stageResult);
   timings.push(createStageTiming(groundingStage));
@@ -363,6 +502,16 @@ export async function composeMultiLlmDemoSearchResponse(
   applyDisplayGateFields(response);
   syncTopLevelPersonas(response);
   assertDemoSearchGrounding(response);
+  emitStageResult(callbacks, "grounding_guard", groundingStage.stageResult, {
+    durationMs: groundingStage.durationMs,
+    guardWarnings
+  });
+  emitPartialResult(callbacks, {
+    evidence: collectEvidencePartial(response),
+    paths: response.paths,
+    people: response.people,
+    personas: response.personas
+  });
 
   const successfulStages = stageResults.reduce((total, item) => total + item.succeeded, 0);
   const fallbackSummary = summarizeLlmFallback(stageResults);
@@ -538,11 +687,13 @@ function isTimeoutFallbackReason(reason: string): boolean {
 
 function createPipelineBudget(
   startedAt: number,
-  requestBudgetMs: number | undefined
+  requestBudgetMs: number | undefined,
+  stageTimeoutMs?: Partial<Record<LlmTaskType, number>>
 ): PipelineBudget {
   return {
     startedAt,
-    budgetMs: requestBudgetMs ?? 15000
+    budgetMs: requestBudgetMs ?? 15000,
+    stageTimeoutMs
   };
 }
 
@@ -552,7 +703,7 @@ function hasBudgetForLlmStage(taskType: LlmTaskType, budget?: PipelineBudget): b
   }
 
   const remainingMs = budget.budgetMs - (Date.now() - budget.startedAt);
-  return remainingMs > getLlmTaskTimeoutMs(taskType) + 350;
+  return remainingMs > getStageTimeoutMs(taskType, budget) + 350;
 }
 
 function createBudgetSkippedStage(stage: LlmTaskType): DemoDebugLlmStageResult {
@@ -564,13 +715,101 @@ function createBudgetSkippedStage(stage: LlmTaskType): DemoDebugLlmStageResult {
 
 async function runJsonTaskWithStageTimeout(
   taskType: LlmTaskType,
-  input: Parameters<typeof llmRouter.runJsonTask>[1]
+  input: Parameters<typeof llmRouter.runJsonTask>[1],
+  budget?: PipelineBudget
 ): Promise<string> {
   return llmRouter.runJsonTask(taskType, {
     ...input,
-    timeoutMs: getLlmTaskTimeoutMs(taskType),
+    timeoutMs: getStageTimeoutMs(taskType, budget),
     maxRetry: 0
   });
+}
+
+function getStageTimeoutMs(taskType: LlmTaskType, budget?: PipelineBudget): number {
+  return budget?.stageTimeoutMs?.[taskType] ?? getLlmTaskTimeoutMs(taskType);
+}
+
+async function withPipelineStageTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number | undefined,
+  stageName: DemoSearchPipelineStageName
+): Promise<T> {
+  if (!timeoutMs) {
+    return promise;
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new PipelineStageTimeoutError(stageName, timeoutMs)),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+class PipelineStageTimeoutError extends Error {
+  readonly code = "PIPELINE_STAGE_TIMEOUT";
+
+  constructor(
+    public readonly stageName: DemoSearchPipelineStageName,
+    public readonly timeoutMs: number
+  ) {
+    super(`${stageName} exceeded ${timeoutMs}ms stage timeout`);
+    this.name = "PipelineStageTimeoutError";
+  }
+}
+
+function emitStageResult(
+  callbacks: DemoSearchPipelineCallbacks | undefined,
+  stageName: DemoSearchPipelineStageName,
+  stageResult: DemoDebugLlmStageResult,
+  payload: Record<string, unknown> = {}
+): void {
+  const fallbackUsed = stageResult.attempted === 0 || stageResult.failed > 0;
+  const reason = stageResult.fallbackReasons.join("; ");
+
+  if (!fallbackUsed) {
+    callbacks?.onStageComplete?.(stageName, payload);
+    return;
+  }
+
+  if (isTimeoutFallbackReason(reason)) {
+    callbacks?.onStageTimeout?.(stageName, reason, payload);
+    return;
+  }
+
+  callbacks?.onStageFallback?.(stageName, reason || "deterministic fallback used", payload);
+}
+
+function emitPartialResult(
+  callbacks: DemoSearchPipelineCallbacks | undefined,
+  partial: DemoSearchPipelinePartialResult
+): void {
+  callbacks?.onPartialResult?.(partial);
+}
+
+function collectEvidencePartial(response: DemoSearchResponse): unknown[] {
+  return response.people.flatMap((person) =>
+    person.articles.flatMap((article) =>
+      article.evidence.map((evidence) => ({
+        ...evidence,
+        personId: person.id,
+        articleId: article.id,
+        title: article.title,
+        author: article.author
+      }))
+    )
+  );
 }
 
 async function runIntentExpandStage(
@@ -610,7 +849,7 @@ async function runIntentExpandStage(
           })
         }
       ]
-    });
+    }, budget);
 
     return {
       output: parseIntentExpandOutput(content, query),
@@ -677,7 +916,7 @@ async function runEvidenceExtractStage(
           })
         }
       ]
-    });
+    }, budget);
 
     return {
       output: parseEvidenceExtractOutput(content, new Set(candidates.map((item) => item.sourceRefId))),
@@ -749,7 +988,7 @@ async function runDemoResponseComposeStage(
           })
         }
       ]
-    });
+    }, budget);
 
     return {
       output: parseDemoResponseComposeOutput(content, {
@@ -886,7 +1125,7 @@ async function runExperienceSummaryStage(
           })
         }
       ]
-    });
+    }, budget);
     const parsed = parseExperienceSummaryOutput(
       content,
       new Set(uncachedCandidates.map((candidate) => candidate.personId))
@@ -976,7 +1215,7 @@ async function runGroundingGuardStage(
           })
         }
       ]
-    });
+    }, budget);
 
     const output = parseGroundingGuardOutput(content, {
       personIds: new Set(response.people.map((person) => person.id)),
@@ -1108,7 +1347,7 @@ async function runCandidatePipeline(
             })
           }
         ]
-      });
+      }, budget);
       rerankOutput = parseCandidateRerankOutput(
         content,
         new Set(rerankCandidates.map((candidate) => candidate.candidateId))
