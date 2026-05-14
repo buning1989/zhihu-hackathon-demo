@@ -935,7 +935,8 @@
       max-width: 100%;
     }
 
-    .single-person-result {
+    .single-person-result,
+    .single-person-in-path {
       position: relative;
       z-index: 10;
       display: grid;
@@ -945,7 +946,12 @@
       animation: fadeUp 440ms var(--ease) both;
     }
 
-    .single-person-result.has-detail {
+    .single-person-in-path {
+      width: min(1080px, 100%);
+    }
+
+    .single-person-result.has-detail,
+    .single-person-in-path.has-detail {
       width: min(1180px, 100%);
       grid-template-columns: minmax(380px, 460px) minmax(0, 1fr);
       align-items: stretch;
@@ -962,7 +968,12 @@
       box-shadow: 0 18px 54px rgba(52, 43, 32, 0.08);
     }
 
-    .single-person-result.has-detail .single-person-card {
+    .single-person-in-path .single-person-card {
+      gap: 34px;
+    }
+
+    .single-person-result.has-detail .single-person-card,
+    .single-person-in-path.has-detail .single-person-card {
       grid-template-columns: 1fr;
       gap: 24px;
       padding: 30px;
@@ -973,7 +984,12 @@
       padding-right: 28px;
     }
 
-    .single-person-result.has-detail .single-person-profile {
+    .single-person-in-path .single-person-profile {
+      padding-right: 30px;
+    }
+
+    .single-person-result.has-detail .single-person-profile,
+    .single-person-in-path.has-detail .single-person-profile {
       border-right: 0;
       border-bottom: 1px solid rgba(42, 36, 28, 0.08);
       padding-right: 0;
@@ -998,6 +1014,11 @@
       line-height: 1.12;
     }
 
+    .single-person-in-path .single-person-profile h2 {
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
     .single-person-meta {
       margin-top: 12px;
       color: var(--muted);
@@ -1015,6 +1036,10 @@
       margin-top: 0;
     }
 
+    .single-person-content .section-block:last-of-type {
+      border-bottom: 0;
+    }
+
     .single-person-actions {
       display: flex;
       flex-wrap: wrap;
@@ -1025,6 +1050,12 @@
     .single-person-actions .primary,
     .single-person-actions .text-button {
       min-width: 180px;
+    }
+
+    .single-person-path-actions {
+      padding: 4px 0 0;
+      border-top: 0;
+      background: transparent;
     }
 
     .single-person-panel {
@@ -2502,19 +2533,23 @@
 
     @media (max-width: 980px) {
       .single-person-result,
-      .single-person-result.has-detail {
+      .single-person-result.has-detail,
+      .single-person-in-path,
+      .single-person-in-path.has-detail {
         grid-template-columns: 1fr;
         width: 100%;
       }
 
       .single-person-card,
-      .single-person-result.has-detail .single-person-card {
+      .single-person-result.has-detail .single-person-card,
+      .single-person-in-path.has-detail .single-person-card {
         grid-template-columns: 1fr;
         padding: 28px;
       }
 
       .single-person-profile,
-      .single-person-result.has-detail .single-person-profile {
+      .single-person-result.has-detail .single-person-profile,
+      .single-person-in-path.has-detail .single-person-profile {
         border-right: 0;
         border-bottom: 1px solid rgba(42, 36, 28, 0.08);
         padding-right: 0;
@@ -3598,6 +3633,13 @@
       return people.filter((person) => person.pathId === pathId || personRefs.has(person.id));
     }
 
+    function isPathSinglePersonExpanded() {
+      return state.page === "paths"
+        && state.pathExpanded
+        && !state.singlePersonMode
+        && peopleForPath(state.selectedPathId).length === 1;
+    }
+
     function setPage(page) {
       clearLoadingTimers();
       if (page !== "chat") {
@@ -3879,6 +3921,10 @@
       const layoutClass = `path-count-${Math.max(pathCount, 1)}`;
       const showPathShowcase = !state.skipPathShowcase && visiblePaths.length > 0;
       const selectedPath = getPath();
+      const selectedPathPeople = peopleForPath(selectedPath.id);
+      const expandedDesc = selectedPathPeople.length === 1
+        ? "目前这条路径下先找到 1 位比较接近的人。你可以先看看 TA 的经历，也可以继续去其他路径看看。"
+        : selectedPath.desc;
       const title = state.skipPathShowcase && state.pathExpanded
         ? people.length === 1
           ? "我们先找到了这位走过相似路的人"
@@ -3899,12 +3945,10 @@
               <div class="expanded-heading">
                 <div>
                   <h1>${escapeHtml(selectedPath.name)}的人</h1>
-                  <p>${escapeHtml(selectedPath.desc)}</p>
+                  <p>${escapeHtml(expandedDesc)}</p>
                 </div>
               </div>
-              <div class="path-showcase is-expanded" aria-label="${escapeHtml(selectedPath.name)}的前人样本库">
-                ${renderExpandedPathPanel(selectedPath)}
-              </div>
+              ${renderExpandedPathPanel(selectedPath)}
               ${renderCommunityExit()}
             </section>
           ` : ""}
@@ -3929,9 +3973,15 @@
     }
 
     function renderExpandedPathPanel(path) {
+      const pathPeople = peopleForPath(path.id);
+      if (pathPeople.length === 1) {
+        return renderSinglePersonInPath(pathPeople[0], path);
+      }
       return `
-        <div class="expanded-path-panel" aria-label="${escapeHtml(path.name)}的人">
-          ${renderSampleStage()}
+        <div class="path-showcase is-expanded" aria-label="${escapeHtml(path.name)}的前人样本库">
+          <div class="expanded-path-panel" aria-label="${escapeHtml(path.name)}的人">
+            ${renderSampleStage()}
+          </div>
         </div>
       `;
     }
@@ -3959,28 +4009,82 @@
               ${roleBadge ? `<p class="single-person-meta">${escapeHtml(roleBadge)}</p>` : ""}
             </aside>
             <div class="single-person-content">
-              <div class="section-block">
+              <section class="section-block">
                 <h3>TA 是谁</h3>
                 <p>${escapeHtml(person.who || person.oneLine || "这位知友在公开内容里分享过与当前问题接近的经历。")}</p>
-              </div>
-              <div class="section-block">
+              </section>
+              <section class="section-block">
                 <h3>为什么匹配到 TA</h3>
                 ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
                 <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
                 ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
                 ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
-              </div>
-              <div class="section-block">
+              </section>
+              <section class="section-block">
                 <h3>TA 的经历时间线</h3>
                 <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
-              </div>
-              <div class="section-block">
+              </section>
+              <section class="section-block">
                 <h3>TA的真实经历</h3>
                 <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
-              </div>
+              </section>
               <div class="single-person-actions">
                 <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
                 <button class="text-button" type="button" data-action="save-person">存入我的样本库</button>
+              </div>
+            </div>
+          </article>
+          ${detailPanel ? `<div class="single-person-panel">${detailPanel}</div>` : ""}
+        </section>
+      `;
+    }
+
+    function renderSinglePersonInPath(person, path) {
+      const articles = getPersonArticles(person);
+      const matchReasons = toArray(person.match?.reasons);
+      const matchedVariables = toArray(person.match?.matchedVariables || person.match?.matched_variables);
+      const matchMeta = [
+        person.match?.level ? `匹配等级：${person.match.level}` : "",
+        person.match?.score !== undefined ? `匹配度：${formatScore(person.match.score)}` : ""
+      ].filter(Boolean).join(" · ");
+      const roleBadge = [cleanGeneratedSampleLabel(person.role), cleanGeneratedSampleLabel(person.badge)].filter(Boolean).join(" · ");
+      const detailPanel = state.readerOpen
+        ? renderInlineReader(person)
+        : state.askPanelOpen
+          ? renderInlineAskPanel(person)
+          : "";
+      return `
+        <section class="single-person-in-path ${detailPanel ? "has-detail" : ""}">
+          <article class="single-person-card" aria-label="${escapeHtml(path.name)}下的单人样本">
+            <aside class="single-person-profile">
+              <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
+              <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
+              ${roleBadge ? `<p class="single-person-meta">${escapeHtml(roleBadge)}</p>` : ""}
+            </aside>
+            <div class="single-person-content">
+              <section class="section-block">
+                <h3>TA 是谁</h3>
+                <p>${escapeHtml(person.who || person.oneLine || "这位知友在公开内容里分享过与当前问题接近的经历。")}</p>
+              </section>
+              <section class="section-block">
+                <h3>为什么匹配到 TA</h3>
+                ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
+                <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+                ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+                ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
+              </section>
+              <section class="section-block">
+                <h3>TA 的经历时间线</h3>
+                <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
+              </section>
+              <section class="section-block">
+                <h3>TA的真实经历</h3>
+                <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
+              </section>
+              <div class="card-actions single-person-path-actions">
+                <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
+                <button class="text-button" type="button" data-action="save-person">存入我的样本库</button>
+                <button class="text-button" type="button" data-action="collapse-path">再看看其他路径</button>
               </div>
             </div>
           </article>
@@ -4299,7 +4403,7 @@
       state.readerArticleIndex = articleIndex;
       state.readerOpen = true;
       state.askPanelOpen = false;
-      if (state.singlePersonMode && state.page === "paths") {
+      if ((state.singlePersonMode && state.page === "paths") || isPathSinglePersonExpanded()) {
         render();
         return;
       }
@@ -4317,7 +4421,7 @@
     function closeReader() {
       state.readerOpen = false;
       state.readerArticleIndex = 0;
-      if (state.singlePersonMode && state.page === "paths") {
+      if ((state.singlePersonMode && state.page === "paths") || isPathSinglePersonExpanded()) {
         render();
         return;
       }
@@ -4330,7 +4434,7 @@
       state.readerOpen = false;
       state.askPanelOpen = true;
       state.readerArticleIndex = 0;
-      if (state.singlePersonMode && state.page === "paths") {
+      if ((state.singlePersonMode && state.page === "paths") || isPathSinglePersonExpanded()) {
         render();
         return;
       }
@@ -4349,7 +4453,7 @@
       const editable = document.getElementById("inlineAskText");
       if (editable) state.questionText = editable.value.trim() || state.questionText;
       state.askPanelOpen = false;
-      if (state.singlePersonMode && state.page === "paths") {
+      if ((state.singlePersonMode && state.page === "paths") || isPathSinglePersonExpanded()) {
         render();
         return;
       }
@@ -4361,7 +4465,7 @@
       state.readerArticleIndex = 0;
       state.readerOpen = false;
       state.askPanelOpen = false;
-      if (state.singlePersonMode && state.page === "paths") {
+      if ((state.singlePersonMode && state.page === "paths") || isPathSinglePersonExpanded()) {
         render();
         return;
       }
@@ -4373,7 +4477,7 @@
     }
 
     function syncSampleView() {
-      if (state.singlePersonMode && state.page === "paths") {
+      if ((state.singlePersonMode && state.page === "paths") || isPathSinglePersonExpanded()) {
         render();
         return;
       }
@@ -4524,11 +4628,13 @@
           if (action === "choose-path") {
             const card = target.closest(".path-card");
             const showcase = card?.closest(".path-showcase");
-            state.selectedPathId = target.dataset.id;
+            const selectedPathId = target.dataset.id;
+            const peopleInPath = peopleForPath(selectedPathId);
+            state.selectedPathId = selectedPathId;
             state.pathExpanded = true;
             state.skipPathShowcase = false;
             state.singlePersonMode = false;
-            state.selectedPersonId = "";
+            state.selectedPersonId = peopleInPath.length === 1 ? peopleInPath[0].id : "";
             state.readerOpen = false;
             state.askPanelOpen = false;
             state.readerArticleIndex = 0;
@@ -4560,6 +4666,17 @@
             state.readerOpen = false;
             state.askPanelOpen = false;
             syncSampleView();
+          }
+          if (action === "collapse-path") {
+            state.pathExpanded = false;
+            state.skipPathShowcase = false;
+            state.singlePersonMode = false;
+            state.selectedPersonId = "";
+            state.readerOpen = false;
+            state.askPanelOpen = false;
+            state.readerArticleIndex = 0;
+            render();
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
           }
           if (action === "open-reader") openReader(Number(target.dataset.index || 0));
           if (action === "close-reader") closeReader();
