@@ -4046,7 +4046,11 @@
     }
 
     function setPage(page) {
+      const previousPage = state.page;
       clearLoadingTimers();
+      if (previousPage === "loading" && page !== "loading") {
+        stopAgentPolling();
+      }
       if (page !== "chat") {
         clearChatReplyTimer();
         state.aiTyping = false;
@@ -4064,7 +4068,6 @@
     function clearLoadingTimers() {
       loadingTimers.forEach((timer) => clearTimeout(timer));
       loadingTimers = [];
-      stopAgentPolling();
     }
 
     function clearChatReplyTimer() {
@@ -4331,6 +4334,7 @@
     async function requestAgentSearchData(query) {
       state.backendStatus = STATIC_MOCK_MODE ? "mock" : "loading";
       state.agentTask = createAgentTaskSnapshot({ status: "running" });
+      if (state.page === "loading") render();
 
       if (STATIC_MOCK_MODE) {
         return requestMockAgentSearchData(query);
@@ -4404,8 +4408,23 @@
       if (!taskId) throw new Error("Agent taskId missing");
 
       const runId = ++agentPollRunId;
+      let consecutivePollErrors = 0;
       while (runId === agentPollRunId) {
-        const task = await getAgentTask(taskId);
+        let task;
+        try {
+          task = await getAgentTask(taskId);
+          consecutivePollErrors = 0;
+        } catch (error) {
+          consecutivePollErrors += 1;
+          console.warn("Agent task polling failed.", error);
+          if (consecutivePollErrors >= 3) {
+            throw error;
+          }
+          await new Promise((resolve) => {
+            agentPollTimer = setTimeout(resolve, API_CONFIG.agentPollIntervalMs);
+          });
+          continue;
+        }
         state.agentTask = task;
         state.backendStatus = task.status === "completed" ? "ready" : "loading";
         if (state.page === "loading") render();
@@ -4458,6 +4477,7 @@
     }
 
     async function startLoading() {
+      stopAgentPolling();
       state.loadingStep = 0;
       state.analysisSteps = defaultAnalysisSteps(state.question);
       state.focusTags = ["身份周期", "现金流", "工作边界", "回流代价"];
