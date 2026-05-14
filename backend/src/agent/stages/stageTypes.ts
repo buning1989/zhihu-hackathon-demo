@@ -3,19 +3,22 @@ export const AGENT_STAGE_PLAN_SEARCH_LLM = "plan_search_llm";
 export const AGENT_STAGE_RETRIEVE_SOURCES = "retrieve_sources";
 export const AGENT_STAGE_NORMALIZE_CANDIDATES = "normalize_candidates";
 export const AGENT_STAGE_EVIDENCE_EXTRACT_LLM = "evidence_extract_llm";
+export const AGENT_STAGE_RESPONSE_COMPOSE_LLM = "response_compose_llm";
 
 export type AgentBusinessStageName =
   | typeof AGENT_STAGE_UNDERSTAND_GOAL_RULE
   | typeof AGENT_STAGE_PLAN_SEARCH_LLM
   | typeof AGENT_STAGE_RETRIEVE_SOURCES
   | typeof AGENT_STAGE_NORMALIZE_CANDIDATES
-  | typeof AGENT_STAGE_EVIDENCE_EXTRACT_LLM;
+  | typeof AGENT_STAGE_EVIDENCE_EXTRACT_LLM
+  | typeof AGENT_STAGE_RESPONSE_COMPOSE_LLM;
 
 export const AGENT_ARTIFACT_INTENT = "intent";
 export const AGENT_ARTIFACT_SEARCH_PLAN = "search_plan";
 export const AGENT_ARTIFACT_RAW_SOURCES = "raw_sources";
 export const AGENT_ARTIFACT_CANDIDATES = "candidates";
 export const AGENT_ARTIFACT_EVIDENCE = "evidence";
+export const AGENT_ARTIFACT_FINAL_RESULT = "final_result";
 
 export interface AgentStageOutput<TData> {
   artifactType: string;
@@ -96,6 +99,31 @@ export interface EvidenceItem {
 export interface EvidenceArtifactData {
   evidenceItems: EvidenceItem[];
   strategy: "llm_extracted" | "rule_fallback";
+  llmUsed: boolean;
+  fallbackReason?: string;
+}
+
+export interface FinalResultPath {
+  title: string;
+  summary: string;
+  evidenceIds: string[];
+  candidateIds: string[];
+}
+
+export interface FinalResultPerson {
+  name: string;
+  reason: string;
+  candidateId: string;
+  evidenceIds: string[];
+}
+
+export interface FinalResultArtifactData {
+  schemaVersion: "agent.final_result.v1";
+  summary: string;
+  paths: FinalResultPath[];
+  people: FinalResultPerson[];
+  suggestedQuestions: string[];
+  strategy: "llm_composed" | "rule_fallback";
   llmUsed: boolean;
   fallbackReason?: string;
 }

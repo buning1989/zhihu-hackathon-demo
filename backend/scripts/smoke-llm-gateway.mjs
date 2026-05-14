@@ -118,11 +118,73 @@ try {
     "mock evidence success did not mark llm extraction"
   );
 
+  const finalResultSuccess = await llmGateway.runJson({
+    stageName: "smoke_llm_gateway_final_result_success",
+    schemaName: "agent.final_result.v1",
+    messages: [{ role: "user", content: "return valid final result JSON" }],
+    timeoutMs: 1000,
+    retries: 0,
+    validate: isFinalResultArtifactData,
+    fallback: (context) => buildFinalResultFallback(context.fallbackReason),
+    metadata: {
+      originalQuery,
+      mockScenario: "success",
+      candidates: [
+        {
+          id: "candidate_smoke_1",
+          title: "裸辞后去小城市生活",
+          author: "知乎用户",
+          url: "https://www.zhihu.com/question/mock/answer/1",
+          excerpt: "我离开原来的工作后，先在小城市住了三个月。"
+        }
+      ],
+      evidenceItems: [
+        {
+          id: "evidence_candidate_smoke_1_1",
+          candidateId: "candidate_smoke_1",
+          evidenceText: "我离开原来的工作后，先在小城市住了三个月。"
+        }
+      ]
+    }
+  });
+  assert(finalResultSuccess.status === "success", "mock final result success did not return success");
+  assert(
+    finalResultSuccess.data.schemaVersion === "agent.final_result.v1",
+    "mock final result success did not return final result schema"
+  );
+  assert(
+    finalResultSuccess.data.strategy === "llm_composed" && finalResultSuccess.data.llmUsed === true,
+    "mock final result success did not mark llm composition"
+  );
+
+  const finalResultSchemaInvalid = await llmGateway.runJson({
+    stageName: "smoke_llm_gateway_final_result_schema_invalid",
+    schemaName: "agent.final_result.v1",
+    messages: [{ role: "user", content: "simulate invalid final result schema" }],
+    timeoutMs: 1000,
+    retries: 0,
+    validate: isFinalResultArtifactData,
+    fallback: (context) => buildFinalResultFallback(context.fallbackReason),
+    metadata: {
+      originalQuery,
+      mockScenario: "schema_invalid"
+    }
+  });
+  assert(
+    finalResultSchemaInvalid.status === "fallback",
+    "final result schema invalid did not return fallback status"
+  );
+  assert(
+    finalResultSchemaInvalid.errorType === "SCHEMA_VALIDATION_FAILED",
+    "final result schema invalid did not expose SCHEMA_VALIDATION_FAILED"
+  );
+
   console.log("llm gateway smoke ok");
   console.log(`successAttempts=${success.attempts}`);
   console.log(`timeoutStatus=${timeout.status}`);
   console.log(`schemaInvalidErrorType=${schemaInvalid.errorType}`);
   console.log(`evidenceItemCount=${evidenceSuccess.data.evidenceItems.length}`);
+  console.log(`finalResultStrategy=${finalResultSuccess.data.strategy}`);
 } catch (error) {
   console.error("llm gateway smoke failed");
   console.error(error);
@@ -149,6 +211,19 @@ function buildFallback(originalQuery, fallbackReason) {
 function buildEvidenceFallback(fallbackReason) {
   return {
     evidenceItems: [],
+    strategy: "rule_fallback",
+    llmUsed: false,
+    fallbackReason
+  };
+}
+
+function buildFinalResultFallback(fallbackReason) {
+  return {
+    schemaVersion: "agent.final_result.v1",
+    summary: "已根据候选内容和证据整理出初步结果。",
+    paths: [],
+    people: [],
+    suggestedQuestions: [],
     strategy: "rule_fallback",
     llmUsed: false,
     fallbackReason
@@ -206,6 +281,55 @@ function isEvidenceItem(value) {
     Number.isFinite(value.confidence) &&
     value.confidence >= 0 &&
     value.confidence <= 1
+  );
+}
+
+function isFinalResultArtifactData(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    value.schemaVersion === "agent.final_result.v1" &&
+    typeof value.summary === "string" &&
+    Array.isArray(value.paths) &&
+    value.paths.every(isFinalResultPath) &&
+    Array.isArray(value.people) &&
+    value.people.every(isFinalResultPerson) &&
+    Array.isArray(value.suggestedQuestions) &&
+    value.suggestedQuestions.every((item) => typeof item === "string") &&
+    ["llm_composed", "rule_fallback"].includes(value.strategy) &&
+    typeof value.llmUsed === "boolean" &&
+    (value.fallbackReason === undefined || typeof value.fallbackReason === "string")
+  );
+}
+
+function isFinalResultPath(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.title === "string" &&
+    typeof value.summary === "string" &&
+    Array.isArray(value.evidenceIds) &&
+    value.evidenceIds.every((item) => typeof item === "string") &&
+    Array.isArray(value.candidateIds) &&
+    value.candidateIds.every((item) => typeof item === "string")
+  );
+}
+
+function isFinalResultPerson(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.name === "string" &&
+    typeof value.reason === "string" &&
+    typeof value.candidateId === "string" &&
+    Array.isArray(value.evidenceIds) &&
+    value.evidenceIds.every((item) => typeof item === "string")
   );
 }
 

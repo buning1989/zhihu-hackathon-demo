@@ -581,21 +581,22 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 5 persistent Agent Runtime. Creates a queued task in
+        Phase 6 persistent Agent Runtime. Creates a queued task in
         Postgres, writes task.created, enqueues a BullMQ job, and writes
         task.enqueued. A separate worker consumes the job and runs the
         rule-based business stage workflow: understand_goal_rule,
         plan_search_llm, retrieve_sources, normalize_candidates, and
-        evidence_extract_llm. plan_search_llm and evidence_extract_llm must go
-        through the LLM Gateway for timeout, retry, JSON parse, schema
+        evidence_extract_llm, then response_compose_llm. All Agent LLM stages
+        must go through the LLM Gateway for timeout, retry, JSON parse, schema
         validation, and fallback control. retrieve_sources reuses the existing
         search service when Zhihu config is available and writes a fallback
         stage/artifact otherwise. evidence_extract_llm produces an evidence
-        artifact or rule fallback artifact without failing the task. It does
-        not run response composition, grounding guard, persona build, the demo
-        search orchestrator, or stream events.
+        artifact or rule fallback artifact without failing the task.
+        response_compose_llm produces a final_result artifact or rule fallback
+        artifact without failing the task. It does not run grounding guard,
+        persona build, the demo search orchestrator, or stream events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase5
+      x-implementation-status: implemented-phase6
       requestBody:
         required: true
         content:
@@ -1184,7 +1185,7 @@ components:
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for future SSE; endpoint is not implemented in Phase 5.
+              description: Reserved for future SSE; endpoint is not implemented in Phase 6.
     AgentTaskResponse:
       type: object
       required:
@@ -1386,6 +1387,7 @@ components:
             - $ref: "#/components/schemas/PersistentAgentRawSourcesArtifact"
             - $ref: "#/components/schemas/PersistentAgentCandidatesArtifact"
             - $ref: "#/components/schemas/PersistentAgentEvidenceArtifact"
+            - $ref: "#/components/schemas/PersistentAgentFinalResultArtifact"
             - type: object
               additionalProperties: true
         createdAt:
@@ -1604,6 +1606,78 @@ components:
         fallbackReason:
           type: string
           description: Present when evidence_extract_llm used Gateway or rule fallback.
+    PersistentAgentFinalResultArtifact:
+      type: object
+      required:
+        - schemaVersion
+        - summary
+        - paths
+        - people
+        - suggestedQuestions
+        - strategy
+        - llmUsed
+      properties:
+        schemaVersion:
+          type: string
+          const: agent.final_result.v1
+        summary:
+          type: string
+        paths:
+          type: array
+          items:
+            type: object
+            required:
+              - title
+              - summary
+              - evidenceIds
+              - candidateIds
+            properties:
+              title:
+                type: string
+              summary:
+                type: string
+              evidenceIds:
+                type: array
+                items:
+                  type: string
+              candidateIds:
+                type: array
+                items:
+                  type: string
+        people:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - reason
+              - candidateId
+              - evidenceIds
+            properties:
+              name:
+                type: string
+              reason:
+                type: string
+              candidateId:
+                type: string
+              evidenceIds:
+                type: array
+                items:
+                  type: string
+        suggestedQuestions:
+          type: array
+          items:
+            type: string
+        strategy:
+          type: string
+          enum:
+            - llm_composed
+            - rule_fallback
+        llmUsed:
+          type: boolean
+        fallbackReason:
+          type: string
+          description: Present when response_compose_llm used Gateway fallback.
     PersistentAgentEvent:
       type: object
       required:

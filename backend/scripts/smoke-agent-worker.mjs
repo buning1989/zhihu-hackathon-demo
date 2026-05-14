@@ -76,7 +76,15 @@ try {
     ),
     "evidence_extract_llm stage did not succeed or fallback"
   );
-  assert(completedSnapshot.stages.length === 5, "agent worker did not record 5 stages");
+  assert(
+    completedSnapshot.stages.some(
+      (stage) =>
+        stage.stageName === "response_compose_llm" &&
+        (stage.status === "succeeded" || stage.status === "fallback")
+    ),
+    "response_compose_llm stage did not succeed or fallback"
+  );
+  assert(completedSnapshot.stages.length === 6, "agent worker did not record 6 stages");
   assert(
     completedSnapshot.artifacts.some((artifact) => artifact.type === "intent"),
     "intent artifact was not found"
@@ -101,9 +109,24 @@ try {
     Array.isArray(evidenceArtifact.data?.evidenceItems),
     "evidence artifact did not include evidenceItems array"
   );
+  const finalResultArtifact = completedSnapshot.artifacts.find(
+    (artifact) => artifact.type === "final_result"
+  );
+  assert(finalResultArtifact, "final_result artifact was not found");
   assert(
-    completedSnapshot.task.resultArtifactId === evidenceArtifact.id,
-    "task.resultArtifactId does not point to evidence artifact"
+    finalResultArtifact.data?.schemaVersion === "agent.final_result.v1",
+    "final_result artifact schemaVersion was not agent.final_result.v1"
+  );
+  assert(typeof finalResultArtifact.data?.summary === "string", "final_result summary was missing");
+  assert(Array.isArray(finalResultArtifact.data?.paths), "final_result paths array was missing");
+  assert(Array.isArray(finalResultArtifact.data?.people), "final_result people array was missing");
+  assert(
+    Array.isArray(finalResultArtifact.data?.suggestedQuestions),
+    "final_result suggestedQuestions array was missing"
+  );
+  assert(
+    completedSnapshot.task.resultArtifactId === finalResultArtifact.id,
+    "task.resultArtifactId does not point to final_result artifact"
   );
   assert(
     completedSnapshot.events.some((event) => event.type === "task.completed"),

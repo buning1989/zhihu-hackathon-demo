@@ -227,6 +227,10 @@ async function createMockCompletion<TData>(
     });
   }
 
+  if (input.schemaName === "agent.final_result.v1") {
+    return createMockFinalResultCompletion(input);
+  }
+
   if (input.schemaName === "agent.evidence.v1") {
     return createMockEvidenceCompletion(input);
   }
@@ -253,6 +257,46 @@ async function createMockCompletion<TData>(
       "gap 后重新工作的人"
     ],
     strategy: "llm_planned",
+    llmUsed: true
+  });
+}
+
+function createMockFinalResultCompletion<TData>(input: LlmGatewayInput<TData>): string {
+  const originalQuery = readString(input.metadata?.originalQuery) || "不工作了能去哪儿";
+  const candidates = readMockFinalResultCandidates(input.metadata?.candidates);
+  const evidenceItems = readMockFinalResultEvidence(input.metadata?.evidenceItems);
+  const candidateIds = candidates.slice(0, 3).map((candidate) => candidate.id);
+  const evidenceIds = evidenceItems.slice(0, 3).map((item) => item.id);
+
+  return JSON.stringify({
+    schemaVersion: "agent.final_result.v1",
+    summary: `围绕“${originalQuery}”，这次结果主要整理出相似经历、可选路径和需要继续比较的风险。`,
+    paths:
+      candidateIds.length > 0
+        ? [
+            {
+              title: "先暂停，重建生活秩序",
+              summary: "候选内容显示，先把生活节奏、预算和下一步选择拆开看，会比直接做最终决定更稳妥。",
+              evidenceIds,
+              candidateIds
+            }
+          ]
+        : [],
+    people: candidates.slice(0, 3).map((candidate) => ({
+      name: candidate.author || "知乎用户",
+      reason: "TA 的内容提供了一个可对比的公开经历样本。",
+      candidateId: candidate.id,
+      evidenceIds: evidenceItems
+        .filter((item) => item.candidateId === candidate.id)
+        .slice(0, 2)
+        .map((item) => item.id)
+    })),
+    suggestedQuestions: [
+      "他们后来靠什么维持生活？",
+      "哪些路径风险最大？",
+      "如果先暂停工作，需要先准备什么？"
+    ],
+    strategy: "llm_composed",
     llmUsed: true
   });
 }
@@ -482,6 +526,42 @@ interface MockEvidenceCandidate {
   author: string;
   sourceUrl: string;
   excerpt: string;
+}
+
+interface MockFinalResultCandidate {
+  id: string;
+  author: string;
+}
+
+interface MockFinalResultEvidence {
+  id: string;
+  candidateId: string;
+}
+
+function readMockFinalResultCandidates(value: unknown): MockFinalResultCandidate[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isRecord)
+    .map((candidate, index) => ({
+      id: readString(candidate.id) || `candidate_${index + 1}`,
+      author: readString(candidate.author) || "知乎用户"
+    }));
+}
+
+function readMockFinalResultEvidence(value: unknown): MockFinalResultEvidence[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isRecord)
+    .map((item, index) => ({
+      id: readString(item.id) || `evidence_${index + 1}`,
+      candidateId: readString(item.candidateId)
+    }));
 }
 
 function readMockEvidenceCandidates(value: unknown): MockEvidenceCandidate[] {
