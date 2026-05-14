@@ -3155,7 +3155,6 @@
     let loadingTimers = [];
     let agentPollTimer = null;
     let lastFingerprintStepsMarkup = "";
-    let lastAgentProgressMarkup = "";
     let agentPollRunId = 0;
     let spotlightTimer = null;
     let chatReplyTimer = null;
@@ -4096,7 +4095,6 @@
       document.body.dataset.page = state.page;
       if (state.page !== "loading") {
         lastFingerprintStepsMarkup = "";
-        lastAgentProgressMarkup = "";
       }
       const views = {
         home: renderHome,
@@ -4232,7 +4230,6 @@
       const fingerprintStepsMarkup = renderFingerprintSteps();
       const agentProgressMarkup = renderAgentProgressPanel();
       lastFingerprintStepsMarkup = fingerprintStepsMarkup;
-      lastAgentProgressMarkup = agentProgressMarkup;
       return `
         <section class="screen loading">
           <div class="loading-panel">
@@ -4253,8 +4250,8 @@
     function renderFingerprintSteps() {
       const steps = state.analysisSteps.length ? state.analysisSteps : defaultAnalysisSteps(state.question);
       return steps.map((step, index) => `
-        <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}">
-          <strong>${escapeHtml(step.title)}${step.text ? "：" : ""}</strong>${step.text ? escapeHtml(step.text) : ""}
+        <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}" data-fingerprint-step="${index}">
+          <strong data-fingerprint-title>${escapeHtml(step.title)}${step.text ? "：" : ""}</strong><span data-fingerprint-text>${step.text ? escapeHtml(step.text) : ""}</span>
         </div>
       `).join("");
     }
@@ -4267,20 +4264,77 @@
         return;
       }
 
-      const fingerprintSteps = document.querySelector(".fingerprint-steps");
-      const nextFingerprintStepsMarkup = renderFingerprintSteps();
-      if (fingerprintSteps && nextFingerprintStepsMarkup !== lastFingerprintStepsMarkup) {
-        fingerprintSteps.innerHTML = nextFingerprintStepsMarkup;
-        lastFingerprintStepsMarkup = nextFingerprintStepsMarkup;
-      } else {
-        updateLoadingSteps();
-      }
+      updateFingerprintSteps();
+      updateAgentProgressPanel();
+    }
 
-      const agentProgressPanel = document.querySelector(".agent-progress-panel");
-      const nextAgentProgressMarkup = renderAgentProgressPanel();
-      if (agentProgressPanel && nextAgentProgressMarkup !== lastAgentProgressMarkup) {
-        agentProgressPanel.outerHTML = nextAgentProgressMarkup;
-        lastAgentProgressMarkup = nextAgentProgressMarkup;
+    function updateFingerprintSteps() {
+      const steps = state.analysisSteps.length ? state.analysisSteps : defaultAnalysisSteps(state.question);
+      const nodes = Array.from(document.querySelectorAll(".fingerprint-step"));
+      nodes.forEach((node, index) => {
+        const step = steps[index] || {};
+        node.classList.toggle("is-done", index < state.loadingStep);
+        node.classList.toggle("is-active", index === state.loadingStep);
+        setNodeText(node.querySelector("[data-fingerprint-title]"), `${textOf(step.title)}${step.text ? "：" : ""}`);
+        setNodeText(node.querySelector("[data-fingerprint-text]"), step.text || "");
+      });
+      lastFingerprintStepsMarkup = renderFingerprintSteps();
+    }
+
+    function updateAgentProgressPanel() {
+      const panel = document.querySelector(".agent-progress-panel");
+      if (!panel) return;
+
+      const task = state.agentTask || createAgentTaskSnapshot();
+      const activeStage = task.stages.find((stage) => stage.name === task.currentStage)
+        || task.stages.find((stage) => stage.status === "running")
+        || task.stages.find((stage) => stage.status === "pending")
+        || task.stages.at(-1);
+
+      setNodeText(panel.querySelector("[data-agent-active-label]"), activeStage?.label || "准备启动");
+      setNodeText(panel.querySelector("[data-agent-status-pill]"), agentStatusText(task.status));
+
+      task.stages.forEach((stage) => {
+        const stageNode = panel.querySelector(`[data-stage-name="${stage.name}"]`);
+        if (!stageNode) return;
+        stageNode.className = `agent-stage-item is-${stage.status}`;
+        setNodeText(stageNode.querySelector("[data-stage-state]"), agentStatusText(stage.status));
+        setNodeText(stageNode.querySelector("[data-stage-label]"), stage.label);
+        setNodeText(stageNode.querySelector("[data-stage-detail]"), agentStageDetail(stage));
+      });
+
+      const partial = task.partial || {};
+      updateAgentPartialCard(
+        "candidates",
+        toArray(partial.candidates || partial.people).slice(0, 3),
+        (item) => textOf(item.title || item.oneLine || item.name || item.author)
+      );
+      updateAgentPartialCard(
+        "evidence",
+        toArray(partial.evidence).slice(0, 3),
+        (item) => textOf(item.title || item.text || item.label || item)
+      );
+      updateAgentPartialCard(
+        "personas",
+        toArray(partial.personas).slice(0, 3),
+        (item) => textOf(item.displayName || item.name || item.personId || item.id)
+      );
+    }
+
+    function setNodeText(node, text) {
+      if (!node) return;
+      const next = textOf(text);
+      if (node.textContent !== next) {
+        node.textContent = next;
+      }
+    }
+
+    function updateAgentPartialCard(key, items, reader) {
+      const content = renderAgentPartialItems(items, reader);
+      const body = document.querySelector(`[data-partial-card="${key}"] .agent-partial-items`);
+      if (body && body.dataset.markup !== content) {
+        body.innerHTML = content;
+        body.dataset.markup = content;
       }
     }
 
@@ -4298,24 +4352,24 @@
       return `
         <div class="agent-progress-panel">
           <div class="agent-progress-head">
-            <strong>${escapeHtml(activeStage?.label || "准备启动")}</strong>
-            <span class="agent-status-pill">${escapeHtml(agentStatusText(task.status))}</span>
+            <strong data-agent-active-label>${escapeHtml(activeStage?.label || "准备启动")}</strong>
+            <span class="agent-status-pill" data-agent-status-pill>${escapeHtml(agentStatusText(task.status))}</span>
           </div>
           <div class="agent-stage-list">
             ${task.stages.map((stage) => `
-              <div class="agent-stage-item is-${escapeHtml(stage.status)}">
-                <span class="agent-stage-state">${escapeHtml(agentStatusText(stage.status))}</span>
+              <div class="agent-stage-item is-${escapeHtml(stage.status)}" data-stage-name="${escapeHtml(stage.name)}">
+                <span class="agent-stage-state" data-stage-state>${escapeHtml(agentStatusText(stage.status))}</span>
                 <span class="agent-stage-copy">
-                  <strong>${escapeHtml(stage.label)}</strong>
-                  <span>${escapeHtml(agentStageDetail(stage))}</span>
+                  <strong data-stage-label>${escapeHtml(stage.label)}</strong>
+                  <span data-stage-detail>${escapeHtml(agentStageDetail(stage))}</span>
                 </span>
               </div>
             `).join("")}
           </div>
           <div class="agent-partial-grid">
-            ${renderAgentPartialCard("候选样本", candidates, (item) => textOf(item.title || item.oneLine || item.name || item.author))}
-            ${renderAgentPartialCard("证据片段", evidence, (item) => textOf(item.title || item.text || item.label || item))}
-            ${renderAgentPartialCard("经验回声", personas, (item) => textOf(item.displayName || item.name || item.personId || item.id))}
+            ${renderAgentPartialCard("candidates", "候选样本", candidates, (item) => textOf(item.title || item.oneLine || item.name || item.author))}
+            ${renderAgentPartialCard("evidence", "证据片段", evidence, (item) => textOf(item.title || item.text || item.label || item))}
+            ${renderAgentPartialCard("personas", "经验回声", personas, (item) => textOf(item.displayName || item.name || item.personId || item.id))}
           </div>
         </div>
       `;
@@ -4334,16 +4388,20 @@
       return parts.join(" · ");
     }
 
-    function renderAgentPartialCard(title, items, reader) {
-      const content = items.length
-        ? items.map((item) => `<span>${escapeHtml(reader(item) || "已找到一条公开内容")}</span>`).join("")
-        : `<span>等待当前阶段返回</span>`;
+    function renderAgentPartialCard(key, title, items, reader) {
+      const content = renderAgentPartialItems(items, reader);
       return `
-        <div class="agent-partial-card">
+        <div class="agent-partial-card" data-partial-card="${escapeHtml(key)}">
           <strong>${escapeHtml(title)}</strong>
-          ${content}
+          <div class="agent-partial-items" data-markup="${escapeHtml(content)}">${content}</div>
         </div>
       `;
+    }
+
+    function renderAgentPartialItems(items, reader) {
+      return items.length
+        ? items.map((item) => `<span>${escapeHtml(reader(item) || "已找到一条公开内容")}</span>`).join("")
+        : `<span>等待当前阶段返回</span>`;
     }
 
     function renderEmptyResults() {
