@@ -59,6 +59,7 @@ docker compose -f infra/docker-compose.yml up
 - 后端健康检查：`http://localhost:8000/health`
 - 知乎 OAuth 登录入口：`http://localhost:8000/auth/zhihu/login`
 - 前端 Agent 演示页：`http://localhost:3000/`
+- Agent 链路调试页：`http://localhost:3000/debug/agent/`
 - OpenAPI 契约：`shared/openapi.yaml`
 - 前端字段样例：`shared/demo-response.sample.json`
 

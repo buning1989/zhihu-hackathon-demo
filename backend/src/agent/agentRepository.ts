@@ -109,6 +109,18 @@ export class AgentRepository {
     return result.rows[0] ? mapTaskRow(result.rows[0]) : undefined;
   }
 
+  async listRecentTasks(limit = 20): Promise<PersistentAgentTask[]> {
+    assertConfigured();
+
+    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+    const result = await queryPostgres<AgentTaskRow>(
+      "SELECT * FROM agent_tasks ORDER BY created_at DESC LIMIT $1",
+      [safeLimit]
+    );
+
+    return result.rows.map(mapTaskRow);
+  }
+
   async updateTaskStatus(
     taskId: string,
     patch: UpdatePersistentAgentTaskStatusInput

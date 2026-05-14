@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Runtime Debug</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f3ed;
+      --panel: #fffdfa;
+      --ink: #26231f;
+      --muted: #746d64;
+      --line: #e6ded3;
+      --green: #226b50;
+      --green-bg: #e3f2ea;
+      --blue: #245d9e;
+      --blue-bg: #e9f0ff;
+      --yellow: #815b00;
+      --yellow-bg: #fff0bd;
+      --red: #9c2f24;
+      --red-bg: #ffe4df;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    button, input {
+      font: inherit;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: #fbf8f1;
+      padding: 22px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    .main {
+      padding: 24px;
+      overflow: auto;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 26px;
+      line-height: 1.15;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .topline {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin: 18px 0 12px;
+    }
+
+    .api-line {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+      margin-top: 8px;
+    }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      color: var(--ink);
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      border-color: #d7b764;
+      background: #ffe6a1;
+      font-weight: 700;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 10px 11px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .task-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .task-card.is-active {
+      border-color: #d8b657;
+      box-shadow: 0 0 0 2px rgba(216, 182, 87, .25);
+    }
+
+    .task-card strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+      margin-bottom: 7px;
+    }
+
+    .task-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 3px 9px;
+      background: #eee7dc;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pill.completed,
+    .pill.succeeded {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    .pill.running,
+    .pill.retrying {
+      background: var(--blue-bg);
+      color: var(--blue);
+    }
+
+    .pill.queued,
+    .pill.pending,
+    .pill.fallback,
+    .pill.skipped {
+      background: var(--yellow-bg);
+      color: var(--yellow);
+    }
+
+    .pill.failed,
+    .pill.error {
+      background: var(--red-bg);
+      color: var(--red);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px;
+      min-height: 86px;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .stage-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .stage-table th,
+    .stage-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .stage-table th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .stage-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    summary {
+      cursor: pointer;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      max-height: 520px;
+      overflow: auto;
+      background: #1f1c18;
+      color: #f6efe4;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      tab-size: 2;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .event-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .event {
+      display: grid;
+      grid-template-columns: 170px minmax(160px, 220px) minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      border-bottom: 1px solid var(--line);
+      padding: 9px 0;
+      font-size: 13px;
+    }
+
+    .event:last-child {
+      border-bottom: 0;
+    }
+
+    .event code {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, .55);
+    }
+
+    .error {
+      color: var(--red);
+      background: var(--red-bg);
+      border: 1px solid #efb8ae;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 12px 0;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 1080px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+
+      .grid,
+      .details-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .event {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <h1>Agent Runtime Debug</h1>
+      <p class="api-line" id="apiLine"></p>
+
+      <div class="controls">
+        <div class="button-row">
+          <button class="primary" type="button" id="refreshButton">刷新</button>
+          <label><input type="checkbox" id="autoRefresh" checked> 自动刷新</label>
+        </div>
+        <form id="taskForm">
+          <input id="taskIdInput" type="text" placeholder="输入 taskId 后回车查看">
+        </form>
+      </div>
+
+      <div class="topline">
+        <h2>最近任务</h2>
+        <span class="muted mono" id="taskCount">0</span>
+      </div>
+      <div id="taskList" class="task-list"></div>
+    </aside>
+
+    <main class="main">
+      <div id="message"></div>
+      <div id="detail" class="empty">选择一个任务查看完整链路。</div>
+    </main>
+  </div>
+
+  <script>
+    const API_BASE = ["3000", "5173"].includes(window.location.port)
+      ? "http://127.0.0.1:8000"
+      : window.location.origin;
+    const params = new URLSearchParams(window.location.search);
+    const state = {
+      tasks: [],
+      selectedTaskId: params.get("taskId") || "",
+      snapshot: null,
+      autoTimer: null,
+      loading: false
+    };
+
+    const apiLine = document.getElementById("apiLine");
+    const taskList = document.getElementById("taskList");
+    const taskCount = document.getElementById("taskCount");
+    const detail = document.getElementById("detail");
+    const message = document.getElementById("message");
+    const refreshButton = document.getElementById("refreshButton");
+    const autoRefresh = document.getElementById("autoRefresh");
+    const taskForm = document.getElementById("taskForm");
+    const taskIdInput = document.getElementById("taskIdInput");
+
+    apiLine.textContent = `API ${API_BASE}`;
+
+    refreshButton.addEventListener("click", () => refreshAll());
+    autoRefresh.addEventListener("change", setupAutoRefresh);
+    taskForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const taskId = taskIdInput.value.trim();
+      if (taskId) selectTask(taskId);
+    });
+
+    refreshAll();
+    setupAutoRefresh();
+
+    function setupAutoRefresh() {
+      if (state.autoTimer) {
+        clearInterval(state.autoTimer);
+        state.autoTimer = null;
+      }
+
+      if (autoRefresh.checked) {
+        state.autoTimer = setInterval(() => {
+          refreshAll({ silent: true });
+        }, 2500);
+      }
+    }
+
+    async function refreshAll(options = {}) {
+      if (state.loading) return;
+      state.loading = true;
+      try {
+        await loadTasks();
+        if (!state.selectedTaskId && state.tasks[0]) {
+          state.selectedTaskId = state.tasks[0].id;
+        }
+        if (state.selectedTaskId) {
+          await loadSnapshot(state.selectedTaskId);
+        }
+        renderTasks();
+        renderDetail();
+        clearMessage();
+      } catch (error) {
+        if (!options.silent) showError(error);
+      } finally {
+        state.loading = false;
+      }
+    }
+
+    async function loadTasks() {
+      const payload = await getJson("/api/agent/tasks?limit=30");
+      state.tasks = Array.isArray(payload?.data?.tasks) ? payload.data.tasks : [];
+    }
+
+    async function loadSnapshot(taskId) {
+      const payload = await getJson(`/api/agent/tasks/${encodeURIComponent(taskId)}`);
+      state.snapshot = payload?.data || null;
+      taskIdInput.value = taskId;
+      const url = new URL(window.location.href);
+      url.searchParams.set("taskId", taskId);
+      window.history.replaceState({}, "", url);
+    }
+
+    async function selectTask(taskId) {
+      state.selectedTaskId = taskId;
+      await refreshAll();
+    }
+
+    async function getJson(path) {
+      const response = await fetch(new URL(path, API_BASE).toString(), {
+        headers: { Accept: "application/json" },
+        credentials: "include"
+      });
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : null;
+      if (!response.ok) {
+        const apiError = body?.error;
+        throw new Error(apiError?.message || `HTTP ${response.status}`);
+      }
+      return body;
+    }
+
+    function renderTasks() {
+      taskCount.textContent = String(state.tasks.length);
+      if (!state.tasks.length) {
+        taskList.innerHTML = `<div class="empty">暂无持久化 Agent task。</div>`;
+        return;
+      }
+
+      taskList.innerHTML = state.tasks.map((task) => `
+        <button class="task-card ${task.id === state.selectedTaskId ? "is-active" : ""}" type="button" data-task-id="${escapeHtml(task.id)}">
+          <strong>${escapeHtml(task.query || task.id)}</strong>
+          <div class="task-meta">
+            <span class="pill ${escapeHtml(task.status)}">${escapeHtml(task.status)}</span>
+            <span>${escapeHtml(task.progress)}%</span>
+            <span>${escapeHtml(formatTime(task.createdAt))}</span>
+          </div>
+          <div class="task-meta mono">${escapeHtml(task.id)}</div>
+        </button>
+      `).join("");
+
+      taskList.querySelectorAll("[data-task-id]").forEach((node) => {
+        node.addEventListener("click", () => selectTask(node.dataset.taskId));
+      });
+    }
+
+    function renderDetail() {
+      const snapshot = state.snapshot;
+      if (!snapshot?.task) {
+        detail.className = "empty";
+        detail.textContent = "选择一个任务查看完整链路。";
+        return;
+      }
+
+      const task = snapshot.task;
+      detail.className = "";
+      detail.innerHTML = `
+        <section class="grid">
+          ${renderStat("Task", task.id)}
+          ${renderStat("Status", `<span class="pill ${escapeHtml(task.status)}">${escapeHtml(task.status)}</span>`)}
+          ${renderStat("Progress", `${escapeHtml(task.progress)}%`)}
+          ${renderStat("Result Artifact", task.resultArtifactId || "-")}
+        </section>
+
+        <section class="panel">
+          <h2>Task</h2>
+          <table class="stage-table">
+            <tbody>
+              <tr><th>Query</th><td>${escapeHtml(task.query)}</td></tr>
+              <tr><th>Current Stage</th><td>${escapeHtml(task.currentStage || "-")}</td></tr>
+              <tr><th>Created</th><td>${escapeHtml(formatTime(task.createdAt))}</td></tr>
+              <tr><th>Updated</th><td>${escapeHtml(formatTime(task.updatedAt))}</td></tr>
+              <tr><th>Error</th><td>${escapeHtml(task.error || "-")}</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="panel">
+          <h2>Stages</h2>
+          ${renderStages(snapshot.stages || [])}
+        </section>
+
+        <section class="details-grid">
+          <section class="panel">
+            <h2>Artifacts JSON</h2>
+            ${renderArtifacts(snapshot.artifacts || [])}
+          </section>
+          <section class="panel">
+            <h2>Events Timeline</h2>
+            ${renderEvents(snapshot.events || [])}
+          </section>
+        </section>
+      `;
+    }
+
+    function renderStat(label, value) {
+      return `
+        <div class="stat">
+          <span>${escapeHtml(label)}</span>
+          <strong>${typeof value === "string" && value.includes("<span") ? value : escapeHtml(value)}</strong>
+        </div>
+      `;
+    }
+
+    function renderStages(stages) {
+      if (!stages.length) return `<div class="empty">尚无 stage run。</div>`;
+      return `
+        <table class="stage-table">
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th>Fallback</th>
+              <th>Artifacts</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${stages.map((stage) => `
+              <tr>
+                <td class="mono">${escapeHtml(stage.stageName)}</td>
+                <td><span class="pill ${escapeHtml(stage.status)}">${escapeHtml(stage.status)}</span></td>
+                <td>${escapeHtml(stage.durationMs ?? "-")}ms</td>
+                <td>${escapeHtml(stage.fallbackReason || (stage.fallbackUsed ? "true" : "-"))}</td>
+                <td class="mono">${escapeHtml((stage.outputArtifactIds || []).join(", ") || "-")}</td>
+                <td>${escapeHtml(stage.error || "-")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderArtifacts(artifacts) {
+      if (!artifacts.length) return `<div class="empty">尚无 artifact。</div>`;
+      return artifacts.map((artifact, index) => `
+        <details ${index === artifacts.length - 1 ? "open" : ""}>
+          <summary>
+            <span>${escapeHtml(artifact.type)}</span>
+            <span class="mono">${escapeHtml(artifact.id)}</span>
+          </summary>
+          <pre>${escapeHtml(JSON.stringify(artifact.data, null, 2))}</pre>
+        </details>
+      `).join("");
+    }
+
+    function renderEvents(events) {
+      if (!events.length) return `<div class="empty">尚无 event。</div>`;
+      return `
+        <div class="event-list">
+          ${events.map((event) => `
+            <div class="event">
+              <span class="mono">${escapeHtml(formatTime(event.createdAt))}</span>
+              <code>${escapeHtml(event.type)}</code>
+              <pre>${escapeHtml(JSON.stringify(event.payload, null, 2))}</pre>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function formatTime(value) {
+      if (!value) return "-";
+      try {
+        return new Intl.DateTimeFormat("zh-CN", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit"
+        }).format(new Date(value));
+      } catch {
+        return String(value);
+      }
+    }
+
+    function showError(error) {
+      message.innerHTML = `<div class="error">${escapeHtml(error?.message || String(error))}</div>`;
+    }
+
+    function clearMessage() {
+      message.innerHTML = "";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>

@@ -67,6 +67,30 @@ agentRoutes.post("/search", (req, res, next) => {
   }
 });
 
+agentRoutes.get("/tasks", async (req, res, next) => {
+  try {
+    if (!agentRepository.isConfigured()) {
+      throw new HttpError(
+        503,
+        "AGENT_DATABASE_UNCONFIGURED",
+        "DATABASE_URL is not configured; persistent Agent Runtime is unavailable"
+      );
+    }
+
+    const limit = readPositiveInteger(req.query.limit, 20);
+    const tasks = await agentRepository.listRecentTasks(limit);
+
+    res.json({
+      success: true,
+      data: {
+        tasks
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 agentRoutes.get("/tasks/:taskId", async (req, res, next) => {
   try {
     const taskId = req.params.taskId.trim();
@@ -172,6 +196,12 @@ function readString(value: unknown): string {
   }
 
   return "";
+}
+
+function readPositiveInteger(value: unknown, fallback: number): number {
+  const first = Array.isArray(value) ? value[0] : value;
+  const next = Number(first);
+  return Number.isInteger(next) && next > 0 ? next : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
