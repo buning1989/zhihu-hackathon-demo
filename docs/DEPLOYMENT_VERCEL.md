@@ -4,12 +4,12 @@
 
 ## 部署结构
 
-- `public/index.html`：Vercel 静态首页，`GET /` 直接打开 demo 页面。
+- `frontend/index.html`：前端 demo 首页，`GET /` 由 Express 静态服务打开真实前端页面。
 - `api/index.mjs`：Vercel Function 入口，导出构建后的 Express app。
-- `backend/src/app.ts`：继续导出可复用 `app`；`backend/src/server.ts` 只负责本地 `app.listen`。
+- `backend/src/app.ts`：继续导出可复用 `app`，并静态服务 `frontend/`；`backend/src/server.ts` 只负责本地 `app.listen`。
 - `vercel.json`：执行 `npm run build` 后，将所有非静态请求 rewrite 到 `/api`。
 
-Vercel 官方 Express 指南要求 Express app 以默认导出或端口监听的形式进入运行时；静态资源应放在 `public/**`，不要依赖 Vercel 环境中的 `express.static()`。本项目保留本地 `express.static()` 只是为了 `npm start` 时也能打开 `/`。
+Vercel 官方 Express 指南要求 Express app 以默认导出或端口监听的形式进入运行时。本项目通过 `vercel.json` 将 `frontend/**` 打包进函数，保证 Vercel 和本地 `npm start` 都能从同一个 Express app 打开真实前端页面。
 
 参考：
 

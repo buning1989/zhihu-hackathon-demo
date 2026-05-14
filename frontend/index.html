@@ -2718,8 +2718,11 @@
     const queryPrompts = [
       "不工作了之后，我想去新西兰生活"
     ];
-    const AUTH_LOGIN_URL = "http://127.0.0.1:8000/auth/zhihu/login";
-    const API_BASE = window.LIFE_PATH_API_BASE || "http://127.0.0.1:8000";
+    const DEFAULT_API_BASE = ["3000", "5173"].includes(window.location.port)
+      ? "http://127.0.0.1:8000"
+      : window.location.origin;
+    const API_BASE = window.LIFE_PATH_API_BASE || DEFAULT_API_BASE;
+    const AUTH_LOGIN_URL = new URL("/auth/zhihu/login", API_BASE).toString();
     const PAGE_PARAMS = new URLSearchParams(window.location.search);
     const ALLOWED_DATA_MODES = new Set(["mock", "cache_first", "real"]);
 

@@ -5,7 +5,10 @@
   "buildCommand": "npm run build",
   "functions": {
     "api/index.mjs": {
-      "includeFiles": "backend/dist/**",
+      "includeFiles": [
+        "backend/dist/**",
+        "frontend/**"
+      ],
       "maxDuration": 60
     }
   },
