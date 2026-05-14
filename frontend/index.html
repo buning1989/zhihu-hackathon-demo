@@ -2724,6 +2724,7 @@
     const API_BASE = window.LIFE_PATH_API_BASE || DEFAULT_API_BASE;
     const AUTH_LOGIN_URL = new URL("/auth/zhihu/login", API_BASE).toString();
     const PAGE_PARAMS = new URLSearchParams(window.location.search);
+    const STATIC_MOCK_MODE = window.LIFE_PATH_STATIC_MOCK !== false;
     const ALLOWED_DATA_MODES = new Set(["mock", "cache_first", "real"]);
 
     function resolveDataMode(value) {
@@ -2752,10 +2753,10 @@
       saveEndpoint: "/api/samples/save",
       savedEndpoint: "/api/samples/saved",
       chatEndpoint: "/api/personas/chat",
-      dataMode: resolveDataMode(PAGE_PARAMS.get("dataMode")),
+      dataMode: STATIC_MOCK_MODE ? "mock" : resolveDataMode(PAGE_PARAMS.get("dataMode")),
       requestTimeoutMs: 12000,
       useMockFallback: true,
-      useMockUserFallback: PAGE_PARAMS.get("mockAuth") === "1"
+      useMockUserFallback: STATIC_MOCK_MODE || PAGE_PARAMS.get("mockAuth") === "1"
     };
 
     const mockZhihuUser = {
@@ -3566,10 +3567,22 @@
     }
 
     function redirectToZhihuLogin() {
+      if (STATIC_MOCK_MODE) {
+        applyUser(mockZhihuUser, "mock");
+        showToast("静态演示已使用 mock 登录。");
+        render();
+        return;
+      }
+
       window.location.href = API_CONFIG.loginUrl;
     }
 
     async function checkSession() {
+      if (STATIC_MOCK_MODE) {
+        applyUser(mockZhihuUser, "mock");
+        return true;
+      }
+
       state.sessionChecked = false;
       render();
       try {
@@ -3981,7 +3994,12 @@
     }
 
     async function requestSearchData(query) {
-      state.backendStatus = "loading";
+      state.backendStatus = STATIC_MOCK_MODE ? "mock" : "loading";
+      if (STATIC_MOCK_MODE) {
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        return normalizeSearchResponse(mockSearchPayload(query), query);
+      }
+
       try {
         const payload = await postJson(API_CONFIG.demoSearchEndpoint, { query, count: 5, dataMode: state.dataMode });
         const body = getResponseBody(payload) || {};
@@ -4706,6 +4724,18 @@
       state.messages.push({ role: "user", text });
       state.aiTyping = true;
       render();
+      if (STATIC_MOCK_MODE) {
+        await new Promise((resolve) => setTimeout(resolve, 850));
+        const data = fallbackChatPayload(person);
+        state.messages.push({
+          role: "ai",
+          text: data.reply
+        });
+        state.aiTyping = false;
+        render();
+        return;
+      }
+
       try {
         await new Promise((resolve) => setTimeout(resolve, 850));
         const response = await postJson(API_CONFIG.chatEndpoint, {
