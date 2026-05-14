@@ -3154,6 +3154,8 @@
 
     let loadingTimers = [];
     let agentPollTimer = null;
+    let lastFingerprintStepsMarkup = "";
+    let lastAgentProgressMarkup = "";
     let agentPollRunId = 0;
     let spotlightTimer = null;
     let chatReplyTimer = null;
@@ -4092,6 +4094,10 @@
       clearSpotlightTimer();
       clearHomePromptTimer();
       document.body.dataset.page = state.page;
+      if (state.page !== "loading") {
+        lastFingerprintStepsMarkup = "";
+        lastAgentProgressMarkup = "";
+      }
       const views = {
         home: renderHome,
         loading: renderLoading,
@@ -4223,7 +4229,10 @@
     }
 
     function renderLoading() {
-      const steps = state.analysisSteps.length ? state.analysisSteps : defaultAnalysisSteps(state.question);
+      const fingerprintStepsMarkup = renderFingerprintSteps();
+      const agentProgressMarkup = renderAgentProgressPanel();
+      lastFingerprintStepsMarkup = fingerprintStepsMarkup;
+      lastAgentProgressMarkup = agentProgressMarkup;
       return `
         <section class="screen loading">
           <div class="loading-panel">
@@ -4232,17 +4241,47 @@
               <span class="pulse-dot" aria-hidden="true"></span>
             </div>
             <div class="fingerprint-steps">
-              ${steps.map((step, index) => `
-                <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}">
-                  <strong>${escapeHtml(step.title)}${step.text ? "：" : ""}</strong>${step.text ? escapeHtml(step.text) : ""}
-                </div>
-              `).join("")}
+              ${fingerprintStepsMarkup}
             </div>
-            ${renderAgentProgressPanel()}
+            ${agentProgressMarkup}
           </div>
           ${renderCrowd()}
         </section>
       `;
+    }
+
+    function renderFingerprintSteps() {
+      const steps = state.analysisSteps.length ? state.analysisSteps : defaultAnalysisSteps(state.question);
+      return steps.map((step, index) => `
+        <div class="fingerprint-step ${index < state.loadingStep ? "is-done" : index === state.loadingStep ? "is-active" : ""}">
+          <strong>${escapeHtml(step.title)}${step.text ? "：" : ""}</strong>${step.text ? escapeHtml(step.text) : ""}
+        </div>
+      `).join("");
+    }
+
+    function refreshLoadingView() {
+      if (state.page !== "loading") return;
+      const loadingPanel = document.querySelector(".loading-panel");
+      if (!loadingPanel) {
+        render();
+        return;
+      }
+
+      const fingerprintSteps = document.querySelector(".fingerprint-steps");
+      const nextFingerprintStepsMarkup = renderFingerprintSteps();
+      if (fingerprintSteps && nextFingerprintStepsMarkup !== lastFingerprintStepsMarkup) {
+        fingerprintSteps.innerHTML = nextFingerprintStepsMarkup;
+        lastFingerprintStepsMarkup = nextFingerprintStepsMarkup;
+      } else {
+        updateLoadingSteps();
+      }
+
+      const agentProgressPanel = document.querySelector(".agent-progress-panel");
+      const nextAgentProgressMarkup = renderAgentProgressPanel();
+      if (agentProgressPanel && nextAgentProgressMarkup !== lastAgentProgressMarkup) {
+        agentProgressPanel.outerHTML = nextAgentProgressMarkup;
+        lastAgentProgressMarkup = nextAgentProgressMarkup;
+      }
     }
 
     function renderAgentProgressPanel() {
@@ -4331,7 +4370,7 @@
     async function requestAgentSearchData(query) {
       state.backendStatus = STATIC_MOCK_MODE ? "mock" : "loading";
       state.agentTask = createAgentTaskSnapshot({ status: "running" });
-      if (state.page === "loading") render();
+      if (state.page === "loading") refreshLoadingView();
 
       if (STATIC_MOCK_MODE) {
         return requestMockAgentSearchData(query);
@@ -4340,7 +4379,7 @@
       try {
         const task = await startAgentSearch(query);
         state.agentTask = task;
-        if (state.page === "loading") render();
+        if (state.page === "loading") refreshLoadingView();
         return await pollAgentTask(task.taskId, query);
       } catch (error) {
         console.warn("Persistent Agent Runtime unavailable.", error);
@@ -4352,7 +4391,7 @@
           status: "failed",
           error: { message }
         });
-        if (state.page === "loading") render();
+        if (state.page === "loading") refreshLoadingView();
         showToast(message);
         throw new Error(message);
       }
@@ -4371,7 +4410,7 @@
           })),
           partial: buildMockAgentPartial(index)
         });
-        if (state.page === "loading") render();
+        if (state.page === "loading") refreshLoadingView();
         await new Promise((resolve) => {
           agentPollTimer = setTimeout(resolve, 430);
         });
@@ -4392,7 +4431,7 @@
         result
       });
       state.backendStatus = "mock";
-      if (state.page === "loading") render();
+      if (state.page === "loading") refreshLoadingView();
       return normalizeSearchResponse(result, query);
     }
 
@@ -4432,7 +4471,7 @@
         }
         state.agentTask = task;
         state.backendStatus = task.status === "completed" ? "ready" : "loading";
-        if (state.page === "loading") render();
+        if (state.page === "loading") refreshLoadingView();
 
         const elapsedMs = Date.now() - startedAt;
         const hasStartedStage = task.stages.some((stage) => stage.status !== "pending");
@@ -4488,7 +4527,7 @@
       searchPromise.then((data) => {
         state.analysisSteps = data.analysisSteps.length ? data.analysisSteps : defaultAnalysisSteps(state.question);
         state.focusTags = data.focusTags.length ? data.focusTags : state.focusTags;
-        if (state.page === "loading") render();
+        if (state.page === "loading") refreshLoadingView();
       }).catch(() => {});
       const minimumLoading = new Promise((resolve) => setTimeout(resolve, 4300));
       [1, 2, 3, 4].forEach((step, index) => {
@@ -4516,6 +4555,9 @@
         node.classList.toggle("is-done", index < state.loadingStep);
         node.classList.toggle("is-active", index === state.loadingStep);
       });
+      if (state.page === "loading") {
+        lastFingerprintStepsMarkup = renderFingerprintSteps();
+      }
     }
 
     function renderPaths() {
