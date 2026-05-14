@@ -4,6 +4,7 @@ export const AGENT_STAGE_RETRIEVE_SOURCES = "retrieve_sources";
 export const AGENT_STAGE_NORMALIZE_CANDIDATES = "normalize_candidates";
 export const AGENT_STAGE_EVIDENCE_EXTRACT_LLM = "evidence_extract_llm";
 export const AGENT_STAGE_RESPONSE_COMPOSE_LLM = "response_compose_llm";
+export const AGENT_STAGE_GROUNDING_GUARD_LLM = "grounding_guard_llm";
 
 export type AgentBusinessStageName =
   | typeof AGENT_STAGE_UNDERSTAND_GOAL_RULE
@@ -11,7 +12,8 @@ export type AgentBusinessStageName =
   | typeof AGENT_STAGE_RETRIEVE_SOURCES
   | typeof AGENT_STAGE_NORMALIZE_CANDIDATES
   | typeof AGENT_STAGE_EVIDENCE_EXTRACT_LLM
-  | typeof AGENT_STAGE_RESPONSE_COMPOSE_LLM;
+  | typeof AGENT_STAGE_RESPONSE_COMPOSE_LLM
+  | typeof AGENT_STAGE_GROUNDING_GUARD_LLM;
 
 export const AGENT_ARTIFACT_INTENT = "intent";
 export const AGENT_ARTIFACT_SEARCH_PLAN = "search_plan";
@@ -19,6 +21,7 @@ export const AGENT_ARTIFACT_RAW_SOURCES = "raw_sources";
 export const AGENT_ARTIFACT_CANDIDATES = "candidates";
 export const AGENT_ARTIFACT_EVIDENCE = "evidence";
 export const AGENT_ARTIFACT_FINAL_RESULT = "final_result";
+export const AGENT_ARTIFACT_GUARDED_FINAL_RESULT = "guarded_final_result";
 
 export interface AgentStageOutput<TData> {
   artifactType: string;
@@ -124,6 +127,23 @@ export interface FinalResultArtifactData {
   people: FinalResultPerson[];
   suggestedQuestions: string[];
   strategy: "llm_composed" | "rule_fallback";
+  llmUsed: boolean;
+  fallbackReason?: string;
+}
+
+export interface GroundingGuardReport {
+  status: "passed" | "repaired" | "partial" | "fallback";
+  unsupportedClaims: string[];
+  removedItems: string[];
+  warnings: string[];
+  evidenceCoverage: number | null;
+}
+
+export interface GuardedFinalResultArtifactData {
+  schemaVersion: "agent.guarded_final_result.v1";
+  result: FinalResultArtifactData;
+  guard: GroundingGuardReport;
+  strategy: "llm_guarded" | "rule_fallback";
   llmUsed: boolean;
   fallbackReason?: string;
 }

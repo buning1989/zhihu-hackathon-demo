@@ -581,22 +581,24 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 6 persistent Agent Runtime. Creates a queued task in
+        Phase 7 persistent Agent Runtime. Creates a queued task in
         Postgres, writes task.created, enqueues a BullMQ job, and writes
         task.enqueued. A separate worker consumes the job and runs the
         rule-based business stage workflow: understand_goal_rule,
         plan_search_llm, retrieve_sources, normalize_candidates, and
-        evidence_extract_llm, then response_compose_llm. All Agent LLM stages
-        must go through the LLM Gateway for timeout, retry, JSON parse, schema
-        validation, and fallback control. retrieve_sources reuses the existing
-        search service when Zhihu config is available and writes a fallback
-        stage/artifact otherwise. evidence_extract_llm produces an evidence
-        artifact or rule fallback artifact without failing the task.
-        response_compose_llm produces a final_result artifact or rule fallback
-        artifact without failing the task. It does not run grounding guard,
+        evidence_extract_llm, response_compose_llm, then grounding_guard_llm.
+        All Agent LLM stages must go through the LLM Gateway for timeout,
+        retry, JSON parse, schema validation, and fallback control.
+        retrieve_sources reuses the existing search service when Zhihu config
+        is available and writes a fallback stage/artifact otherwise.
+        evidence_extract_llm produces an evidence artifact or rule fallback
+        artifact without failing the task. response_compose_llm produces a
+        final_result artifact or rule fallback artifact without failing the
+        task. grounding_guard_llm produces a guarded_final_result artifact or
+        rule fallback artifact without failing the task. It does not run
         persona build, the demo search orchestrator, or stream events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase6
+      x-implementation-status: implemented-phase7
       requestBody:
         required: true
         content:
@@ -1185,7 +1187,7 @@ components:
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for future SSE; endpoint is not implemented in Phase 6.
+              description: Reserved for future SSE; endpoint is not implemented in Phase 7.
     AgentTaskResponse:
       type: object
       required:
@@ -1388,6 +1390,7 @@ components:
             - $ref: "#/components/schemas/PersistentAgentCandidatesArtifact"
             - $ref: "#/components/schemas/PersistentAgentEvidenceArtifact"
             - $ref: "#/components/schemas/PersistentAgentFinalResultArtifact"
+            - $ref: "#/components/schemas/PersistentAgentGuardedFinalResultArtifact"
             - type: object
               additionalProperties: true
         createdAt:
@@ -1678,6 +1681,64 @@ components:
         fallbackReason:
           type: string
           description: Present when response_compose_llm used Gateway fallback.
+    PersistentAgentGuardedFinalResultArtifact:
+      type: object
+      required:
+        - schemaVersion
+        - result
+        - guard
+        - strategy
+        - llmUsed
+      properties:
+        schemaVersion:
+          type: string
+          const: agent.guarded_final_result.v1
+        result:
+          $ref: "#/components/schemas/PersistentAgentFinalResultArtifact"
+        guard:
+          type: object
+          required:
+            - status
+            - unsupportedClaims
+            - removedItems
+            - warnings
+            - evidenceCoverage
+          properties:
+            status:
+              type: string
+              enum:
+                - passed
+                - repaired
+                - partial
+                - fallback
+            unsupportedClaims:
+              type: array
+              items:
+                type: string
+            removedItems:
+              type: array
+              items:
+                type: string
+            warnings:
+              type: array
+              items:
+                type: string
+            evidenceCoverage:
+              type:
+                - number
+                - "null"
+              minimum: 0
+              maximum: 1
+        strategy:
+          type: string
+          enum:
+            - llm_guarded
+            - rule_fallback
+        llmUsed:
+          type: boolean
+        fallbackReason:
+          type: string
+          description: Present when grounding_guard_llm used Gateway fallback.
     PersistentAgentEvent:
       type: object
       required:

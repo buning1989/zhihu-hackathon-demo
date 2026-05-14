@@ -179,12 +179,81 @@ try {
     "final result schema invalid did not expose SCHEMA_VALIDATION_FAILED"
   );
 
+  const groundingGuardSuccess = await llmGateway.runJson({
+    stageName: "smoke_llm_gateway_grounding_guard_success",
+    schemaName: "agent.guarded_final_result.v1",
+    messages: [{ role: "user", content: "return valid guarded final result JSON" }],
+    timeoutMs: 1000,
+    retries: 0,
+    validate: isGuardedFinalResultArtifactData,
+    fallback: (context) =>
+      buildGuardedFinalResultFallback(finalResultSuccess.data, context.fallbackReason),
+    metadata: {
+      originalQuery,
+      mockScenario: "success",
+      finalResult: finalResultSuccess.data,
+      candidates: [
+        {
+          id: "candidate_smoke_1",
+          title: "裸辞后去小城市生活",
+          author: "知乎用户",
+          url: "https://www.zhihu.com/question/mock/answer/1",
+          excerpt: "我离开原来的工作后，先在小城市住了三个月。"
+        }
+      ],
+      evidenceItems: [
+        {
+          id: "evidence_candidate_smoke_1_1",
+          candidateId: "candidate_smoke_1",
+          evidenceText: "我离开原来的工作后，先在小城市住了三个月。"
+        }
+      ]
+    }
+  });
+  assert(
+    groundingGuardSuccess.status === "success",
+    "mock grounding guard success did not return success"
+  );
+  assert(
+    groundingGuardSuccess.data.schemaVersion === "agent.guarded_final_result.v1",
+    "mock grounding guard success did not return guarded schema"
+  );
+  assert(
+    groundingGuardSuccess.data.strategy === "llm_guarded" &&
+      groundingGuardSuccess.data.llmUsed === true,
+    "mock grounding guard success did not mark llm guard"
+  );
+
+  const groundingGuardSchemaInvalid = await llmGateway.runJson({
+    stageName: "smoke_llm_gateway_grounding_guard_schema_invalid",
+    schemaName: "agent.guarded_final_result.v1",
+    messages: [{ role: "user", content: "simulate invalid guarded final result schema" }],
+    timeoutMs: 1000,
+    retries: 0,
+    validate: isGuardedFinalResultArtifactData,
+    fallback: (context) =>
+      buildGuardedFinalResultFallback(finalResultSuccess.data, context.fallbackReason),
+    metadata: {
+      originalQuery,
+      mockScenario: "schema_invalid"
+    }
+  });
+  assert(
+    groundingGuardSchemaInvalid.status === "fallback",
+    "grounding guard schema invalid did not return fallback status"
+  );
+  assert(
+    groundingGuardSchemaInvalid.errorType === "SCHEMA_VALIDATION_FAILED",
+    "grounding guard schema invalid did not expose SCHEMA_VALIDATION_FAILED"
+  );
+
   console.log("llm gateway smoke ok");
   console.log(`successAttempts=${success.attempts}`);
   console.log(`timeoutStatus=${timeout.status}`);
   console.log(`schemaInvalidErrorType=${schemaInvalid.errorType}`);
   console.log(`evidenceItemCount=${evidenceSuccess.data.evidenceItems.length}`);
   console.log(`finalResultStrategy=${finalResultSuccess.data.strategy}`);
+  console.log(`groundingGuardStatus=${groundingGuardSuccess.data.guard.status}`);
 } catch (error) {
   console.error("llm gateway smoke failed");
   console.error(error);
@@ -224,6 +293,23 @@ function buildFinalResultFallback(fallbackReason) {
     paths: [],
     people: [],
     suggestedQuestions: [],
+    strategy: "rule_fallback",
+    llmUsed: false,
+    fallbackReason
+  };
+}
+
+function buildGuardedFinalResultFallback(finalResult, fallbackReason) {
+  return {
+    schemaVersion: "agent.guarded_final_result.v1",
+    result: finalResult,
+    guard: {
+      status: "fallback",
+      unsupportedClaims: [],
+      removedItems: [],
+      warnings: ["grounding_guard fallback used"],
+      evidenceCoverage: null
+    },
     strategy: "rule_fallback",
     llmUsed: false,
     fallbackReason
@@ -281,6 +367,42 @@ function isEvidenceItem(value) {
     Number.isFinite(value.confidence) &&
     value.confidence >= 0 &&
     value.confidence <= 1
+  );
+}
+
+function isGuardedFinalResultArtifactData(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    value.schemaVersion === "agent.guarded_final_result.v1" &&
+    isFinalResultArtifactData(value.result) &&
+    isGroundingGuardReport(value.guard) &&
+    ["llm_guarded", "rule_fallback"].includes(value.strategy) &&
+    typeof value.llmUsed === "boolean" &&
+    (value.fallbackReason === undefined || typeof value.fallbackReason === "string")
+  );
+}
+
+function isGroundingGuardReport(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    ["passed", "repaired", "partial", "fallback"].includes(value.status) &&
+    Array.isArray(value.unsupportedClaims) &&
+    value.unsupportedClaims.every((item) => typeof item === "string") &&
+    Array.isArray(value.removedItems) &&
+    value.removedItems.every((item) => typeof item === "string") &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((item) => typeof item === "string") &&
+    (value.evidenceCoverage === null ||
+      (typeof value.evidenceCoverage === "number" &&
+        Number.isFinite(value.evidenceCoverage) &&
+        value.evidenceCoverage >= 0 &&
+        value.evidenceCoverage <= 1))
   );
 }
 

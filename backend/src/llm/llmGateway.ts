@@ -227,6 +227,10 @@ async function createMockCompletion<TData>(
     });
   }
 
+  if (input.schemaName === "agent.guarded_final_result.v1") {
+    return createMockGuardedFinalResultCompletion(input);
+  }
+
   if (input.schemaName === "agent.final_result.v1") {
     return createMockFinalResultCompletion(input);
   }
@@ -301,6 +305,28 @@ function createMockFinalResultCompletion<TData>(input: LlmGatewayInput<TData>): 
   });
 }
 
+function createMockGuardedFinalResultCompletion<TData>(input: LlmGatewayInput<TData>): string {
+  const candidates = readMockFinalResultCandidates(input.metadata?.candidates);
+  const evidenceItems = readMockFinalResultEvidence(input.metadata?.evidenceItems);
+  const finalResult = isRecord(input.metadata?.finalResult)
+    ? input.metadata.finalResult
+    : createDefaultMockFinalResult(input, candidates, evidenceItems);
+
+  return JSON.stringify({
+    schemaVersion: "agent.guarded_final_result.v1",
+    result: finalResult,
+    guard: {
+      status: "passed",
+      unsupportedClaims: [],
+      removedItems: [],
+      warnings: [],
+      evidenceCoverage: evidenceItems.length > 0 ? 1 : 0
+    },
+    strategy: "llm_guarded",
+    llmUsed: true
+  });
+}
+
 function createMockEvidenceCompletion<TData>(input: LlmGatewayInput<TData>): string {
   const candidates = readMockEvidenceCandidates(input.metadata?.candidates);
   const evidenceItems = candidates.map((candidate, index) => ({
@@ -318,6 +344,44 @@ function createMockEvidenceCompletion<TData>(input: LlmGatewayInput<TData>): str
     strategy: "llm_extracted",
     llmUsed: true
   });
+}
+
+function createDefaultMockFinalResult<TData>(
+  input: LlmGatewayInput<TData>,
+  candidates: MockFinalResultCandidate[],
+  evidenceItems: MockFinalResultEvidence[]
+): Record<string, unknown> {
+  const originalQuery = readString(input.metadata?.originalQuery) || "不工作了能去哪儿";
+  const candidateIds = candidates.slice(0, 3).map((candidate) => candidate.id);
+  const evidenceIds = evidenceItems.slice(0, 3).map((item) => item.id);
+
+  return {
+    schemaVersion: "agent.final_result.v1",
+    summary: `围绕“${originalQuery}”，这次结果主要整理出相似经历和证据边界。`,
+    paths:
+      candidateIds.length > 0
+        ? [
+            {
+              title: "先看有证据支撑的相似经历",
+              summary: "这些条目都有候选或证据支撑，适合作为下一步比较样本。",
+              evidenceIds,
+              candidateIds
+            }
+          ]
+        : [],
+    people: candidates.slice(0, 3).map((candidate) => ({
+      name: candidate.author || "知乎用户",
+      reason: "TA 的内容提供了一个可对比的公开经历样本。",
+      candidateId: candidate.id,
+      evidenceIds: evidenceItems
+        .filter((item) => item.candidateId === candidate.id)
+        .slice(0, 2)
+        .map((item) => item.id)
+    })),
+    suggestedQuestions: ["哪些内容有明确证据支撑？"],
+    strategy: "llm_composed",
+    llmUsed: true
+  };
 }
 
 async function buildFallbackOutput<TData>(

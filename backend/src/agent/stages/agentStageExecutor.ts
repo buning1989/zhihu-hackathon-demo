@@ -12,12 +12,14 @@ import type {
   CandidatesArtifactData,
   EvidenceArtifactData,
   FinalResultArtifactData,
+  GuardedFinalResultArtifactData,
   IntentArtifactData,
   RawSourcesArtifactData,
   SearchPlanArtifactData
 } from "./stageTypes.js";
 import {
   AGENT_STAGE_EVIDENCE_EXTRACT_LLM,
+  AGENT_STAGE_GROUNDING_GUARD_LLM,
   AGENT_STAGE_NORMALIZE_CANDIDATES,
   AGENT_STAGE_PLAN_SEARCH_LLM,
   AGENT_STAGE_RESPONSE_COMPOSE_LLM,
@@ -25,6 +27,7 @@ import {
   AGENT_STAGE_UNDERSTAND_GOAL_RULE
 } from "./stageTypes.js";
 import { runEvidenceExtractLlmStage } from "./evidenceExtractLlmStage.js";
+import { runGroundingGuardLlmStage } from "./groundingGuardLlmStage.js";
 import { runResponseComposeLlmStage } from "./responseComposeLlmStage.js";
 import { runUnderstandGoalRuleStage } from "./understandGoalRuleStage.js";
 
@@ -81,7 +84,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_UNDERSTAND_GOAL_RULE,
       progressStarted: 10,
-      progressCompleted: 22,
+      progressCompleted: 20,
       run: () => runUnderstandGoalRuleStage(task)
     });
     const intent = intentStage.output.data;
@@ -90,8 +93,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_PLAN_SEARCH_LLM,
       inputArtifactIds: [intentStage.artifact.id],
-      progressStarted: 25,
-      progressCompleted: 37,
+      progressStarted: 22,
+      progressCompleted: 34,
       run: () => runPlanSearchLlmStage(taskId, intent)
     });
     const searchPlan = searchPlanStage.output.data;
@@ -100,8 +103,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_RETRIEVE_SOURCES,
       inputArtifactIds: [searchPlanStage.artifact.id],
-      progressStarted: 42,
-      progressCompleted: 58,
+      progressStarted: 38,
+      progressCompleted: 52,
       run: () => runRetrieveSourcesStage(searchPlan, intent)
     });
     const rawSources = rawSourcesStage.output.data;
@@ -110,8 +113,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_NORMALIZE_CANDIDATES,
       inputArtifactIds: [rawSourcesStage.artifact.id],
-      progressStarted: 62,
-      progressCompleted: 72,
+      progressStarted: 56,
+      progressCompleted: 66,
       run: () => runNormalizeCandidatesStage(rawSources)
     });
     const candidates = candidatesStage.output.data;
@@ -124,8 +127,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
         searchPlanStage.artifact.id,
         intentStage.artifact.id
       ],
-      progressStarted: 76,
-      progressCompleted: 86,
+      progressStarted: 70,
+      progressCompleted: 80,
       run: () => runEvidenceExtractLlmStage(taskId, candidates, searchPlan, intent)
     });
     const evidence = evidenceStage.output.data;
@@ -139,9 +142,23 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
         candidatesStage.artifact.id,
         evidenceStage.artifact.id
       ],
-      progressStarted: 90,
-      progressCompleted: 96,
+      progressStarted: 84,
+      progressCompleted: 91,
       run: () => runResponseComposeLlmStage(taskId, intent, searchPlan, candidates, evidence)
+    });
+    const finalResult = finalResultStage.output.data;
+
+    const guardedFinalResultStage = await executeAgentStage<GuardedFinalResultArtifactData>({
+      taskId,
+      stageName: AGENT_STAGE_GROUNDING_GUARD_LLM,
+      inputArtifactIds: [
+        finalResultStage.artifact.id,
+        candidatesStage.artifact.id,
+        evidenceStage.artifact.id
+      ],
+      progressStarted: 94,
+      progressCompleted: 98,
+      run: () => runGroundingGuardLlmStage(taskId, finalResult, candidates, evidence)
     });
 
     const completedAt = new Date().toISOString();
@@ -149,7 +166,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       status: "completed",
       currentStage: "completed",
       progress: 100,
-      resultArtifactId: finalResultStage.artifact.id,
+      resultArtifactId: guardedFinalResultStage.artifact.id,
       completedAt,
       error: null
     });
@@ -158,7 +175,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       type: "task.completed",
       payload: {
         status: "completed",
-        resultArtifactId: finalResultStage.artifact.id
+        resultArtifactId: guardedFinalResultStage.artifact.id
       }
     });
   } catch (error) {

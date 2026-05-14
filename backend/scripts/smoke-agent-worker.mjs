@@ -84,7 +84,15 @@ try {
     ),
     "response_compose_llm stage did not succeed or fallback"
   );
-  assert(completedSnapshot.stages.length === 6, "agent worker did not record 6 stages");
+  assert(
+    completedSnapshot.stages.some(
+      (stage) =>
+        stage.stageName === "grounding_guard_llm" &&
+        (stage.status === "succeeded" || stage.status === "fallback")
+    ),
+    "grounding_guard_llm stage did not succeed or fallback"
+  );
+  assert(completedSnapshot.stages.length === 7, "agent worker did not record 7 stages");
   assert(
     completedSnapshot.artifacts.some((artifact) => artifact.type === "intent"),
     "intent artifact was not found"
@@ -124,9 +132,19 @@ try {
     Array.isArray(finalResultArtifact.data?.suggestedQuestions),
     "final_result suggestedQuestions array was missing"
   );
+  const guardedFinalResultArtifact = completedSnapshot.artifacts.find(
+    (artifact) => artifact.type === "guarded_final_result"
+  );
+  assert(guardedFinalResultArtifact, "guarded_final_result artifact was not found");
   assert(
-    completedSnapshot.task.resultArtifactId === finalResultArtifact.id,
-    "task.resultArtifactId does not point to final_result artifact"
+    guardedFinalResultArtifact.data?.schemaVersion === "agent.guarded_final_result.v1",
+    "guarded_final_result artifact schemaVersion was not agent.guarded_final_result.v1"
+  );
+  assert(guardedFinalResultArtifact.data?.result, "guarded_final_result result was missing");
+  assert(guardedFinalResultArtifact.data?.guard, "guarded_final_result guard was missing");
+  assert(
+    completedSnapshot.task.resultArtifactId === guardedFinalResultArtifact.id,
+    "task.resultArtifactId does not point to guarded_final_result artifact"
   );
   assert(
     completedSnapshot.events.some((event) => event.type === "task.completed"),
