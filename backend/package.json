@@ -7,13 +7,17 @@
     "dev": "npm run build && node dist/server.js",
     "build": "tsc",
     "start": "node dist/server.js",
+    "agent:worker": "node scripts/agent-worker.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:smoke:agent": "node scripts/smoke-agent-db.mjs",
+    "smoke:agent-worker": "node scripts/smoke-agent-worker.mjs",
     "smoke": "npm run build && node dist/tests/smoke.test.js"
   },
   "dependencies": {
+    "bullmq": "^5.76.8",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "ioredis": "^5.10.1",
     "pg": "^8.20.0"
   },
   "devDependencies": {

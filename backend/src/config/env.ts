@@ -51,8 +51,10 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || process.env.APP_ENV || "development",
   dataMode: parseDataMode(process.env.DATA_MODE, zhihuAccessSecret ? "real" : "mock"),
   databaseUrl: firstNonEmpty(process.env.DATABASE_URL),
+  redisUrl: firstNonEmpty(process.env.REDIS_URL),
   agent: {
-    taskTtlHours: parsePositiveInteger(process.env.AGENT_TASK_TTL_HOURS, 24)
+    taskTtlHours: parsePositiveInteger(process.env.AGENT_TASK_TTL_HOURS, 24),
+    queueName: firstNonEmpty(process.env.AGENT_QUEUE_NAME) || "agent-tasks"
   },
   host: process.env.HOST || "127.0.0.1",
   port: parsePositiveInteger(process.env.PORT ?? process.env.BACKEND_PORT, 8000),

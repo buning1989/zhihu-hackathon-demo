@@ -581,11 +581,12 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 1 persistent Agent Runtime skeleton. Creates a queued task in
-        Postgres and writes a task.created event. It does not start a worker,
-        run search, call LLMs, or stream events.
+        Phase 2 persistent Agent Runtime skeleton. Creates a queued task in
+        Postgres, writes task.created, enqueues a BullMQ job, and writes
+        task.enqueued. A separate worker consumes the job and runs a mock stage.
+        It does not run real search, call LLMs, or stream events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase1
+      x-implementation-status: implemented-phase2
       requestBody:
         required: true
         content:
@@ -611,7 +612,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
         "503":
-          description: DATABASE_URL is not configured.
+          description: DATABASE_URL or REDIS_URL is not configured, or Postgres/Redis is unavailable.
           content:
             application/json:
               schema:
@@ -1161,6 +1162,7 @@ components:
           required:
             - taskId
             - status
+            - queueStatus
             - eventsUrl
           properties:
             taskId:
@@ -1168,9 +1170,12 @@ components:
             status:
               type: string
               const: queued
+            queueStatus:
+              type: string
+              const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for Phase 3 SSE; endpoint is not implemented in Phase 1.
+              description: Reserved for Phase 3 SSE; endpoint is not implemented in Phase 2.
     AgentTaskResponse:
       type: object
       required:

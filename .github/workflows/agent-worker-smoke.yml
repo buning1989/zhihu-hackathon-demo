@@ -1,0 +1,77 @@
+name: Agent Worker Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - deploy/static-mock-demo
+  workflow_dispatch:
+
+jobs:
+  agent-worker-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agent_runtime_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agent_runtime_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agent_runtime_test
+      REDIS_URL: redis://localhost:6379
+      AGENT_QUEUE_NAME: agent-tasks
+      AGENT_API_BASE_URL: http://127.0.0.1:8000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build -w backend
+
+      - name: Run database migrations
+        run: npm run db:migrate -w backend
+
+      - name: Run agent worker smoke
+        shell: bash
+        run: |
+          npm run start -w backend &
+          api_pid=$!
+          npm run agent:worker -w backend &
+          worker_pid=$!
+          trap 'kill "$worker_pid" "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS "$AGENT_API_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          npm run smoke:agent-worker -w backend
