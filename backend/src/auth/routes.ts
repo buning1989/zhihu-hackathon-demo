@@ -122,8 +122,9 @@ function buildSessionUser(userInfo: unknown, userInfoLoaded: boolean): AuthSessi
     id: readString(record, "id", "uid", "user_id", "open_id", "union_id") || `zhihu-${randomId(12)}`,
     provider: "zhihu",
     displayName:
-      readString(record, "name", "nickname", "display_name", "username") || "知乎用户",
-    avatar: readString(record, "avatar", "avatar_url", "image_url"),
+      readString(record, "fullname", "name", "nickname", "display_name", "username") ||
+      "知乎用户",
+    avatar: readString(record, "avatar_path", "avatar", "avatar_url", "image_url"),
     profileUrl: readProfileUrl(record),
     headline: readString(record, "headline", "description", "bio"),
     isTemporary: false,
@@ -138,19 +139,18 @@ function readString(record: Record<string, unknown>, ...keys: string[]): string 
     if (typeof value === "string" && value.trim()) {
       return value;
     }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
   }
 
   return "";
 }
 
 function readProfileUrl(record: Record<string, unknown>): string {
-  const directUrl = readString(
-    record,
-    "profileUrl",
-    "profile_url",
-    "url",
-    "html_url",
-    "user_url"
+  const directUrl = readValidZhihuProfileUrl(
+    readString(record, "profileUrl", "profile_url", "html_url", "user_url")
   );
   if (directUrl) {
     return directUrl;
@@ -158,6 +158,22 @@ function readProfileUrl(record: Record<string, unknown>): string {
 
   const urlToken = readString(record, "urlToken", "url_token", "slug");
   return urlToken ? `https://www.zhihu.com/people/${encodeURIComponent(urlToken)}` : "";
+}
+
+function readValidZhihuProfileUrl(value: string): string {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const isZhihuWebHost = hostname === "zhihu.com" || hostname.endsWith(".zhihu.com");
+    const isOpenApiHost = hostname === "openapi.zhihu.com";
+    return isZhihuWebHost && !isOpenApiHost && url.pathname.startsWith("/people/") ? url.toString() : "";
+  } catch {
+    return "";
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

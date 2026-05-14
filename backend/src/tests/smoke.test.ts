@@ -317,6 +317,7 @@ async function assertQueryAwareDemoPaths(baseUrl: string): Promise<void> {
       "boolean",
       `${item.query} cacheHit`
     );
+    assertPathExtractionFields(response.body.data.paths, response.body.data.debug, item.query);
     assertIncludes(
       response.body.data.debug.cacheKeyPreview,
       item.query,
@@ -336,6 +337,34 @@ async function assertQueryAwareDemoPaths(baseUrl: string): Promise<void> {
   }
 
   assertEqual(new Set(titleSets).size, cases.length, "query-aware path title sets differ");
+}
+
+function assertPathExtractionFields(paths: unknown, debug: unknown, label: string): void {
+  const pathItems = Array.isArray(paths) ? paths : [];
+  if (pathItems.length < 3 || pathItems.length > 5) {
+    throw new Error(`${label} paths expected 3-5 items, got ${pathItems.length}`);
+  }
+
+  for (const [index, rawPath] of pathItems.entries()) {
+    const path = rawPath as Record<string, unknown>;
+    assertNonEmptyString(path.summary, `${label} paths[${index}].summary`);
+    assertNonEmptyString(path.whyRelevant, `${label} paths[${index}].whyRelevant`);
+    assertNonEmptyString(path.tradeoff, `${label} paths[${index}].tradeoff`);
+    assertNonEmptyArray(path.sourceRefs, `${label} paths[${index}].sourceRefs`);
+    assertNonEmptyString(path.diversityKey, `${label} paths[${index}].diversityKey`);
+  }
+
+  const debugRecord = debug as Record<string, unknown>;
+  assertEqual(
+    typeof debugRecord.composerFallbackTriggered,
+    "boolean",
+    `${label} debug.composerFallbackTriggered type`
+  );
+  assertEqual(
+    typeof debugRecord.pathDuplicateFound,
+    "boolean",
+    `${label} debug.pathDuplicateFound type`
+  );
 }
 
 async function assertDisabledPersonaFallback(baseUrl: string): Promise<void> {
@@ -721,11 +750,21 @@ function assertSearchPlanDebug(response: Awaited<ReturnType<typeof withStubbedOr
   }
 
   if (
+    !Number.isFinite(response.debug.rawCandidateCount) ||
     !Number.isFinite(response.debug.mergedCandidateCount) ||
     !Number.isFinite(response.debug.dedupedCandidateCount) ||
     !Number.isFinite(response.debug.validCandidateCount)
   ) {
-    throw new Error("debug candidate counts must include merged/deduped/valid counts");
+    throw new Error("debug candidate counts must include raw/merged/deduped/valid counts");
+  }
+
+  assertNonEmptyArray(response.debug.topicSignals, "debug.topicSignals");
+  assertNonEmptyArray(response.debug.finalCandidates, "debug.finalCandidates");
+  if (!response.debug.finalCandidates?.every((candidate) => candidate.relationToUserIntent && candidate.summaryAngle)) {
+    throw new Error("debug.finalCandidates must include relationToUserIntent and summaryAngle");
+  }
+  if (!response.debug.finalCandidates?.every((candidate) => candidate.diversityKey && candidate.sourceRefs?.length)) {
+    throw new Error("debug.finalCandidates must include diversityKey and sourceRefs");
   }
 }
 
