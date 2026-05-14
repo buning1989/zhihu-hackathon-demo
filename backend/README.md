@@ -15,6 +15,11 @@ backend/
       health.routes.ts
       zhihu.routes.ts
       search.routes.ts
+    auth/
+      routes.ts
+      zhihuOAuth.ts
+      session.ts
+      requireAuth.ts
     providers/
       zhihu/
         zhihu.provider.ts
@@ -39,12 +44,27 @@ ZHIHU_API_KEY=你的知乎 API Key
 ZH_ACCESS_SECRET=兼容旧变量，可留空
 ZH_SEARCH_API_URL=https://developer.zhihu.com/api/v1/content/zhihu_search
 ZH_API_TIMEOUT_MS=10000
+ZHIHU_APP_ID=你的知乎 OAuth App ID
+ZHIHU_APP_KEY=你的知乎 OAuth App Key
+ZHIHU_REDIRECT_URI=http://127.0.0.1:3001/auth/zhihu/callback
+ZHIHU_OPENAPI_BASE_URL=https://openapi.zhihu.com
+ZHIHU_OPENAPI_APP_KEY=你的知乎 OpenAPI App Key
+ZHIHU_OPENAPI_APP_SECRET=你的知乎 OpenAPI App Secret
+ZHIHU_USERINFO_PATH=
+FRONTEND_URL=http://127.0.0.1:5173
+SESSION_SECRET=replace-with-random-string
 HOST=127.0.0.1
 BACKEND_PORT=8000
 PORT=8000
 ```
 
 `.env.local` 已加入 `.gitignore`，不要提交真实 Secret。
+
+OAuth 相关配置只在访问 `/auth/zhihu/login` 和 callback 时需要；未配置
+`ZHIHU_APP_ID` / `ZHIHU_APP_KEY` 时服务仍可启动，登录入口会返回清晰 JSON 错误。
+`ZHIHU_USERINFO_PATH` 暂不猜测硬编码，配置后才会调用用户信息接口。
+圈子发布接口使用独立的 `ZHIHU_OPENAPI_APP_KEY` / `ZHIHU_OPENAPI_APP_SECRET`，
+缺失时只会让发布请求返回配置错误，不影响服务启动。
 
 ## 启动
 
@@ -84,6 +104,28 @@ curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&coun
 
 底层调试接口，会真实调用知乎搜索 API，并保留原始 `Code` / `Message` / `Data` 结构。
 
+### POST /api/zhihu/ring/publish
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/zhihu/ring/publish" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ringId":"2029619126742656657",
+    "title":"错位人生测试",
+    "content":"这是一条后端链路测试内容，请忽略。",
+    "imageUrls":[]
+  }'
+```
+
+手动发布一条想法到白名单圈子。当前允许的圈子 ID：
+
+- `2001009660925334090`：OpenClaw 人类观察员
+- `2015023739549529606`：A2A for Reconnect
+- `2029619126742656657`：黑客松脑洞补给站
+
+该接口不会接入 demo search 主链路；同一后端进程内每小时最多 5 次真实发布。
+成功时返回 `contentToken` 和本次请求的 `logId`。
+
 ### GET /api/search
 
 ```bash
@@ -104,6 +146,42 @@ curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
   }
 }
 ```
+
+### GET /auth/zhihu/login
+
+前端跳转到这个后端入口开始知乎 OAuth 登录。后端生成 `state`，写入 HttpOnly
+Cookie 和临时内存状态，然后 302 跳转到知乎授权页。`app_key` 不会出现在前端。
+
+```bash
+curl -i "http://127.0.0.1:8000/auth/zhihu/login"
+```
+
+### GET /auth/zhihu/callback
+
+知乎回调入口。后端校验 `state`，使用固定的 `ZHIHU_REDIRECT_URI` 和
+`application/x-www-form-urlencoded` 请求 `access_token`，再创建本系统内存 session，
+通过 HttpOnly Cookie 维持登录态，最后重定向到 `FRONTEND_URL`。
+
+如果未配置 `ZHIHU_USERINFO_PATH`，仍会创建 demo 登录态，`/auth/me` 中
+`userInfoLoaded=false`。
+
+### GET /auth/me
+
+```bash
+curl -i "http://127.0.0.1:8000/auth/me"
+```
+
+未登录返回 401。已登录返回当前 session 用户信息，但不会返回 `access_token`。
+前端可直接读取 `success=true` 和 `data.id`、`data.name`、`data.avatar`、
+`data.profileUrl`；响应中也保留 `data.user.displayName` 等兼容字段。
+
+### POST /auth/logout
+
+```bash
+curl -i -X POST "http://127.0.0.1:8000/auth/logout"
+```
+
+清除内存 session，并清除登录 Cookie。
 
 错误统一返回：
 
@@ -126,4 +204,5 @@ curl "http://127.0.0.1:8000/health"
 curl "http://127.0.0.1:8000/api/health"
 curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=5"
 curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
+curl -i "http://127.0.0.1:8000/auth/zhihu/login"
 ```

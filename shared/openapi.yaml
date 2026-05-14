@@ -1,22 +1,29 @@
 openapi: 3.1.0
 info:
   title: Zhihu Hackathon Demo API
-  version: 0.1.1
+  version: 0.2.0
   description: >
-    Shared contract for the current monorepo scaffold. The frontend should
-    treat GET /api/search as the current P0 main interface. Paths marked with
-    x-implementation-status: planned are future contracts and are not available
-    in the backend yet.
+    Shared contract for the current monorepo scaffold. GET /api/search remains
+    the implemented search mapping endpoint and must not be broken. The P0
+    product-layer contract for the AI persona experience is POST
+    /api/demo/search; persona chat is planned for P0.5 at POST
+    /api/personas/chat.
 servers:
   - url: http://localhost:8000
     description: Local backend
 tags:
   - name: Health
     description: Implemented health checks.
+  - name: Auth
+    description: Implemented Zhihu OAuth login and session endpoints.
   - name: Search
     description: Implemented search endpoints.
   - name: Zhihu
     description: Implemented raw Zhihu proxy endpoints.
+  - name: Demo
+    description: Product-layer demo contracts for analysis, paths, people and AI personas.
+  - name: Personas
+    description: AI persona chat contracts grounded in public content evidence.
   - name: Planned
     description: Future demo endpoints, not implemented in the backend yet.
 paths:
@@ -63,15 +70,163 @@ paths:
                     data:
                       status: ok
                       service: zhihu-hackathon-backend
+  /auth/zhihu/login:
+    get:
+      tags:
+        - Auth
+      summary: Start Zhihu OAuth login
+      description: >
+        Implemented. Creates a short-lived OAuth state, stores it in an
+        HttpOnly cookie and server memory, then redirects the browser to
+        Zhihu's authorization endpoint. ZHIHU_APP_ID and ZHIHU_APP_KEY are
+        required only when this endpoint is called, so the server can still
+        start without local OAuth credentials.
+      operationId: loginWithZhihu
+      x-implementation-status: implemented
+      responses:
+        "302":
+          description: Redirects to Zhihu authorization page.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Zhihu authorization URL.
+        "500":
+          description: Missing local Zhihu OAuth credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                missingOAuthConfig:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_OAUTH_NOT_CONFIGURED
+                      message: 知乎 OAuth 未配置：ZHIHU_APP_ID, ZHIHU_APP_KEY
+  /auth/zhihu/callback:
+    get:
+      tags:
+        - Auth
+      summary: Finish Zhihu OAuth callback
+      description: >
+        Implemented. Validates OAuth state, exchanges the authorization code
+        for an access token on the backend, optionally loads user info from
+        ZHIHU_USERINFO_PATH, creates an in-memory app session, sets an HttpOnly
+        session cookie, and redirects to FRONTEND_URL.
+      operationId: zhihuOAuthCallback
+      x-implementation-status: implemented
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Login succeeded and browser is redirected to the frontend.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Configured FRONTEND_URL.
+        "400":
+          description: Missing code/state or failed state validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          description: Zhihu OAuth token or configured user-info request failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Get current login session
+      description: >
+        Implemented. Reads the HttpOnly session cookie and returns the current
+        app session user data. Access tokens are never included in this
+        response. If ZHIHU_USERINFO_PATH was not configured during login,
+        userInfoLoaded is false and the user is a temporary demo user.
+      operationId: getCurrentAuthSession
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Current session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMeResponse"
+              examples:
+                temporary:
+                  value:
+                    success: true
+                    data:
+                      id: zhihu-temp-example
+                      name: 知乎临时用户
+                      avatar: ""
+                      profileUrl: ""
+                      provider: zhihu
+                      userInfoLoaded: false
+                      user:
+                        id: zhihu-temp-example
+                        provider: zhihu
+                        displayName: 知乎临时用户
+                        avatar: ""
+                        profileUrl: ""
+                        headline: ""
+                        isTemporary: true
+                        userInfoLoaded: false
+                      session:
+                        createdAt: "2026-05-13T00:00:00.000Z"
+                        expiresAt: "2026-05-20T00:00:00.000Z"
+        "401":
+          description: Missing or expired session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Clear current login session
+      description: Implemented. Deletes the in-memory session and clears the HttpOnly cookie.
+      operationId: logout
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Logout succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+              examples:
+                ok:
+                  value:
+                    success: true
+                    data:
+                      loggedOut: true
   /api/search:
     get:
       tags:
         - Search
       summary: Frontend-friendly search endpoint
       description: >
-        Implemented. This is the current P0 main interface for frontend
-        integration. Without a real Zhihu key, the endpoint returns a clear
-        JSON error instead of crashing.
+        Implemented. This is the existing frontend-friendly Zhihu search
+        mapping endpoint and remains available for compatibility, debugging
+        and product-layer recall. The P0 AI persona product contract is POST
+        /api/demo/search. Without a real Zhihu key, this endpoint returns a
+        clear JSON error instead of crashing.
       operationId: getSearch
       x-implementation-status: implemented
       parameters:
@@ -215,17 +370,113 @@ paths:
                     error:
                       code: ZHIHU_AUTH_FAILED
                       message: 知乎 API 鉴权失败
+  /api/zhihu/ring/publish:
+    post:
+      tags:
+        - Zhihu
+      summary: Publish a pin to an allowlisted Zhihu ring
+      description: >
+        Implemented. Manual-only endpoint that publishes a pin to one of the
+        backend allowlisted Zhihu rings through POST /openapi/publish/pin. It
+        is not called by the demo search flow. The backend enforces a
+        per-process limit of 5 real publish attempts per hour.
+      operationId: publishZhihuRingPin
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZhihuRingPublishRequest"
+            examples:
+              default:
+                value:
+                  ringId: "2029619126742656657"
+                  title: 错位人生测试
+                  content: 这是一条后端链路测试内容，请忽略。
+                  imageUrls: []
+      responses:
+        "200":
+          description: Pin publish succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ZhihuRingPublishSuccessResponse"
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      contentToken: "1992012205256892542"
+                    meta:
+                      ringId: "2029619126742656657"
+                      logId: "0b624840-ae8f-4df6-af07-cd331c210e84"
+        "400":
+          description: Missing required field, invalid imageUrls, or non-allowlisted ringId.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                ringNotAllowed:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_NOT_ALLOWED
+                      message: 圈子 ID 不在允许发布的白名单内
+        "429":
+          description: Local per-process publish limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                rateLimited:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_PUBLISH_RATE_LIMITED
+                      message: 本地进程内圈子发布限流：同一小时最多 5 次真实发布
+        "500":
+          description: Missing local Zhihu OpenAPI publish credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                missingConfig:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_PUBLISH_CONFIG_ERROR
+                      message: 知乎圈子发布 OpenAPI 配置缺失：ZHIHU_OPENAPI_APP_KEY, ZHIHU_OPENAPI_APP_SECRET
+        "502":
+          description: Upstream Zhihu publish failure or malformed upstream response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                upstreamFailed:
+                  value:
+                    success: false
+                    error:
+                      code: ZHIHU_RING_PUBLISH_FAILED
+                      message: 知乎返回的失败信息
   /api/demo/search:
     post:
       tags:
-        - Planned
-      summary: "[planned] Create a demo search session"
+        - Demo
+      summary: Create an AI-persona-ready demo search result
       description: >
-        Planned/future endpoint. It is kept here to show the intended richer
-        demo contract, but it is not implemented in the current backend.
-        Frontend should not call this endpoint for P0 integration.
+        P0 product-layer target contract for the frontend AI persona
+        experience. It wraps search results into analysis, paths, people,
+        persona indexes, sections and metadata. The existing GET /api/search
+        contract remains implemented and must not be broken. During P0
+        implementation, this endpoint must run with mock/stub data when Zhihu
+        API keys or LLM keys are missing.
       operationId: createDemoSearch
-      x-implementation-status: planned
+      x-implementation-status: planned-p0
       requestBody:
         required: true
         content:
@@ -235,23 +486,127 @@ paths:
             examples:
               default:
                 value:
-                  query: 不工作了能去哪儿？
-                  sessionId: s_demo_001
+                  query: 不工作了之后，我想去新西兰生活
+                  count: 20
                   mode: mock
       responses:
-        "501":
-          description: Planned endpoint, not implemented yet.
+        "200":
+          description: Product-layer search response with AI persona entry points.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoSearchResponse"
+              examples:
+                aiPersona:
+                  value:
+                    schemaVersion: "2026-05-13.ai-persona-v1"
+                    queryId: query_demo_001
+                    query: 不工作了之后，我想去新西兰生活
+                    dataMode: mock
+                    contextUsed:
+                      provider: zhihu
+                      loggedIn: false
+                      zhihuProfileUsed: false
+                      profileSignals: []
+                      usedFor: []
+                    features:
+                      aiPersona: true
+                      personaChat: mock
+                      saveSample: false
+                      articleBody: false
+                      sourceEvidenceRequired: true
+                    analysis:
+                      steps:
+                        - title: 读取问题
+                          text: 不工作了之后，我想去新西兰生活
+                      focusTags:
+                        - 暂停工作
+                        - 新西兰
+                    paths: []
+                    people: []
+                    personas: []
+                    sections: []
+                    meta:
+                      mode: mock
+                      generatedAt: "2026-05-13T00:00:00.000Z"
+                    debug:
+                      stubbed: true
+        "400":
+          description: Missing or invalid request body.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Backend error. P0 implementation should prefer mock/stub fallback when keys are missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/personas/chat:
+    post:
+      tags:
+        - Personas
+      summary: Chat with an evidence-grounded AI persona
+      description: >
+        P0.5 target contract for asking a follow-up question to a persona
+        attached to people[].aiPersona. The answer must be grounded in public
+        article/evidence snippets, must include citedArticleIds and boundary,
+        and must not pretend to be the original author.
+      operationId: chatWithPersona
+      x-implementation-status: planned-p0.5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonaChatRequest"
+            examples:
+              default:
+                value:
+                  queryId: query_demo_001
+                  personId: person_return_home
+                  personaId: persona_person_return_home
+                  message: 你当时最担心什么？
+                  history: []
+      responses:
+        "200":
+          description: Grounded persona chat response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaChatSuccessResponse"
               examples:
-                planned:
+                groundedMock:
                   value:
-                    success: false
-                    error:
-                      code: NOT_IMPLEMENTED
-                      message: Planned endpoint, not implemented yet.
+                    success: true
+                    data:
+                      messageId: msg_demo_001
+                      personaId: persona_person_return_home
+                      personId: person_return_home
+                      answer: 从公开内容看，TA 更像是在离开高压工作后先恢复生活节奏，而不是已经完成长期迁移规划。
+                      answerType: grounded_summary
+                      citedArticleIds:
+                        - article_return_home_001
+                      evidence:
+                        - articleId: article_return_home_001
+                          text: 公开内容中的证据片段。
+                          sourceUrl: https://www.zhihu.com/question/mock/answer/return-home
+                      followupQuestions:
+                        - 你想看 TA 当时怎么准备现金流吗？
+                      boundary: 这是基于知乎公开内容生成的经验回应，不代表作者本人。
+        "400":
+          description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Backend error. Stub mode should be available when LLM keys are missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/demo/session/{sessionId}:
     get:
       tags:
@@ -325,6 +680,106 @@ components:
               type: string
               enum:
                 - zhihu-hackathon-backend
+    AuthMeResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AuthSessionData"
+    AuthSessionData:
+      type: object
+      required:
+        - id
+        - name
+        - avatar
+        - profileUrl
+        - provider
+        - userInfoLoaded
+        - user
+        - session
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        avatar:
+          type: string
+        profileUrl:
+          type: string
+          description: Public Zhihu profile URL when available, otherwise an empty string.
+        provider:
+          type: string
+          enum:
+            - zhihu
+        userInfoLoaded:
+          type: boolean
+          description: False when ZHIHU_USERINFO_PATH was not configured during login.
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        session:
+          type: object
+          required:
+            - createdAt
+            - expiresAt
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+            expiresAt:
+              type: string
+              format: date-time
+    AuthUser:
+      type: object
+      required:
+        - id
+        - provider
+        - displayName
+        - avatar
+        - profileUrl
+        - headline
+        - isTemporary
+        - userInfoLoaded
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+          enum:
+            - zhihu
+        displayName:
+          type: string
+        avatar:
+          type: string
+        profileUrl:
+          type: string
+        headline:
+          type: string
+        isTemporary:
+          type: boolean
+        userInfoLoaded:
+          type: boolean
+    LogoutResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - loggedOut
+          properties:
+            loggedOut:
+              type: boolean
+              const: true
     SearchSuccessResponse:
       type: object
       required:
@@ -466,6 +921,62 @@ components:
           description: Evidence text derived from the original content. Can be empty in P0 errors or incomplete upstream data.
         source:
           $ref: "#/components/schemas/SearchSource"
+    ZhihuRingPublishRequest:
+      type: object
+      required:
+        - ringId
+        - title
+        - content
+      properties:
+        ringId:
+          type: string
+          enum:
+            - "2001009660925334090"
+            - "2015023739549529606"
+            - "2029619126742656657"
+          description: Allowlisted Zhihu ring id.
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          minLength: 1
+        imageUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+          default: []
+          description: Optional existing image URLs only. The backend does not upload images.
+    ZhihuRingPublishSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - contentToken
+          properties:
+            contentToken:
+              type: string
+              description: content_token returned by Zhihu.
+        meta:
+          type: object
+          required:
+            - ringId
+            - logId
+          properties:
+            ringId:
+              type: string
+            logId:
+              type: string
+              description: X-Log-Id generated for the upstream OpenAPI request.
     ZhihuRawSearchResponse:
       type: object
       additionalProperties: true
@@ -505,9 +1016,13 @@ components:
         query:
           type: string
           minLength: 1
-        sessionId:
-          type: string
-          description: Optional client-provided session id.
+          description: Raw user question.
+        count:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 20
+          description: Desired recall count before product-layer grouping.
         mode:
           type: string
           enum:
@@ -515,28 +1030,103 @@ components:
             - cache_first
             - real
           default: mock
+          description: Data mode. P0 must work in mock mode without Zhihu or LLM keys.
+        sessionId:
+          type: string
+          description: Optional client-provided session id for local demo continuity.
     DemoSearchResponse:
       type: object
       required:
         - schemaVersion
-        - sessionId
+        - queryId
         - query
+        - dataMode
+        - features
+        - analysis
+        - paths
+        - people
+        - personas
         - sections
         - meta
       properties:
         schemaVersion:
           type: string
-          example: "0.1"
-        sessionId:
+          example: "2026-05-13.ai-persona-v1"
+        queryId:
           type: string
+          description: Stable id that links search, save and persona chat flows.
         query:
-          $ref: "#/components/schemas/QueryView"
+          type: string
+        dataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+        contextUsed:
+          $ref: "#/components/schemas/DemoContextUsed"
+        features:
+          $ref: "#/components/schemas/DemoFeatures"
+        analysis:
+          $ref: "#/components/schemas/DemoAnalysis"
+        paths:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoPath"
+        people:
+          type: array
+          description: Primary person/sample data. AI personas hang under each person.
+          items:
+            $ref: "#/components/schemas/DemoPerson"
+        personas:
+          type: array
+          description: Shortcut index only. Do not duplicate complete person data here.
+          items:
+            $ref: "#/components/schemas/PersonaIndex"
         sections:
           type: array
           items:
             $ref: "#/components/schemas/DemoSection"
         meta:
           $ref: "#/components/schemas/ResponseMeta"
+        debug:
+          $ref: "#/components/schemas/DemoDebug"
+    DemoContextUsed:
+      type: object
+      description: >
+        Optional debug-safe summary of whether lightweight Zhihu OAuth profile
+        context influenced intent expansion, query expansion or fit reasons.
+        It must not expose tokens, cookies, raw userInfo, full profile objects
+        or grounding evidence.
+      required:
+        - provider
+        - loggedIn
+        - zhihuProfileUsed
+        - profileSignals
+        - usedFor
+      properties:
+        provider:
+          type: string
+          enum:
+            - zhihu
+        loggedIn:
+          type: boolean
+        zhihuProfileUsed:
+          type: boolean
+          description: True only when non-sensitive profileSignals were actually used.
+        profileSignals:
+          type: array
+          description: Non-sensitive occupation/interest terms extracted from basic profile fields.
+          items:
+            type: string
+        usedFor:
+          type: array
+          items:
+            type: string
+            enum:
+              - intent_expand
+              - search_query_expand
+              - fit_reason
     DemoSessionResponse:
       allOf:
         - $ref: "#/components/schemas/DemoSearchResponse"
@@ -547,25 +1137,486 @@ components:
               enum:
                 - active
                 - expired
-    QueryView:
+    DemoFeatures:
       type: object
       required:
-        - raw
-        - display
+        - aiPersona
+        - personaChat
+        - saveSample
+        - articleBody
+        - sourceEvidenceRequired
       properties:
-        raw:
+        aiPersona:
+          type: boolean
+          description: Whether persona entry points may be shown if person-level aiPersona is enabled.
+        personaChat:
           type: string
-        display:
+          enum:
+            - "off"
+            - mock
+            - real
+          description: Persona chat capability for the current response.
+        saveSample:
+          type: boolean
+          description: Whether server-side save sample is available. P0 may be false.
+        articleBody:
+          type: boolean
+          description: Whether full article body blocks are available. P0 may be false.
+        sourceEvidenceRequired:
+          type: boolean
+          description: Whether frontend should require evidence before showing factual claims.
+    DemoAnalysis:
+      type: object
+      required:
+        - steps
+        - focusTags
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisStep"
+        focusTags:
+          type: array
+          items:
+            type: string
+        summary:
           type: string
+        openQuestions:
+          type: array
+          items:
+            type: string
+    AnalysisStep:
+      type: object
+      required:
+        - title
+        - text
+      properties:
+        title:
+          type: string
+        text:
+          type: string
+    DemoPath:
+      type: object
+      required:
+        - id
+        - title
+        - summary
+        - stance
+        - evidenceIds
+        - sourceRefs
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          description: Concrete life path title, not an abstract label.
+        summary:
+          type: string
+          description: What this path is, grounded in source content.
+        whyRelevant:
+          type: string
+          description: Why this path relates to the user's original question.
+        tradeoff:
+          type: string
+          description: Cost, risk, limitation, or uncertainty for this path.
+        displayLabel:
+          type: string
+          description: Human-facing path label. Must not expose roughTier, roughScore, diversityKey, contentRole, keepReason, or fallback/debug wording.
+        displayTradeoff:
+          type: string
+          description: Human-facing tradeoff copy safe for direct frontend display.
+        fitReason:
+          type: string
+          description: Optional evidence-aware explanation of why this path may fit the user query/profile context.
+        diversityKey:
+          type: string
+          description: Debug/display hint used to avoid homogeneous paths.
+        stance:
+          type: string
+          enum:
+            - experience
+            - viewpoint
+            - mixed
+        personRefs:
+          type: array
+          items:
+            type: string
+        evidenceIds:
+          type: array
+          items:
+            type: string
+        sourceRefs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    DemoPerson:
+      type: object
+      required:
+        - id
+        - name
+        - pathId
+        - role
+        - badge
+        - avatar
+        - oneLine
+        - experienceSummary
+        - experienceSummarySource
+        - experienceSummaryStatus
+        - who
+        - overlaps
+        - timeline
+        - lesson
+        - articles
+        - match
+        - aiPersona
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: Display name from public content. Empty values should fall back to 知乎用户.
+        pathId:
+          type: string
+          description: Must reference paths[].id.
+        role:
+          type: string
+        roleLabel:
+          type: string
+          description: Optional path-representative role label for this public sample.
+        badge:
+          type: string
+        displayTier:
+          type: string
+          enum:
+            - core
+            - supplement
+          description: core means match.level is high/medium, evidenceQuality >= 0.65, and contentRelevance >= 0.25; otherwise supplement.
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+          description: raw_snippet_only means frontend should show 来源片段 rather than AI 证据提炼.
+        canChat:
+          type: boolean
+          description: Whether the frontend may show a persona follow-up entry. False should degrade to 查看来源片段.
+        displayLabel:
+          type: string
+          example: 补充参考样本
+        displayTradeoff:
+          type: string
+          description: User-facing limitation or downgrade copy for this sample.
+        avatar:
+          type: string
+        oneLine:
+          type: string
+        experienceSummary:
+          type:
+            - string
+            - "null"
+          description: >
+            LLM-generated summary of the author's/sample's situation, choice,
+            cost/turning point/result, and relevance to the current query. Null
+            when the LLM did not produce a grounded experience-style summary.
+        experienceSummarySource:
+          type: string
+          enum:
+            - llm
+            - fallback
+            - none
+          description: Main display should use llm only; fallback/none must not be shown as primary summary.
+        experienceSummaryStatus:
+          type: string
+          enum:
+            - ready
+            - pending
+            - failed
+          description: Frontend should display experienceSummary only when status is ready and source is llm.
+        experienceSummaryConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Optional confidence score for LLM-generated experienceSummary.
+        matchedPathTitle:
+          type: string
+          description: The path this person represents.
+        relevanceReason:
+          type: string
+          description: Why this sample is relevant under the user's question.
+        fitReason:
+          type: string
+          description: Optional evidence-aware explanation; user context is not a grounding source.
+        who:
+          type: string
+          description: Description based on public content, not a complete biography.
+        overlaps:
+          type: array
+          items:
+            type: string
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineItem"
+        lesson:
+          type: string
+        articles:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/PersonArticle"
+        match:
+          $ref: "#/components/schemas/PersonMatch"
+        aiPersona:
+          $ref: "#/components/schemas/AiPersona"
+    TimelineItem:
+      type: object
+      required:
+        - date
+        - event
+      properties:
+        date:
+          type: string
+        event:
+          type: string
+    PersonArticle:
+      type: object
+      required:
+        - id
+        - title
+        - text
+        - url
+        - author
+        - avatar
+        - sourceName
+        - sourceUrl
+        - summary
+        - evidence
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          description: Article or answer title. Frontend falls back to text/summary if empty.
+        text:
+          type: string
+          description: Original excerpt or body snippet.
+        url:
+          type: string
+          description: Original Zhihu URL. Hide source action if empty.
+        author:
+          type: string
+          description: Author display name. Frontend falls back to 知乎用户 if empty.
+        avatar:
+          type: string
+          description: Author avatar. Frontend falls back to a default avatar if empty.
+        sourceName:
+          type: string
+          example: 知乎回答
+        sourceUrl:
+          type: string
+        publishedAt:
+          type: string
+        summary:
+          type: string
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+        evidenceText:
+          type: string
+          description: Display evidence text, preferring evidence[0].text, then summary, then a text slice.
+        evidence:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ArticleEvidence"
+        body:
+          type: array
+          items:
+            $ref: "#/components/schemas/Block"
+    ArticleEvidence:
+      type: object
+      required:
+        - label
+        - text
+        - sourceUrl
+      properties:
+        label:
+          type: string
+        text:
+          type: string
+        sourceUrl:
+          type: string
+    PersonMatch:
+      type: object
+      required:
+        - score
+        - level
+        - reasons
+        - matchedVariables
+        - riskNotes
+        - contentRelevance
+        - experienceSimilarity
+        - evidenceQuality
+        - personaReadiness
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        level:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        reasons:
+          type: array
+          items:
+            type: string
+        matchedVariables:
+          type: array
+          items:
+            type: string
+        riskNotes:
+          type: array
+          items:
+            type: string
+        contentRelevance:
+          type: number
+          minimum: 0
+          maximum: 1
+        experienceSimilarity:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidenceQuality:
+          type: number
+          minimum: 0
+          maximum: 1
+        personaReadiness:
+          type: number
+          minimum: 0
+          maximum: 1
+    AiPersona:
+      type: object
+      required:
+        - enabled
+        - personaId
+        - displayName
+        - label
+        - openingLine
+        - suggestedQuestions
+        - boundary
+        - grounding
+      properties:
+        enabled:
+          type: boolean
+        canChat:
+          type: boolean
+          description: Final display gate for follow-up chat; false means keep the persona index but show 查看来源片段.
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+        displayLabel:
+          type: string
+        displayTradeoff:
+          type: string
+        personaId:
+          type: string
+        displayName:
+          type: string
+        label:
+          type: string
+          example: 基于公开内容生成
+        openingLine:
+          type: string
+        suggestedQuestions:
+          type: array
+          items:
+            type: string
+        boundary:
+          type: string
+          description: Must explain that the persona does not represent the original author.
+          example: 这是基于知乎公开内容生成的经验回应，不代表作者本人。
+        grounding:
+          $ref: "#/components/schemas/PersonaGrounding"
+    PersonaGrounding:
+      type: object
+      required:
+        - personId
+        - articleIds
+        - evidenceRequired
+      properties:
+        personId:
+          type: string
+        articleIds:
+          type: array
+          items:
+            type: string
+        evidenceRequired:
+          type: boolean
+    PersonaIndex:
+      type: object
+      required:
+        - personaId
+        - personId
+        - displayName
+        - entryType
+      properties:
+        personaId:
+          type: string
+        personId:
+          type: string
+        displayName:
+          type: string
+        canChat:
+          type: boolean
+        displayTier:
+          type: string
+          enum:
+            - core
+            - supplement
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+        displayLabel:
+          type: string
+        displayTradeoff:
+          type: string
+        entryType:
+          type: string
+          enum:
+            - chat
+            - disabled
+        fitReason:
+          type: string
+          description: Optional explanation for showing this persona entry, grounded in matched content.
     DemoSection:
       type: object
       required:
         - id
+        - type
         - title
         - cards
       properties:
         id:
           type: string
+        type:
+          type: string
+          enum:
+            - analysis
+            - path_map
+            - people_samples
+            - ai_personas
+            - article_reader
+            - build_prompt
         title:
           type: string
         description:
@@ -573,43 +1624,32 @@ components:
         cards:
           type: array
           items:
-            $ref: "#/components/schemas/DemoCard"
-    DemoCard:
+            $ref: "#/components/schemas/SectionCard"
+    SectionCard:
       type: object
       required:
         - id
         - type
         - title
         - summary
-        - evidence
       properties:
         id:
           type: string
         type:
           type: string
           enum:
+            - analysis
             - person
-            - content
             - path
-            - build_prompt
+            - persona
+            - article
         title:
           type: string
         summary:
           type: string
-        tags:
-          type: array
-          items:
-            type: string
-        evidence:
-          $ref: "#/components/schemas/SearchEvidence"
-        blocks:
-          type: array
-          items:
-            $ref: "#/components/schemas/Block"
-        actions:
-          type: array
-          items:
-            $ref: "#/components/schemas/Action"
+        targetId:
+          type: string
+          description: References a path id, person id, persona id or article id.
     Block:
       type: object
       required:
@@ -627,23 +1667,106 @@ components:
           type: string
         source:
           $ref: "#/components/schemas/SearchSource"
-    Action:
+    PersonaChatRequest:
       type: object
       required:
-        - type
-        - label
+        - queryId
+        - personId
+        - personaId
+        - message
       properties:
-        type:
+        queryId:
+          type: string
+        personId:
+          type: string
+        personaId:
+          type: string
+        message:
+          type: string
+          minLength: 1
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatHistoryMessage"
+    ChatHistoryMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
           type: string
           enum:
-            - open_url
-            - view_detail
-            - ask_followup
-        label:
+            - user
+            - assistant
+        content:
           type: string
-        url:
+    PersonaChatSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PersonaChatData"
+    PersonaChatData:
+      type: object
+      required:
+        - messageId
+        - personaId
+        - personId
+        - answer
+        - answerType
+        - citedArticleIds
+        - evidence
+        - followupQuestions
+        - boundary
+      properties:
+        messageId:
           type: string
-        targetId:
+        personaId:
+          type: string
+        personId:
+          type: string
+        answer:
+          type: string
+          description: Grounded response based on public articles/evidence, not the author's own live reply.
+        answerType:
+          type: string
+          enum:
+            - grounded_summary
+            - insufficient_evidence
+            - mock_stub
+        citedArticleIds:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatEvidence"
+        followupQuestions:
+          type: array
+          items:
+            type: string
+        boundary:
+          type: string
+          example: 这是基于知乎公开内容生成的经验回应，不代表作者本人。
+    ChatEvidence:
+      type: object
+      required:
+        - articleId
+        - text
+        - sourceUrl
+      properties:
+        articleId:
+          type: string
+        text:
+          type: string
+        sourceUrl:
           type: string
     ResponseMeta:
       type: object
@@ -658,3 +1781,306 @@ components:
           format: date-time
         traceId:
           type: string
+        sourcePolicy:
+          type: string
+          description: Explains that AI is not a fact source and evidence is required.
+        peopleCount:
+          type: integer
+          minimum: 0
+        pathCount:
+          type: integer
+          minimum: 0
+        llmEnabled:
+          type: boolean
+        zhihuKeyPresent:
+          type: boolean
+        latencyMs:
+          type: integer
+          minimum: 0
+    DemoDebug:
+      type: object
+      additionalProperties: true
+      properties:
+        originalQuery:
+          type: string
+          description: Raw query received by POST /api/demo/search.
+        normalizedQuery:
+          type: string
+          description: Normalized query used for deterministic path generation and cache keying.
+        pathSource:
+          type: string
+          enum:
+            - llm
+            - rule
+            - fallback
+          description: Whether paths were written by LLM compose, deterministic rules, or fallback builder.
+        composerFallbackTriggered:
+          type: boolean
+          description: True when the card composer LLM did not update path/people/persona text and deterministic fallback was preserved.
+        pathDuplicateFound:
+          type: boolean
+          description: Whether lightweight path similarity checks found duplicate titles, summary prefixes, or diversity keys.
+        pathDiversityCheck:
+          type: object
+          additionalProperties: true
+          properties:
+            duplicateFound:
+              type: boolean
+            duplicateTitleCount:
+              type: integer
+              minimum: 0
+            duplicateSummaryPrefixCount:
+              type: integer
+              minimum: 0
+            duplicateDiversityKeys:
+              type: array
+              items:
+                type: string
+            rewriteCount:
+              type: integer
+              minimum: 0
+            mergeCount:
+              type: integer
+              minimum: 0
+            notes:
+              type: array
+              items:
+                type: string
+        fallbackReason:
+          type: string
+          description: Why fallback/rule generation was used, when applicable.
+        cacheHit:
+          type: boolean
+          description: True when the demo search response came from the normalizedQuery-aware memory cache.
+        cacheKeyPreview:
+          type: string
+          description: Redacted/debug preview of the cache key; includes normalizedQuery.
+        intentStage:
+          $ref: "#/components/schemas/DemoDebugIntentStage"
+        stubbed:
+          type: boolean
+        searchQueries:
+          type: array
+          description: Debug-only search recall plan generated by intent_expand.
+          items:
+            $ref: "#/components/schemas/DemoSearchQueryPlan"
+        searchQueryResults:
+          type: array
+          description: Per-query recall counts from the real Zhihu search fan-out.
+          items:
+            allOf:
+              - $ref: "#/components/schemas/DemoSearchQueryPlan"
+              - type: object
+                properties:
+                  returnedCount:
+                    type: integer
+                    minimum: 0
+                  error:
+                    type: string
+        mergedCandidateCount:
+          type: integer
+          minimum: 0
+        dedupedCandidateCount:
+          type: integer
+          minimum: 0
+        validCandidateCount:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+        candidateQuality:
+          type: array
+          description: >
+            Debug-only quality assessment for each recalled candidate. Shows
+            why a candidate became core evidence or was downranked.
+          items:
+            $ref: "#/components/schemas/DemoCandidateQuality"
+        finalCandidates:
+          type: array
+          description: Selected candidates after rerank/rule fallback, with task-2 fields used by the path extractor when available.
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              candidateId:
+                type: string
+              title:
+                type: string
+              author:
+                type: string
+              matchedQuery:
+                type: string
+              queryType:
+                type: string
+              contentRole:
+                type: string
+              relationToUserIntent:
+                type: string
+              summaryAngle:
+                type: string
+              diversityKey:
+                type: string
+              keepReason:
+                type: string
+              sourceRefs:
+                type: array
+                items:
+                  type: string
+        experienceSummaryDebug:
+          type: array
+          description: >
+            Debug-only LLM/fallback state for people[].experienceSummary. The
+            fallbackSummary field is not intended for primary frontend display.
+          items:
+            $ref: "#/components/schemas/DemoExperienceSummaryDebug"
+    DemoSearchQueryPlan:
+      type: object
+      required:
+        - query
+        - type
+        - purpose
+        - priority
+      properties:
+        query:
+          type: string
+        type:
+          type: string
+          enum:
+            - original
+            - real_experience
+            - life_path
+            - failure_review
+            - decision_conflict
+            - alternative_solution
+        purpose:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 6
+    DemoCandidateQuality:
+      type: object
+      required:
+        - candidateId
+        - title
+        - relevanceScore
+        - qualityScore
+        - experienceSignalScore
+        - contentLength
+        - filterReason
+        - usedAsEvidence
+      properties:
+        candidateId:
+          type: string
+        sourceRefId:
+          type: string
+        title:
+          type: string
+        matchedQuery:
+          type: string
+        queryType:
+          type: string
+          enum:
+            - original
+            - real_experience
+            - life_path
+            - failure_review
+            - decision_conflict
+            - alternative_solution
+        queryPurpose:
+          type: string
+        relevanceScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        qualityScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        experienceSignalScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        contentLength:
+          type: integer
+          minimum: 0
+        filterReason:
+          type: string
+        usedAsEvidence:
+          type: boolean
+        contentRole:
+          type: string
+        relationToUserIntent:
+          type: string
+        summaryAngle:
+          type: string
+        diversityKey:
+          type: string
+        keepReason:
+          type: string
+    DemoExperienceSummaryDebug:
+      type: object
+      required:
+        - personId
+        - status
+        - source
+        - reason
+        - cacheHit
+      properties:
+        personId:
+          type: string
+        status:
+          type: string
+          enum:
+            - ready
+            - pending
+            - failed
+        source:
+          type: string
+          enum:
+            - llm
+            - fallback
+            - none
+        reason:
+          type: string
+        cacheHit:
+          type: boolean
+        fallbackSummary:
+          type: string
+          description: Rule/text fallback kept for debugging only; do not show as primary experienceSummary.
+    DemoDebugIntentStage:
+      type: object
+      required:
+        - mode
+        - llmUsed
+        - fallbackReason
+      properties:
+        mode:
+          type: string
+          enum:
+            - rule
+            - llm
+            - hybrid
+            - fallback
+        llmUsed:
+          type: boolean
+        provider:
+          type: string
+          description: LLM provider for the intent/planning stage when known.
+        model:
+          type: string
+          description: LLM model for the intent/planning stage when known.
+        fallbackReason:
+          type: string
+        intentSource:
+          type: string
+          enum:
+            - rule
+            - llm
+        focusTagsSource:
+          type: string
+          enum:
+            - rule
+            - llm

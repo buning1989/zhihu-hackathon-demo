@@ -12,6 +12,28 @@ export interface ZhihuSearchRawResponse {
   [key: string]: unknown;
 }
 
+export interface ZhihuPublishPinToRingParams {
+  ringId: string;
+  title: string;
+  content: string;
+  imageUrls?: string[];
+}
+
+export interface ZhihuPublishPinToRingResult {
+  contentToken: string;
+  logId: string;
+  raw: ZhihuPublishPinRawResponse;
+}
+
+export interface ZhihuPublishPinRawResponse {
+  status?: number | string;
+  code?: number | string;
+  msg?: string;
+  message?: string;
+  data?: unknown;
+  [key: string]: unknown;
+}
+
 export interface ZhihuRawContentItem {
   Title?: unknown;
   ContentType?: unknown;

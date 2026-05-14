@@ -23,7 +23,7 @@
 
 已有代码保留说明：
 
-- `backend/src/` 下已有 Express 后端代码，当前接口包括 `/health`、`/api/health`、`/api/zhihu/search` 和 `/api/search`。
+- `backend/src/` 下已有 Express 后端代码，当前接口包括 `/health`、`/api/health`、`/api/zhihu/search`、`/api/search` 和 `/auth/*`。
 - `backend/dist/`、`backend/node_modules/`、`__pycache__/` 等是本地生成内容，已经由 `.gitignore` 忽略，不应提交。
 - 早期 `docs/` 中有 FastAPI 方向设计，当前实际代码是 Node.js 后端。后续如需迁移，应先以 `shared/openapi.yaml` 为契约补齐兼容接口，再分 PR 替换实现。
 
@@ -57,16 +57,18 @@ docker compose -f infra/docker-compose.yml up
 启动后默认地址：
 
 - 后端健康检查：`http://localhost:8000/health`
+- 知乎 OAuth 登录入口：`http://localhost:8000/auth/zhihu/login`
 - 前端占位首页：`http://localhost:3000/`
 - OpenAPI 契约：`shared/openapi.yaml`
 - 前端字段样例：`shared/demo-response.sample.json`
 
 ## 前后端协作规则
 
-- `shared/openapi.yaml` 是前后端协作的最小契约。当前 P0 主接口是 `GET /api/search`；`/api/demo/search` 和 `/api/demo/session/{sessionId}` 标记为 planned，不是当前可调用接口。
-- 北陆前端开发先以 `shared/demo-response.sample.json` 作为唯一字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
+- `shared/openapi.yaml` 是前后端协作的最小契约。当前已实现接口 `GET /api/search` 继续保留；AI 分身产品层 P0 目标契约统一为 `POST /api/demo/search`。
+- 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
+- 知乎 OAuth 用户资料只能作为轻量 `contextUsed/profileSignals/fitReason` 辅助信息，不得作为 evidence/source，也不得返回 token、cookie 或原始 userInfo。
 - 不要把观点作者包装成亲历者，不实现“联系 TA”、私信、模拟作者本人回复等能力。
 - 前端正式初始化后，可以在 `frontend/` 内建立独立工程；届时同步更新 `infra/docker-compose.yml` 的 frontend service。
 
@@ -107,4 +109,4 @@ curl -i "http://localhost:8000/api/search?query=不工作了能去哪儿&count=1
 curl -i "http://localhost:3000/"
 ```
 
-后续业务 demo 可以沿着 `shared/openapi.yaml` 中 planned 的 `/api/demo/search` 和 `/api/demo/session/{sessionId}` 演进，但当前前端联调以 `GET /api/search` 为准。
+后续业务 demo 沿着 `shared/openapi.yaml` 中的 `POST /api/demo/search` 产品层契约演进；`GET /api/search` 继续作为已实现的底层搜索映射和兼容接口。

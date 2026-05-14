@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>错位人生｜后端链路预览台</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f2;
+        --panel: #ffffff;
+        --panel-soft: #f9fbf7;
+        --text: #17201b;
+        --muted: #607067;
+        --line: #d8ded5;
+        --accent: #0b766d;
+        --accent-dark: #075b54;
+        --accent-soft: #e4f4f1;
+        --warn-bg: #fff4cc;
+        --warn-text: #624600;
+        --error-bg: #ffe8e1;
+        --error-text: #8a2417;
+        --ok-bg: #e5f5e9;
+        --ok-text: #235a34;
+        --shadow: 0 12px 28px rgba(26, 38, 30, 0.07);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        line-height: 1.55;
+      }
+
+      main {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 30px 0 46px;
+      }
+
+      header {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 30px;
+        font-weight: 780;
+      }
+
+      h2 {
+        font-size: 21px;
+        font-weight: 760;
+      }
+
+      h3 {
+        font-size: 16px;
+        font-weight: 720;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        min-height: 42px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 720;
+        padding: 10px 16px;
+      }
+
+      button:hover {
+        background: var(--accent-dark);
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      input,
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        outline: none;
+        padding: 9px 11px;
+      }
+
+      input[type="checkbox"] {
+        width: auto;
+        min-height: 0;
+        accent-color: var(--accent);
+      }
+
+      input:focus,
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(11, 118, 109, 0.14);
+      }
+
+      label {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .subtitle {
+        max-width: 820px;
+        color: var(--muted);
+      }
+
+      .panel {
+        display: grid;
+        gap: 14px;
+        margin-top: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .section-head {
+        display: grid;
+        gap: 3px;
+      }
+
+      .section-note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) 160px auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .debug-toggle {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .status-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        padding: 12px;
+      }
+
+      .status-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .status-value {
+        margin-top: 4px;
+        font-size: 16px;
+        font-weight: 730;
+      }
+
+      .status-value.ok {
+        color: var(--ok-text);
+      }
+
+      .status-value.error {
+        color: var(--error-text);
+      }
+
+      .analysis {
+        border-left: 4px solid var(--accent);
+        background: var(--accent-soft);
+        border-radius: 8px;
+        color: #244840;
+        padding: 12px 14px;
+      }
+
+      .debug-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        padding: 14px;
+      }
+
+      .card-title {
+        display: grid;
+        gap: 2px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .small {
+        font-size: 13px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chip {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        color: #31433a;
+        font-size: 12px;
+        padding: 3px 8px;
+      }
+
+      .debug-only {
+        display: none;
+      }
+
+      body.debug-on .debug-only {
+        display: block;
+      }
+
+      body.debug-on .chips.debug-only,
+      body.debug-on .debug-strip.debug-only {
+        display: flex;
+      }
+
+      body.debug-on .panel.debug-only {
+        display: grid;
+      }
+
+      .source-box,
+      .notice,
+      .reply-box {
+        border-radius: 8px;
+        padding: 10px 11px;
+      }
+
+      .source-box {
+        background: #ffffff;
+        border: 1px solid var(--line);
+      }
+
+      .notice {
+        background: var(--warn-bg);
+        color: var(--warn-text);
+      }
+
+      .reply-box {
+        background: var(--accent-soft);
+        color: #244840;
+      }
+
+      .persona-action {
+        justify-self: start;
+        margin-top: 2px;
+      }
+
+      .empty {
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 14px;
+      }
+
+      .error-box {
+        display: none;
+        border-radius: 8px;
+        background: var(--error-bg);
+        color: var(--error-text);
+        padding: 11px 12px;
+      }
+
+      .error-box.active {
+        display: block;
+      }
+
+      details {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 14px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: var(--accent-dark);
+        font-weight: 740;
+      }
+
+      pre {
+        max-height: 500px;
+        overflow: auto;
+        margin: 12px 0 0;
+        border-radius: 8px;
+        background: #141816;
+        color: #e9f1eb;
+        padding: 14px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      a {
+        color: var(--accent-dark);
+        font-weight: 650;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      @media (max-width: 900px) {
+        main {
+          width: min(100% - 20px, 680px);
+          padding-top: 20px;
+        }
+
+        .form-grid,
+        .status-grid,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 25px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>错位人生｜后端链路预览台</h1>
+        <p class="subtitle">
+          给非技术同学看的产品验收页：输入一个模糊人生问题，确认后端能返回人生路径、前人样本和可继续追问的经验回声。
+        </p>
+      </header>
+
+      <section class="panel" aria-labelledby="input-title">
+        <div class="section-head">
+          <h2 id="input-title">一、问题输入</h2>
+          <p class="section-note">测试用户问题是否能正常提交到 /api/demo/search</p>
+        </div>
+        <form class="form-grid" id="search-form">
+          <div class="field">
+            <label for="query">用户问题</label>
+            <input id="query" name="query" value="不工作了能去哪儿" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="data-mode">数据模式</label>
+            <select id="data-mode" name="dataMode">
+              <option value="mock" selected>mock</option>
+              <option value="cache_first">cache_first</option>
+              <option value="real">real</option>
+            </select>
+          </div>
+          <button id="search-button" type="submit">开始测试</button>
+        </form>
+        <label class="debug-toggle" for="debug-toggle">
+          <input id="debug-toggle" type="checkbox" />
+          开发调试模式：显示技术 ID 与原始 JSON
+        </label>
+      </section>
+
+      <section class="panel" aria-labelledby="status-title">
+        <div class="section-head">
+          <h2 id="status-title">二、链路状态</h2>
+          <p class="section-note">测试后端接口是否成功返回，以及是否有错误信息</p>
+        </div>
+        <div class="status-grid">
+          <div class="status-card">
+            <p class="status-label">请求状态</p>
+            <p class="status-value" id="request-status">等待测试</p>
+          </div>
+          <div class="status-card">
+            <p class="status-label">接口耗时</p>
+            <p class="status-value" id="request-latency">-</p>
+          </div>
+          <div class="status-card">
+            <p class="status-label">返回内容</p>
+            <p class="status-value" id="result-count">-</p>
+          </div>
+        </div>
+        <div class="error-box" id="error-box"></div>
+        <div class="analysis" id="analysis-summary">点击“开始测试”后，这里会显示 analysis.summary。</div>
+      </section>
+
+      <section class="panel" aria-labelledby="context-title">
+        <div class="section-head">
+          <h2 id="context-title">三、用户上下文</h2>
+          <p class="section-note">只展示登录状态、是否使用知乎资料，以及被采用的非敏感 profileSignals</p>
+        </div>
+        <div class="status-grid">
+          <div class="status-card">
+            <p class="status-label">是否已登录</p>
+            <p class="status-value" id="context-logged-in">等待测试</p>
+          </div>
+          <div class="status-card">
+            <p class="status-label">是否使用知乎资料</p>
+            <p class="status-value" id="context-profile-used">-</p>
+          </div>
+          <div class="status-card">
+            <p class="status-label">profileSignals</p>
+            <div class="chips" id="context-profile-signals"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="paths-title">
+        <div class="section-head">
+          <h2 id="paths-title">四、人生路径</h2>
+          <p class="section-note">测试系统是否能把一个模糊人生问题拆成不同选择路径</p>
+        </div>
+        <div class="grid" id="paths"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="people-title">
+        <div class="section-head">
+          <h2 id="people-title">五、前人样本</h2>
+          <p class="section-note">测试系统是否能从知乎内容中提取可参考的人物样本</p>
+        </div>
+        <div class="grid" id="people"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="personas-title">
+        <div class="section-head">
+          <h2 id="personas-title">六、可以继续追问的经验回声</h2>
+          <p class="section-note">测试系统是否能生成可点击的追问入口，并明确不代表作者本人</p>
+        </div>
+        <div class="grid" id="personas"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="chat-title">
+        <div class="section-head">
+          <h2 id="chat-title">七、追问对话测试</h2>
+          <p class="section-note">测试点击经验回声后，是否能调用 /api/personas/chat</p>
+        </div>
+        <div id="chat-result" class="empty">请先点击上方任意「继续追问」。</div>
+      </section>
+
+      <section class="panel debug-only" aria-labelledby="raw-title">
+        <div class="section-head">
+          <h2 id="raw-title">八、原始返回数据</h2>
+          <p class="section-note">仅用于开发排错，打开开发调试模式后可查看</p>
+        </div>
+        <details id="raw-details">
+          <summary>查看完整 JSON</summary>
+          <pre id="raw-json">{}</pre>
+        </details>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#search-form");
+      const queryInput = document.querySelector("#query");
+      const dataModeSelect = document.querySelector("#data-mode");
+      const debugToggle = document.querySelector("#debug-toggle");
+      const searchButton = document.querySelector("#search-button");
+      const requestStatus = document.querySelector("#request-status");
+      const requestLatency = document.querySelector("#request-latency");
+      const resultCount = document.querySelector("#result-count");
+      const errorBox = document.querySelector("#error-box");
+      const analysisSummary = document.querySelector("#analysis-summary");
+      const contextLoggedIn = document.querySelector("#context-logged-in");
+      const contextProfileUsed = document.querySelector("#context-profile-used");
+      const contextProfileSignals = document.querySelector("#context-profile-signals");
+      const pathsEl = document.querySelector("#paths");
+      const peopleEl = document.querySelector("#people");
+      const personasEl = document.querySelector("#personas");
+      const chatResult = document.querySelector("#chat-result");
+      const rawJsonEl = document.querySelector("#raw-json");
+
+      let currentData = null;
+      let latestRaw = {};
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runSearch();
+      });
+
+      debugToggle.addEventListener("change", () => {
+        document.body.classList.toggle("debug-on", debugToggle.checked);
+      });
+
+      renderEmpty();
+
+      async function runSearch() {
+        setStatus("请求中", "正在请求", "-");
+        setError("");
+        searchButton.disabled = true;
+        chatResult.className = "empty";
+        chatResult.textContent = "请先点击上方任意「继续追问」。";
+
+        const startedAt = performance.now();
+        const selectedDataMode = dataModeSelect.value || "mock";
+
+        try {
+          const response = await fetch("/api/demo/search", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              query: queryInput.value.trim() || "不工作了能去哪儿",
+              count: selectedDataMode === "real" ? 8 : 3,
+              dataMode: selectedDataMode
+            })
+          });
+          const json = await response.json();
+          const browserLatency = Math.round(performance.now() - startedAt);
+
+          if (!response.ok || json.success === false) {
+            throw new Error(json.message || json.error || `接口返回 HTTP ${response.status}`);
+          }
+
+          currentData = json.data || json;
+          latestRaw = json;
+          renderSearchResult(currentData);
+          rawJsonEl.textContent = JSON.stringify(latestRaw, null, 2);
+
+          const apiLatency = currentData.meta?.latencyMs;
+          const latencyText = Number.isFinite(apiLatency)
+            ? `${apiLatency} ms（后端）`
+            : `${browserLatency} ms`;
+          setStatus(
+            "请求成功",
+            latencyText,
+            `${currentData.paths?.length || 0} 条路径 / ${currentData.people?.length || 0} 个人物 / ${currentData.personas?.length || 0} 个追问入口`,
+            true
+          );
+        } catch (error) {
+          currentData = null;
+          latestRaw = {};
+          renderEmpty();
+          rawJsonEl.textContent = "{}";
+          setStatus("请求失败", "-", "-", false, true);
+          setError(toChineseError(error));
+        } finally {
+          searchButton.disabled = false;
+        }
+      }
+
+      function renderSearchResult(data) {
+        const sourceMap = new Map((data.meta?.sourceRefs || []).map((source) => [source.id, source]));
+
+        analysisSummary.innerHTML = renderAnalysisSummary(data);
+        renderUserContext(data.contextUsed);
+        pathsEl.innerHTML = renderList(data.paths, (path) => renderPath(path, data.people || []));
+        peopleEl.innerHTML = renderList(data.people, (person) => renderPerson(person, sourceMap));
+        personasEl.innerHTML = renderList(data.personas, (persona) => renderPersona(persona, data.people || []));
+
+        personasEl.querySelectorAll("[data-persona-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const persona = (currentData?.personas || []).find((item) => item.id === button.dataset.personaId);
+            if (persona) {
+              runPersonaChat(persona);
+            }
+          });
+        });
+      }
+
+      function renderPath(path, people = []) {
+        const linkedPeopleCount = people.filter((person) => person.pathId === path.id).length;
+        return `
+          <article class="card">
+            <div class="card-title">
+              <h3>${escapeHtml(path.title || "未命名路径")}</h3>
+            </div>
+            <p>${escapeHtml(path.summary || "暂无路径描述。")}</p>
+            ${path.fitReason ? `<p><strong>匹配说明：</strong>${escapeHtml(path.fitReason)}</p>` : ""}
+            <div class="chips">
+              ${chip(`关联人物 ${linkedPeopleCount} 个`)}
+              ${chip(`类型：${mapStance(path.stance)}`)}
+            </div>
+            <div class="chips debug-only">
+              ${chip(`path: ${path.id || "-"}`)}
+              ${renderChips(path.sourceRefs || [], "source")}
+              ${renderChips(path.evidenceIds || [], "evidence")}
+            </div>
+          </article>
+        `;
+      }
+
+      function renderPerson(person, sourceMap) {
+        const sources = collectSources(person.sourceRefs, sourceMap);
+        const relatedPoints = [
+          ...(person.overlaps || []),
+          ...(person.match?.reasons || [])
+        ].slice(0, 3);
+        const article = Array.isArray(person.articles) ? person.articles[0] : null;
+
+        return `
+          <article class="card">
+            <div class="card-title">
+              <h3>${escapeHtml(person.name || "知乎公开内容样本")}</h3>
+              <p class="small muted">${mapSampleType(person.sampleType, person)}</p>
+            </div>
+            <p>${escapeHtml(person.oneLine || person.who || "暂无人物摘要。")}</p>
+            ${person.fitReason ? `<p><strong>匹配说明：</strong>${escapeHtml(person.fitReason)}</p>` : ""}
+            ${renderPointList("与问题的相关点", relatedPoints)}
+            ${person.lesson ? `<p><strong>可参考的提醒：</strong>${escapeHtml(person.lesson)}</p>` : ""}
+            <div class="source-box">
+              <p class="small muted">来源标题</p>
+              <p>${renderSourceLink(article, sources[0])}</p>
+              <p class="small muted">${escapeHtml(article?.summary || sources[0]?.author || "")}</p>
+            </div>
+            <div class="chips debug-only">
+              ${chip(`person: ${person.id || "-"}`)}
+              ${chip(`path: ${person.pathId || "-"}`)}
+              ${renderChips(person.sourceRefs || [], "source")}
+              ${renderChips(person.evidenceIds || [], "evidence")}
+            </div>
+          </article>
+        `;
+      }
+
+      function renderAnalysisSummary(data) {
+        const debug = data.debug || {};
+        const meta = data.meta || {};
+
+        return `
+          <p>${escapeHtml(data.analysis?.summary || "后端没有返回 analysis.summary。")}</p>
+          <div class="debug-strip">
+            ${chip(`composer: ${debug.composer || "-"}`)}
+            ${chip(`llmUsed: ${formatBool(debug.llmUsed || meta.llmUsed)}`)}
+            ${chip(`enhancedPeopleCount: ${debug.enhancedPeopleCount ?? meta.enhancedPeopleCount ?? "-"}`)}
+            ${chip(`enhancedPathCount: ${debug.enhancedPathCount ?? meta.enhancedPathCount ?? "-"}`)}
+            ${chip(`partialFallbackUsed: ${formatBool(debug.partialFallbackUsed || meta.partialFallbackUsed)}`)}
+          </div>
+        `;
+      }
+
+      function renderUserContext(contextUsed = {}) {
+        const loggedIn = Boolean(contextUsed.loggedIn);
+        const profileUsed = Boolean(contextUsed.zhihuProfileUsed);
+        const signals = Array.isArray(contextUsed.profileSignals) ? contextUsed.profileSignals : [];
+
+        contextLoggedIn.textContent = loggedIn ? "是" : "否";
+        contextLoggedIn.classList.toggle("ok", loggedIn);
+        contextLoggedIn.classList.toggle("error", false);
+        contextProfileUsed.textContent = profileUsed ? "是" : "否";
+        contextProfileUsed.classList.toggle("ok", profileUsed);
+        contextProfileSignals.innerHTML = signals.length > 0
+          ? signals.map((signal) => chip(signal)).join("")
+          : chip("未使用");
+      }
+
+      function renderPersona(persona, people = []) {
+        const linkedPerson = people.find((person) => person.aiPersona?.personaId === persona.id);
+        const intro = persona.intro || linkedPerson?.aiPersona?.openingLine || "可以基于公开内容继续追问。";
+        const suggestedQuestions = persona.suggestedQuestions || linkedPerson?.aiPersona?.suggestedQuestions || [];
+
+        return `
+          <article class="card">
+            <div class="card-title">
+              <h3>${escapeHtml(persona.displayName || linkedPerson?.aiPersona?.displayName || "经验回声")}</h3>
+              <p class="small muted">基于公开内容生成，不代表作者本人</p>
+            </div>
+            <p>${escapeHtml(intro)}</p>
+            ${persona.fitReason ? `<p><strong>匹配说明：</strong>${escapeHtml(persona.fitReason)}</p>` : ""}
+            ${renderPointList("可以这样追问", suggestedQuestions)}
+            <div class="notice">
+              <strong>边界提示：</strong>${escapeHtml(persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}
+            </div>
+            <div class="chips debug-only">
+              ${chip(`persona: ${persona.id || "-"}`)}
+              ${chip(`person: ${persona.personId || linkedPerson?.id || "-"}`)}
+              ${renderChips(persona.sourceRefs || linkedPerson?.sourceRefs || [], "source")}
+            </div>
+            <button class="persona-action" type="button" data-persona-id="${escapeAttr(persona.id)}">继续追问</button>
+          </article>
+        `;
+      }
+
+      async function runPersonaChat(persona) {
+        chatResult.className = "reply-box";
+        chatResult.textContent = "正在生成模拟回复...";
+
+        try {
+          const message = persona.suggestedQuestions?.[0] || "这段公开内容里最值得注意的边界是什么？";
+          const response = await fetch("/api/personas/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              personaId: persona.id,
+              queryId: currentData?.queryId || "query_mock",
+              message
+            })
+          });
+          const json = await response.json();
+
+          if (!response.ok || json.success === false) {
+            throw new Error(json.message || json.error || `接口返回 HTTP ${response.status}`);
+          }
+
+          const data = json.data || json;
+          latestRaw = {
+            search: currentData,
+            personaChat: json
+          };
+          rawJsonEl.textContent = JSON.stringify(latestRaw, null, 2);
+          chatResult.className = "card";
+          chatResult.innerHTML = `
+            <div class="card-title">
+              <h3>${escapeHtml(persona.displayName || "经验回声")}</h3>
+              <p class="small muted">已调用 /api/personas/chat</p>
+            </div>
+            <div class="reply-box">
+              <p class="small muted">模拟回复</p>
+              <p>${escapeHtml(data.reply || "后端没有返回 reply。")}</p>
+            </div>
+            <div class="notice">
+              <strong>边界提示：</strong>${escapeHtml(data.boundaryNotice || persona.boundaryNotice || "该 AI 分身基于公开内容生成，不代表作者本人。")}
+            </div>
+            <div>
+              <p class="small muted">引用来源</p>
+              ${renderSourceRefsAsTitles(data.sourceRefs || persona.sourceRefs || [])}
+              <div class="chips debug-only">${renderChips(data.sourceRefs || persona.sourceRefs || [], "source")}</div>
+            </div>
+            ${renderPointList("建议追问", data.suggestedQuestions || persona.suggestedQuestions || [])}
+          `;
+        } catch (error) {
+          chatResult.className = "error-box active";
+          chatResult.textContent = toChineseError(error);
+        }
+      }
+
+      function renderSourceSummary(sources, evidenceIds = []) {
+        const firstSource = sources[0];
+        const evidenceText = renderChips(evidenceIds || firstSource?.evidenceIds || [], "evidence");
+
+        return `
+          <div class="source-box">
+            <p class="small muted">关键证据 / 来源摘要</p>
+            <p>${renderSourceTitle(firstSource)}</p>
+            <div class="chips" style="margin-top:8px">
+              ${renderChips((sources || []).map((source) => source.id), "source")}
+              ${evidenceText}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderSourceTitle(source) {
+        if (!source) {
+          return "暂无来源信息";
+        }
+
+        const title = escapeHtml(source.title || source.id || "未命名来源");
+        if (!source.url) {
+          return title;
+        }
+
+        return `<a href="${escapeAttr(source.url)}" target="_blank" rel="noreferrer">${title}</a>`;
+      }
+
+      function renderSourceLink(article, source) {
+        const title = article?.title || source?.title || "暂无来源标题";
+        const url = article?.url || article?.sourceUrl || source?.url || "";
+
+        if (!url) {
+          return escapeHtml(title);
+        }
+
+        return `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer">${escapeHtml(title)}</a>`;
+      }
+
+      function renderSourceRefsAsTitles(sourceRefs = []) {
+        const sourceMap = new Map((currentData?.meta?.sourceRefs || []).map((source) => [source.id, source]));
+        const sources = (sourceRefs || []).map((sourceRef) => sourceMap.get(sourceRef)).filter(Boolean);
+
+        if (sources.length === 0) {
+          if (sourceRefs.length > 0) {
+            return `<p class="muted small">已返回 ${sourceRefs.length} 个引用来源，打开开发调试模式可查看来源 ID。</p>`;
+          }
+
+          return '<p class="muted small">暂无可展示来源标题。</p>';
+        }
+
+        return sources.map((source) => `
+          <div class="source-box">
+            <p>${renderSourceTitle(source)}</p>
+            <p class="small muted">${escapeHtml(source.author || "公开内容来源")}</p>
+          </div>
+        `).join("");
+      }
+
+      function renderPointList(title, items = []) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return "";
+        }
+
+        return `
+          <div>
+            <p class="small muted">${escapeHtml(title)}</p>
+            <div class="chips">${items.slice(0, 4).map((item) => chip(item)).join("")}</div>
+          </div>
+        `;
+      }
+
+      function renderList(items, renderer) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return empty("暂无数据。点击“开始测试”后会展示这里。");
+        }
+
+        return items.map(renderer).join("");
+      }
+
+      function renderEmpty() {
+        pathsEl.innerHTML = empty("暂无人生路径。");
+        peopleEl.innerHTML = empty("暂无人物样本。");
+        personasEl.innerHTML = empty("暂无经验回声。");
+        renderUserContext();
+      }
+
+      function collectSources(sourceRefs = [], sourceMap = new Map()) {
+        return (sourceRefs || []).map((id) => sourceMap.get(id)).filter(Boolean);
+      }
+
+      function mapStance(stance) {
+        if (stance === "experience") {
+          return "经历";
+        }
+
+        if (stance === "viewpoint") {
+          return "观点";
+        }
+
+        return "混合";
+      }
+
+      function mapSampleType(sampleType, person) {
+        const normalized = String(sampleType || "").toLowerCase();
+
+        if (normalized.includes("experience") || normalized.includes("first")) {
+          return "亲历样本";
+        }
+
+        if (normalized.includes("viewpoint") || normalized.includes("opinion")) {
+          return "观点作者";
+        }
+
+        if (normalized.includes("content")) {
+          return "内容样本";
+        }
+
+        if (person?.timeline?.length || person?.lesson) {
+          return "亲历样本";
+        }
+
+        return "内容样本";
+      }
+
+      function formatBool(value) {
+        return value ? "是" : "否";
+      }
+
+      function setStatus(status, latency, count, isOk = false, isError = false) {
+        requestStatus.textContent = status;
+        requestLatency.textContent = latency;
+        resultCount.textContent = count;
+        requestStatus.classList.toggle("ok", isOk);
+        requestStatus.classList.toggle("error", isError);
+      }
+
+      function setError(message) {
+        errorBox.textContent = message;
+        errorBox.classList.toggle("active", Boolean(message));
+      }
+
+      function renderChips(items = [], prefix = "") {
+        if (!Array.isArray(items) || items.length === 0) {
+          return chip("暂无");
+        }
+
+        return items.map((item) => chip(prefix ? `${prefix}: ${item}` : item)).join("");
+      }
+
+      function chip(text) {
+        return `<span class="chip">${escapeHtml(String(text))}</span>`;
+      }
+
+      function empty(text) {
+        return `<div class="empty">${escapeHtml(text)}</div>`;
+      }
+
+      function toChineseError(error) {
+        const message = error instanceof Error ? error.message : "未知错误";
+        return `请求没有成功：${message}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value);
+      }
+    </script>
+  </body>
+</html>
