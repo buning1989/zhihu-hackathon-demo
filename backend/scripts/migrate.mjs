@@ -33,7 +33,10 @@ try {
   }
 
   console.log(`Applied ${files.length} migration(s).`);
+} catch (error) {
+  console.error("Database migration failed.");
+  console.error(error);
+  process.exitCode = 1;
 } finally {
   await pool.end();
 }
-

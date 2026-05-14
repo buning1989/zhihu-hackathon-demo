@@ -28,7 +28,7 @@ agentRoutes.post("/tasks", async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(error);
+    next(toAgentDatabaseHttpError(error));
   }
 });
 
@@ -140,6 +140,39 @@ function readString(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toAgentDatabaseHttpError(error: unknown): unknown {
+  if (error instanceof HttpError) {
+    return error;
+  }
+
+  if (isPostgresUnavailableError(error)) {
+    return new HttpError(
+      503,
+      "AGENT_DATABASE_UNAVAILABLE",
+      "Agent database is unavailable; check DATABASE_URL and run npm run db:migrate -w backend"
+    );
+  }
+
+  return error;
+}
+
+function isPostgresUnavailableError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+
+  const code = readString(error.code);
+  return [
+    "ECONNREFUSED",
+    "ENOTFOUND",
+    "ETIMEDOUT",
+    "ECONNRESET",
+    "28P01",
+    "3D000",
+    "42P01"
+  ].includes(code);
 }
 
 async function loadRunDemoSearchAgent(): Promise<RunDemoSearchAgent> {
