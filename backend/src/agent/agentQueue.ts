@@ -63,7 +63,8 @@ export function createAgentRedisConnection(options: {
   const redisOptions: RedisOptions = {
     connectTimeout: 1000,
     enableOfflineQueue: options.enableOfflineQueue ?? false,
-    maxRetriesPerRequest: options.maxRetriesPerRequest ?? 1,
+    maxRetriesPerRequest:
+      options.maxRetriesPerRequest === undefined ? 1 : options.maxRetriesPerRequest,
     retryStrategy: (attempt) => {
       if (attempt > 3) {
         return null;
