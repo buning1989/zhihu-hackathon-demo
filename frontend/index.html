@@ -3124,8 +3124,8 @@
       { name: "candidate_rank", label: "筛选样本" },
       { name: "evidence_extract", label: "抽取证据" },
       { name: "response_compose", label: "整理结果" },
-      { name: "grounding_guard", label: "边界检查" },
-      { name: "persona_prepare", label: "准备追问" }
+      { name: "persona_prepare", label: "准备追问" },
+      { name: "grounding_guard", label: "边界检查" }
     ];
 
     const state = {
@@ -3219,9 +3219,22 @@
             label: textOf(stage.label || agentStageLabel(stage.name)),
             status: textOf(stage.status || "pending"),
             fallbackReason: textOf(stage.fallbackReason || stage.error?.message),
-            durationMs: numberOf(stage.durationMs, 0)
+            durationMs: numberOf(stage.durationMs, 0),
+            effectiveTimeoutMs: numberOf(stage.effectiveTimeoutMs, 0),
+            provider: textOf(stage.provider),
+            model: textOf(stage.model),
+            attempts: numberOf(stage.attempts, 0)
           }))
-        : AGENT_STAGE_UI.map((stage) => ({ ...stage, status: "pending", fallbackReason: "", durationMs: 0 }));
+        : AGENT_STAGE_UI.map((stage) => ({
+            ...stage,
+            status: "pending",
+            fallbackReason: "",
+            durationMs: 0,
+            effectiveTimeoutMs: 0,
+            provider: "",
+            model: "",
+            attempts: 0
+          }));
 
       return {
         taskId: textOf(task.taskId || task.id),
@@ -3248,9 +3261,9 @@
         completed: "已完成",
         failed: "已失败",
         pending: "等待",
-        fallback: "兜底",
-        timeout: "超时兜底",
-        error: "异常"
+        fallback: "已兜底继续",
+        timeout: "超时，已兜底继续",
+        error: "异常，规则继续"
       }[status] || status || "等待";
     }
 
@@ -4260,7 +4273,7 @@
                 <span class="agent-stage-state">${escapeHtml(agentStatusText(stage.status))}</span>
                 <span class="agent-stage-copy">
                   <strong>${escapeHtml(stage.label)}</strong>
-                  <span>${escapeHtml(stage.fallbackReason || (stage.durationMs ? `${stage.durationMs}ms` : ""))}</span>
+                  <span>${escapeHtml(agentStageDetail(stage))}</span>
                 </span>
               </div>
             `).join("")}
@@ -4272,6 +4285,19 @@
           </div>
         </div>
       `;
+    }
+
+    function agentStageDetail(stage) {
+      if (stage.fallbackReason) return stage.fallbackReason;
+      const parts = [];
+      if (stage.provider) parts.push(stage.provider);
+      if (stage.effectiveTimeoutMs) parts.push(`最多等待 ${Math.round(stage.effectiveTimeoutMs / 1000)} 秒`);
+      if (stage.attempts > 1) parts.push(`最多 ${stage.attempts} 次尝试`);
+      if (stage.durationMs) parts.push(`${stage.durationMs}ms`);
+      if (stage.status === "running" && !parts.length) return "真实链路执行中";
+      if (stage.status === "fallback") return "大模型不可用或预算不足，已使用规则结果继续";
+      if (stage.status === "timeout") return "大模型响应超时，已使用规则结果继续";
+      return parts.join(" · ");
     }
 
     function renderAgentPartialCard(title, items, reader) {

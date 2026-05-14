@@ -1,5 +1,25 @@
 # AI Handoff
 
+## 2026-05-14 - Agent search timeout profile and orchestration guardrails
+
+本轮目标：优先修复 `/api/agent/search` 真实 Agent 链路的运转稳定性，让 Agent 模式获得更长、更可观测的大模型执行窗口，同时不放大全局 `/api/demo/search` 同步接口超时。
+
+已完成：
+
+- Agent 总预算提升到 300s，仅通过 Agent options 生效。
+- Agent LLM stage 使用专用 max/min/reserve timeout profile，旧同步搜索仍保留既有短预算。
+- `evidence_extract`、`demo_response_compose` 等核心阶段按动态剩余预算计算 effective timeout，预算不足时才跳过。
+- Agent 模式下搜索 query 限制为 8 条，并发为 3，避免串行知乎搜索耗尽后续 LLM 时间。
+- Agent 模式下 LLM stage 允许 1 次轻量 retry，仍受单 stage effective timeout 约束。
+- `/api/agent/tasks/:taskId` 的 stage 增加可选 `budgetMs/effectiveTimeoutMs/provider/model/attempts`，debug 增加 `timeoutProfile/budgetTrace/providerTrace`。
+- 前端 Agent 面板最小更新状态文案，区分“已兜底继续”“超时，已兜底继续”和执行预算信息。
+
+验证建议：
+
+- `npm run build -w backend`
+- 手动 POST `/api/agent/search`，轮询 `/api/agent/tasks/:taskId`，确认核心 LLM 阶段获得更长 effective timeout。
+- 手动确认 `/api/demo/search` 同步接口仍可用，且没有继承 Agent 的 300s profile。
+
 ## 2026-05-13 - Zhihu ring publish/pin backend integration
 
 本轮目标：接入知乎 OpenAPI `POST /openapi/publish/pin`，让后端可以手动把内容发布到指定知乎圈子；不接入 `/api/demo/search` 主链路。

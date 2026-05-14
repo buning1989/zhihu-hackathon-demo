@@ -7,8 +7,13 @@ import { demoSearchService, type DemoSearchRequest } from "../services/demoSearc
 import type { DemoSearchResponse } from "../types/demo.types.js";
 import { withRequestBudget } from "../utils/requestBudget.js";
 import {
+  AGENT_LLM_TASK_MAX_RETRY,
+  AGENT_LLM_TASK_MIN_TIMEOUT_MS,
+  AGENT_LLM_TASK_RESERVED_AFTER_MS,
   AGENT_STAGE_TIMEOUT_MS,
   AGENT_LLM_TASK_TIMEOUT_MS,
+  AGENT_SEARCH_CONCURRENCY,
+  AGENT_SEARCH_QUERY_LIMIT,
   AGENT_TOTAL_TIMEOUT_MS
 } from "./agentTimeouts.js";
 import {
@@ -34,6 +39,20 @@ export async function runDemoSearchAgent(
   input: RunDemoSearchAgentInput
 ): Promise<DemoSearchResponse> {
   const stageStartedAt = new Map<AgentStageName, number>();
+  updateTask(input.taskId, {
+    debug: {
+      timeoutProfile: {
+        totalTimeoutMs: AGENT_TOTAL_TIMEOUT_MS,
+        stageTimeoutMs: AGENT_STAGE_TIMEOUT_MS,
+        llmTaskTimeoutMs: AGENT_LLM_TASK_TIMEOUT_MS,
+        llmTaskMinTimeoutMs: AGENT_LLM_TASK_MIN_TIMEOUT_MS,
+        llmTaskReservedAfterMs: AGENT_LLM_TASK_RESERVED_AFTER_MS,
+        llmTaskMaxRetry: AGENT_LLM_TASK_MAX_RETRY,
+        searchQueryLimit: AGENT_SEARCH_QUERY_LIMIT,
+        searchConcurrency: AGENT_SEARCH_CONCURRENCY
+      }
+    }
+  });
   const callbacks: DemoSearchPipelineCallbacks = {
     onStageStart(stageName) {
       const agentStage = toAgentStageName(stageName);
@@ -85,7 +104,12 @@ export async function runDemoSearchAgent(
       bypassCache: true,
       requestBudgetMs: AGENT_TOTAL_TIMEOUT_MS,
       stageTimeoutMs: AGENT_LLM_TASK_TIMEOUT_MS,
+      stageMinTimeoutMs: AGENT_LLM_TASK_MIN_TIMEOUT_MS,
+      stageReservedAfterMs: AGENT_LLM_TASK_RESERVED_AFTER_MS,
+      stageMaxRetry: AGENT_LLM_TASK_MAX_RETRY,
       searchStageTimeoutMs: AGENT_STAGE_TIMEOUT_MS.content_search,
+      searchQueryLimit: AGENT_SEARCH_QUERY_LIMIT,
+      searchConcurrency: AGENT_SEARCH_CONCURRENCY,
       pipelineCallbacks: callbacks
     }),
     AGENT_TOTAL_TIMEOUT_MS,
@@ -108,22 +132,80 @@ function finishStage(
 ): void {
   const endedAtMs = Date.now();
   const startedAtMs = stageStartedAt.get(stageName) ?? endedAtMs;
+  const observability = extractStageObservability(payload);
   updateTaskStage(taskId, stageName, {
     status,
     startedAt: new Date(startedAtMs).toISOString(),
     endedAt: new Date(endedAtMs).toISOString(),
     durationMs: endedAtMs - startedAtMs,
+    ...observability,
     ...(fallbackReason ? { fallbackReason } : {}),
     ...(error ? { error } : {})
   });
 
   if (payload && Object.keys(payload).length > 0) {
+    const task = getTask(taskId);
+    const budgetTrace = readDebugArray(task?.debug?.budgetTrace);
+    const providerTrace = readDebugArray(task?.debug?.providerTrace);
     updateTask(taskId, {
       debug: {
-        [`${stageName}Payload`]: payload
+        [`${stageName}Payload`]: payload,
+        budgetTrace: [
+          ...budgetTrace,
+          {
+            stage: stageName,
+            status,
+            budgetMs: readNumber(payload.budgetMs),
+            remainingBudgetMs: readNumber(payload.remainingBudgetMs),
+            maxTimeoutMs: readNumber(payload.maxTimeoutMs),
+            minTimeoutMs: readNumber(payload.minTimeoutMs),
+            reserveAfterMs: readNumber(payload.reserveAfterMs),
+            effectiveTimeoutMs: readNumber(payload.effectiveTimeoutMs),
+            fallbackReason
+          }
+        ],
+        providerTrace: [
+          ...providerTrace,
+          {
+            stage: stageName,
+            provider: readString(payload.provider),
+            model: readString(payload.model),
+            attempts: readNumber(payload.attempts)
+          }
+        ]
       }
     });
   }
+}
+
+function extractStageObservability(
+  payload?: Record<string, unknown>
+): Pick<AgentStage, "budgetMs" | "effectiveTimeoutMs" | "provider" | "model" | "attempts"> {
+  if (!payload) {
+    return {};
+  }
+
+  return {
+    ...(readNumber(payload.budgetMs) ? { budgetMs: readNumber(payload.budgetMs) } : {}),
+    ...(readNumber(payload.effectiveTimeoutMs)
+      ? { effectiveTimeoutMs: readNumber(payload.effectiveTimeoutMs) }
+      : {}),
+    ...(readString(payload.provider) ? { provider: readString(payload.provider) } : {}),
+    ...(readString(payload.model) ? { model: readString(payload.model) } : {}),
+    ...(readNumber(payload.attempts) ? { attempts: readNumber(payload.attempts) } : {})
+  };
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function readDebugArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function settlePendingStages(taskId: string, response: DemoSearchResponse): void {

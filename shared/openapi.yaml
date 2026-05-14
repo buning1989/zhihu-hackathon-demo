@@ -1140,8 +1140,8 @@ components:
             - candidate_rank
             - evidence_extract
             - response_compose
-            - grounding_guard
             - persona_prepare
+            - grounding_guard
         stages:
           type: array
           items:
@@ -1196,6 +1196,16 @@ components:
           type: string
           format: date-time
         durationMs:
+          type: integer
+        budgetMs:
+          type: integer
+        effectiveTimeoutMs:
+          type: integer
+        provider:
+          type: string
+        model:
+          type: string
+        attempts:
           type: integer
         fallbackReason:
           type: string

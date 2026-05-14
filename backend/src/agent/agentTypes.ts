@@ -40,6 +40,11 @@ export interface AgentStage {
   startedAt?: string;
   endedAt?: string;
   durationMs?: number;
+  budgetMs?: number;
+  effectiveTimeoutMs?: number;
+  provider?: string;
+  model?: string;
+  attempts?: number;
   fallbackReason?: string;
   error?: AgentTaskError;
 }

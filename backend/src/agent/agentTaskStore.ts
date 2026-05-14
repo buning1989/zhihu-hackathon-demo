@@ -28,8 +28,8 @@ const STAGE_LABELS: Record<AgentStageName, string> = {
   candidate_rank: "筛选相似人生样本",
   evidence_extract: "抽取关键经历和证据",
   response_compose: "整理路径与人物卡片",
-  grounding_guard: "检查证据边界",
-  persona_prepare: "准备可追问经验回声"
+  persona_prepare: "准备可追问经验回声",
+  grounding_guard: "检查证据边界"
 };
 
 export const AGENT_STAGE_ORDER = Object.keys(STAGE_LABELS) as AgentStageName[];

@@ -74,7 +74,12 @@ interface ComposeMultiLlmDemoSearchInput {
   startedAt: number;
   requestBudgetMs?: number;
   stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  stageMinTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  stageReservedAfterMs?: Partial<Record<LlmTaskType, number>>;
+  stageMaxRetry?: Partial<Record<LlmTaskType, number>>;
   searchStageTimeoutMs?: number;
+  searchQueryLimit?: number;
+  searchConcurrency?: number;
   userContext?: UserContext;
   callbacks?: DemoSearchPipelineCallbacks;
 }
@@ -213,6 +218,26 @@ interface SearchByExpandedQueriesResult {
   dedupedCandidateCount: number;
 }
 
+interface SearchByExpandedQueriesProgress {
+  searchQueries: DemoSearchQueryPlan[];
+  searchQueryResults: DemoSearchQueryResultDebug[];
+  rawCandidateCount: number;
+  dedupedCandidateCount: number;
+}
+
+interface SearchByExpandedQueriesOptions {
+  queryLimit?: number;
+  concurrency?: number;
+  onProgress?: (progress: SearchByExpandedQueriesProgress) => void;
+}
+
+interface SearchQueryPlanRunResult {
+  index: number;
+  items: SearchItem[];
+  result: DemoSearchQueryResultDebug;
+  errorSummary?: string;
+}
+
 interface CandidatePipelineResult {
   items: SearchItem[];
   candidateQuality: DemoCandidateQuality[];
@@ -238,6 +263,27 @@ interface PipelineBudget {
   startedAt: number;
   budgetMs: number;
   stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  stageMinTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  stageReservedAfterMs?: Partial<Record<LlmTaskType, number>>;
+  stageMaxRetry?: Partial<Record<LlmTaskType, number>>;
+}
+
+interface LlmStageBudgetDecision {
+  taskType: LlmTaskType;
+  shouldRun: boolean;
+  budgetMs: number;
+  remainingBudgetMs: number;
+  maxTimeoutMs: number;
+  minTimeoutMs: number;
+  reserveAfterMs: number;
+  effectiveTimeoutMs: number;
+  maxRetry: number;
+  reason?: string;
+}
+
+interface JsonTaskRunResult {
+  content: string;
+  budgetDecision: LlmStageBudgetDecision;
 }
 
 const MAX_SEARCH_QUERIES = 12;
@@ -305,7 +351,13 @@ export async function composeMultiLlmDemoSearchResponse(
   const timings: DemoDebugTiming[] = [];
   const guardWarnings: string[] = [];
   const callbacks = input.callbacks;
-  const budget = createPipelineBudget(input.startedAt, input.requestBudgetMs, input.stageTimeoutMs);
+  const budget = createPipelineBudget(input.startedAt, {
+    requestBudgetMs: input.requestBudgetMs,
+    stageTimeoutMs: input.stageTimeoutMs,
+    stageMinTimeoutMs: input.stageMinTimeoutMs,
+    stageReservedAfterMs: input.stageReservedAfterMs,
+    stageMaxRetry: input.stageMaxRetry
+  });
 
   callbacks?.onStageStart?.("intent_expand");
   const intentStage = await runTimedStage(() =>
@@ -328,7 +380,22 @@ export async function composeMultiLlmDemoSearchResponse(
         input.query,
         intentStage.output,
         input.count,
-        input.userContext
+        input.userContext,
+        {
+          queryLimit: input.searchQueryLimit,
+          concurrency: input.searchConcurrency,
+          onProgress(progress) {
+            emitPartialResult(callbacks, {
+              expandedQueries: progress.searchQueries,
+              searchStats: {
+                rawCandidateCount: progress.rawCandidateCount,
+                mergedCandidateCount: progress.rawCandidateCount,
+                dedupedCandidateCount: progress.dedupedCandidateCount,
+                searchQueryResults: progress.searchQueryResults
+              }
+            });
+          }
+        }
       ),
       input.searchStageTimeoutMs,
       "content_search"
@@ -364,7 +431,8 @@ export async function composeMultiLlmDemoSearchResponse(
     recalledSearch,
     input.count,
     input.userContext,
-    budget
+    budget,
+    input.searchConcurrency
   );
   stageResults.push(candidatePipeline.stageResult);
   timings.push(logAndCreateStageTiming({
@@ -687,46 +755,126 @@ function isTimeoutFallbackReason(reason: string): boolean {
 
 function createPipelineBudget(
   startedAt: number,
-  requestBudgetMs: number | undefined,
-  stageTimeoutMs?: Partial<Record<LlmTaskType, number>>
+  options: {
+    requestBudgetMs?: number;
+    stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+    stageMinTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+    stageReservedAfterMs?: Partial<Record<LlmTaskType, number>>;
+    stageMaxRetry?: Partial<Record<LlmTaskType, number>>;
+  }
 ): PipelineBudget {
   return {
     startedAt,
-    budgetMs: requestBudgetMs ?? 15000,
-    stageTimeoutMs
+    budgetMs: options.requestBudgetMs ?? 15000,
+    stageTimeoutMs: options.stageTimeoutMs,
+    stageMinTimeoutMs: options.stageMinTimeoutMs,
+    stageReservedAfterMs: options.stageReservedAfterMs,
+    stageMaxRetry: options.stageMaxRetry
   };
 }
 
-function hasBudgetForLlmStage(taskType: LlmTaskType, budget?: PipelineBudget): boolean {
-  if (!budget) {
-    return true;
-  }
-
-  const remainingMs = budget.budgetMs - (Date.now() - budget.startedAt);
-  return remainingMs > getStageTimeoutMs(taskType, budget) + 350;
-}
-
-function createBudgetSkippedStage(stage: LlmTaskType): DemoDebugLlmStageResult {
-  return createSkippedStage(
-    stage,
-    `request budget has insufficient remaining time for ${stage}; deterministic fallback used`
+function createBudgetSkippedStage(
+  stage: LlmTaskType,
+  decision: LlmStageBudgetDecision
+): DemoDebugLlmStageResult {
+  return attachStageBudgetDebug(
+    createSkippedStage(
+      stage,
+      decision.reason ??
+        `request budget has insufficient remaining time for ${stage}; deterministic fallback used`
+    ),
+    decision
   );
 }
 
 async function runJsonTaskWithStageTimeout(
   taskType: LlmTaskType,
   input: Parameters<typeof llmRouter.runJsonTask>[1],
-  budget?: PipelineBudget
-): Promise<string> {
-  return llmRouter.runJsonTask(taskType, {
+  budget?: PipelineBudget,
+  decision?: LlmStageBudgetDecision
+): Promise<JsonTaskRunResult> {
+  const budgetDecision = decision ?? getLlmStageBudgetDecision(taskType, budget);
+  const content = await llmRouter.runJsonTask(taskType, {
     ...input,
-    timeoutMs: getStageTimeoutMs(taskType, budget),
-    maxRetry: 0
+    timeoutMs: budgetDecision.effectiveTimeoutMs,
+    maxRetry: budgetDecision.maxRetry
   });
+
+  return {
+    content,
+    budgetDecision
+  };
 }
 
-function getStageTimeoutMs(taskType: LlmTaskType, budget?: PipelineBudget): number {
-  return budget?.stageTimeoutMs?.[taskType] ?? getLlmTaskTimeoutMs(taskType);
+function getLlmStageBudgetDecision(
+  taskType: LlmTaskType,
+  budget?: PipelineBudget
+): LlmStageBudgetDecision {
+  const maxTimeoutMs = budget?.stageTimeoutMs?.[taskType] ?? getLlmTaskTimeoutMs(taskType);
+  const minTimeoutMs = Math.min(
+    maxTimeoutMs,
+    budget?.stageMinTimeoutMs?.[taskType] ??
+      Math.max(2500, Math.min(maxTimeoutMs, Math.ceil(maxTimeoutMs * 0.35)))
+  );
+  const reserveAfterMs = budget?.stageReservedAfterMs?.[taskType] ?? 350;
+  const maxRetry = budget?.stageMaxRetry?.[taskType] ?? 0;
+
+  if (!budget) {
+    return {
+      taskType,
+      shouldRun: true,
+      budgetMs: maxTimeoutMs,
+      remainingBudgetMs: maxTimeoutMs,
+      maxTimeoutMs,
+      minTimeoutMs,
+      reserveAfterMs: 0,
+      effectiveTimeoutMs: maxTimeoutMs,
+      maxRetry
+    };
+  }
+
+  const elapsedMs = Date.now() - budget.startedAt;
+  const remainingBudgetMs = Math.max(0, budget.budgetMs - elapsedMs);
+  const effectiveTimeoutMs = Math.max(0, Math.min(maxTimeoutMs, remainingBudgetMs - reserveAfterMs));
+  const shouldRun = effectiveTimeoutMs >= minTimeoutMs;
+
+  return {
+    taskType,
+    shouldRun,
+    budgetMs: budget.budgetMs,
+    remainingBudgetMs,
+    maxTimeoutMs,
+    minTimeoutMs,
+    reserveAfterMs,
+    effectiveTimeoutMs,
+    maxRetry,
+    ...(shouldRun
+      ? {}
+      : {
+          reason:
+            `request budget has ${remainingBudgetMs}ms remaining for ${taskType}; ` +
+            `effectiveTimeoutMs=${effectiveTimeoutMs}ms below minTimeoutMs=${minTimeoutMs}ms; ` +
+            "deterministic fallback used"
+        })
+  };
+}
+
+function attachStageBudgetDebug(
+  stageResult: DemoDebugLlmStageResult,
+  decision: LlmStageBudgetDecision
+): DemoDebugLlmStageResult {
+  return {
+    ...stageResult,
+    budgetMs: decision.budgetMs,
+    remainingBudgetMs: decision.remainingBudgetMs,
+    maxTimeoutMs: decision.maxTimeoutMs,
+    minTimeoutMs: decision.minTimeoutMs,
+    reserveAfterMs: decision.reserveAfterMs,
+    effectiveTimeoutMs: decision.effectiveTimeoutMs,
+    attempts: decision.maxRetry + 1,
+    provider: llmRouter.getProviderForTask(decision.taskType),
+    model: llmRouter.getModelForTask(decision.taskType)
+  };
 }
 
 async function withPipelineStageTimeout<T>(
@@ -777,18 +925,38 @@ function emitStageResult(
 ): void {
   const fallbackUsed = stageResult.attempted === 0 || stageResult.failed > 0;
   const reason = stageResult.fallbackReasons.join("; ");
+  const stagePayload = {
+    ...payload,
+    ...toStageObservabilityPayload(stageResult)
+  };
 
   if (!fallbackUsed) {
-    callbacks?.onStageComplete?.(stageName, payload);
+    callbacks?.onStageComplete?.(stageName, stagePayload);
     return;
   }
 
   if (isTimeoutFallbackReason(reason)) {
-    callbacks?.onStageTimeout?.(stageName, reason, payload);
+    callbacks?.onStageTimeout?.(stageName, reason, stagePayload);
     return;
   }
 
-  callbacks?.onStageFallback?.(stageName, reason || "deterministic fallback used", payload);
+  callbacks?.onStageFallback?.(stageName, reason || "deterministic fallback used", stagePayload);
+}
+
+function toStageObservabilityPayload(
+  stageResult: DemoDebugLlmStageResult
+): Record<string, unknown> {
+  return {
+    budgetMs: stageResult.budgetMs,
+    remainingBudgetMs: stageResult.remainingBudgetMs,
+    maxTimeoutMs: stageResult.maxTimeoutMs,
+    minTimeoutMs: stageResult.minTimeoutMs,
+    reserveAfterMs: stageResult.reserveAfterMs,
+    effectiveTimeoutMs: stageResult.effectiveTimeoutMs,
+    attempts: stageResult.attempts,
+    provider: stageResult.provider,
+    model: stageResult.model
+  };
 }
 
 function emitPartialResult(
@@ -818,22 +986,26 @@ async function runIntentExpandStage(
   budget?: PipelineBudget
 ): Promise<StageRunResult<IntentExpandOutput>> {
   const fallback = createFallbackIntent(query);
-  if (!hasBudgetForLlmStage("intent_expand", budget)) {
+  const budgetDecision = getLlmStageBudgetDecision("intent_expand", budget);
+  if (!budgetDecision.shouldRun) {
     return {
       output: fallback,
-      stageResult: createBudgetSkippedStage("intent_expand")
+      stageResult: createBudgetSkippedStage("intent_expand", budgetDecision)
     };
   }
 
   if (!llmRouter.isTaskConfigured("intent_expand")) {
     return {
       output: fallback,
-      stageResult: createSkippedStage("intent_expand", "DeepSeek not configured; original query used")
+      stageResult: attachStageBudgetDebug(
+        createSkippedStage("intent_expand", "DeepSeek not configured; original query used"),
+        budgetDecision
+      )
     };
   }
 
   try {
-    const content = await runJsonTaskWithStageTimeout("intent_expand", {
+    const result = await runJsonTaskWithStageTimeout("intent_expand", {
       temperature: 0.1,
       maxTokens: 1600,
       messages: [
@@ -849,16 +1021,22 @@ async function runIntentExpandStage(
           })
         }
       ]
-    }, budget);
+    }, budget, budgetDecision);
 
     return {
-      output: parseIntentExpandOutput(content, query),
-      stageResult: createSuccessStage("intent_expand")
+      output: parseIntentExpandOutput(result.content, query),
+      stageResult: attachStageBudgetDebug(
+        createSuccessStage("intent_expand"),
+        result.budgetDecision
+      )
     };
   } catch (error) {
     return {
       output: fallback,
-      stageResult: createFallbackStage("intent_expand", error)
+      stageResult: attachStageBudgetDebug(
+        createFallbackStage("intent_expand", error),
+        budgetDecision
+      )
     };
   }
 }
@@ -878,22 +1056,27 @@ async function runEvidenceExtractStage(
   }
 
   if (!llmRouter.isTaskConfigured("evidence_extract")) {
+    const budgetDecision = getLlmStageBudgetDecision("evidence_extract", budget);
     return {
       output: fallback,
-      stageResult: createSkippedStage("evidence_extract", "Kimi not configured; rule evidence seeds used")
+      stageResult: attachStageBudgetDebug(
+        createSkippedStage("evidence_extract", "Kimi not configured; rule evidence seeds used"),
+        budgetDecision
+      )
     };
   }
 
-  if (!hasBudgetForLlmStage("evidence_extract", budget)) {
+  const budgetDecision = getLlmStageBudgetDecision("evidence_extract", budget);
+  if (!budgetDecision.shouldRun) {
     return {
       output: fallback,
-      stageResult: createBudgetSkippedStage("evidence_extract")
+      stageResult: createBudgetSkippedStage("evidence_extract", budgetDecision)
     };
   }
 
   try {
     const promptCandidates = toEvidenceExtractPromptCandidates(candidates);
-    const content = await runJsonTaskWithStageTimeout("evidence_extract", {
+    const result = await runJsonTaskWithStageTimeout("evidence_extract", {
       temperature: 0.1,
       maxTokens: 3000,
       messages: [
@@ -916,16 +1099,22 @@ async function runEvidenceExtractStage(
           })
         }
       ]
-    }, budget);
+    }, budget, budgetDecision);
 
     return {
-      output: parseEvidenceExtractOutput(content, new Set(candidates.map((item) => item.sourceRefId))),
-      stageResult: createSuccessStage("evidence_extract")
+      output: parseEvidenceExtractOutput(result.content, new Set(candidates.map((item) => item.sourceRefId))),
+      stageResult: attachStageBudgetDebug(
+        createSuccessStage("evidence_extract"),
+        result.budgetDecision
+      )
     };
   } catch (error) {
     return {
       output: fallback,
-      stageResult: createFallbackStage("evidence_extract", error)
+      stageResult: attachStageBudgetDebug(
+        createFallbackStage("evidence_extract", error),
+        budgetDecision
+      )
     };
   }
 }
@@ -940,25 +1129,29 @@ async function runDemoResponseComposeStage(
   budget?: PipelineBudget
 ): Promise<StageRunResult<DemoResponseComposeOutput>> {
   const fallback = createEmptyDemoComposeOutput();
+  const budgetDecision = getLlmStageBudgetDecision("demo_response_compose", budget);
   if (!llmRouter.isTaskConfigured("demo_response_compose")) {
     return {
       output: fallback,
-      stageResult: createSkippedStage(
-        "demo_response_compose",
-        "DeepSeek not configured; deterministic display fields preserved"
+      stageResult: attachStageBudgetDebug(
+        createSkippedStage(
+          "demo_response_compose",
+          "DeepSeek not configured; deterministic display fields preserved"
+        ),
+        budgetDecision
       )
     };
   }
 
-  if (!hasBudgetForLlmStage("demo_response_compose", budget)) {
+  if (!budgetDecision.shouldRun) {
     return {
       output: fallback,
-      stageResult: createBudgetSkippedStage("demo_response_compose")
+      stageResult: createBudgetSkippedStage("demo_response_compose", budgetDecision)
     };
   }
 
   try {
-    const content = await runJsonTaskWithStageTimeout("demo_response_compose", {
+    const result = await runJsonTaskWithStageTimeout("demo_response_compose", {
       temperature: 0.2,
       maxTokens: 3600,
       messages: [
@@ -988,19 +1181,25 @@ async function runDemoResponseComposeStage(
           })
         }
       ]
-    }, budget);
+    }, budget, budgetDecision);
 
     return {
-      output: parseDemoResponseComposeOutput(content, {
+      output: parseDemoResponseComposeOutput(result.content, {
         pathIds: new Set(response.paths.map((path) => path.id)),
         personIds: new Set(response.people.map((person) => person.id))
       }),
-      stageResult: createSuccessStage("demo_response_compose")
+      stageResult: attachStageBudgetDebug(
+        createSuccessStage("demo_response_compose"),
+        result.budgetDecision
+      )
     };
   } catch (error) {
     return {
       output: fallback,
-      stageResult: createFallbackStage("demo_response_compose", error)
+      stageResult: attachStageBudgetDebug(
+        createFallbackStage("demo_response_compose", error),
+        budgetDecision
+      )
     };
   }
 }
@@ -1053,23 +1252,28 @@ async function runExperienceSummaryStage(
   }
 
   if (uncachedCandidates.length === 0) {
+    const budgetDecision = getLlmStageBudgetDecision("experience_summary", budget);
     return {
       output: {
         summaries: { summaries: cachedSummaries },
         debug
       },
-      stageResult: {
-        stage: "experience_summary",
-        attempted: 1,
-        succeeded: cachedSummaries.length,
-        failed: 0,
-        repairUsed: 0,
-        repairFailed: 0,
-        fallbackReasons: []
-      }
+      stageResult: attachStageBudgetDebug(
+        {
+          stage: "experience_summary",
+          attempted: 1,
+          succeeded: cachedSummaries.length,
+          failed: 0,
+          repairUsed: 0,
+          repairFailed: 0,
+          fallbackReasons: []
+        },
+        budgetDecision
+      )
     };
   }
 
+  const budgetDecision = getLlmStageBudgetDecision("experience_summary", budget);
   if (!llmRouter.isTaskConfigured("experience_summary")) {
     for (const candidate of uncachedCandidates) {
       markExperienceSummaryDebug(debug, candidate.personId, {
@@ -1085,11 +1289,14 @@ async function runExperienceSummaryStage(
         summaries: { summaries: cachedSummaries },
         debug
       },
-      stageResult: createSkippedStage("experience_summary", "Kimi not configured; experienceSummary not generated")
+      stageResult: attachStageBudgetDebug(
+        createSkippedStage("experience_summary", "Kimi not configured; experienceSummary not generated"),
+        budgetDecision
+      )
     };
   }
 
-  if (!hasBudgetForLlmStage("experience_summary", budget)) {
+  if (!budgetDecision.shouldRun) {
     for (const candidate of uncachedCandidates) {
       markExperienceSummaryDebug(debug, candidate.personId, {
         status: "failed",
@@ -1104,12 +1311,12 @@ async function runExperienceSummaryStage(
         summaries: { summaries: cachedSummaries },
         debug
       },
-      stageResult: createBudgetSkippedStage("experience_summary")
+      stageResult: createBudgetSkippedStage("experience_summary", budgetDecision)
     };
   }
 
   try {
-    const content = await runJsonTaskWithStageTimeout("experience_summary", {
+    const result = await runJsonTaskWithStageTimeout("experience_summary", {
       temperature: 0.15,
       maxTokens: 1800,
       messages: [
@@ -1125,9 +1332,9 @@ async function runExperienceSummaryStage(
           })
         }
       ]
-    }, budget);
+    }, budget, budgetDecision);
     const parsed = parseExperienceSummaryOutput(
-      content,
+      result.content,
       new Set(uncachedCandidates.map((candidate) => candidate.personId))
     );
     const acceptedSummaries = filterAndCacheExperienceSummaries(
@@ -1145,18 +1352,21 @@ async function runExperienceSummaryStage(
         },
         debug
       },
-      stageResult: {
-        stage: "experience_summary",
-        attempted: 1,
-        succeeded: acceptedSummaries.length + cachedSummaries.length,
-        failed: missingCount,
-        repairUsed: 0,
-        repairFailed: 0,
-        fallbackReasons:
-          missingCount > 0
-            ? ["some experienceSummary items were missing, null, or advice-style"]
-            : []
-      }
+      stageResult: attachStageBudgetDebug(
+        {
+          stage: "experience_summary",
+          attempted: 1,
+          succeeded: acceptedSummaries.length + cachedSummaries.length,
+          failed: missingCount,
+          repairUsed: 0,
+          repairFailed: 0,
+          fallbackReasons:
+            missingCount > 0
+              ? ["some experienceSummary items were missing, null, or advice-style"]
+              : []
+        },
+        result.budgetDecision
+      )
     };
   } catch (error) {
     const reason = formatErrorSummary(error);
@@ -1174,7 +1384,10 @@ async function runExperienceSummaryStage(
         summaries: { summaries: cachedSummaries },
         debug
       },
-      stageResult: createFallbackStage("experience_summary", error)
+      stageResult: attachStageBudgetDebug(
+        createFallbackStage("experience_summary", error),
+        budgetDecision
+      )
     };
   }
 }
@@ -1184,22 +1397,26 @@ async function runGroundingGuardStage(
   budget?: PipelineBudget
 ): Promise<StageRunResult<GroundingGuardOutput>> {
   const fallback = createPassingGroundingGuard();
+  const budgetDecision = getLlmStageBudgetDecision("grounding_guard", budget);
   if (!llmRouter.isTaskConfigured("grounding_guard")) {
     return {
       output: fallback,
-      stageResult: createSkippedStage("grounding_guard", "DeepSeek not configured; rule guard used")
+      stageResult: attachStageBudgetDebug(
+        createSkippedStage("grounding_guard", "DeepSeek not configured; rule guard used"),
+        budgetDecision
+      )
     };
   }
 
-  if (!hasBudgetForLlmStage("grounding_guard", budget)) {
+  if (!budgetDecision.shouldRun) {
     return {
       output: fallback,
-      stageResult: createBudgetSkippedStage("grounding_guard")
+      stageResult: createBudgetSkippedStage("grounding_guard", budgetDecision)
     };
   }
 
   try {
-    const content = await runJsonTaskWithStageTimeout("grounding_guard", {
+    const result = await runJsonTaskWithStageTimeout("grounding_guard", {
       temperature: 0,
       maxTokens: 1400,
       messages: [
@@ -1215,23 +1432,29 @@ async function runGroundingGuardStage(
           })
         }
       ]
-    }, budget);
+    }, budget, budgetDecision);
 
-    const output = parseGroundingGuardOutput(content, {
+    const output = parseGroundingGuardOutput(result.content, {
       personIds: new Set(response.people.map((person) => person.id)),
       personaIds: new Set(response.personas.map((persona) => persona.id))
     });
 
     return {
       output,
-      stageResult: output.valid
-        ? createSuccessStage("grounding_guard")
-        : createInvalidGroundingGuardStage(output)
+      stageResult: attachStageBudgetDebug(
+        output.valid
+          ? createSuccessStage("grounding_guard")
+          : createInvalidGroundingGuardStage(output),
+        result.budgetDecision
+      )
     };
   } catch (error) {
     return {
       output: fallback,
-      stageResult: createFallbackStage("grounding_guard", error)
+      stageResult: attachStageBudgetDebug(
+        createFallbackStage("grounding_guard", error),
+        budgetDecision
+      )
     };
   }
 }
@@ -1240,35 +1463,31 @@ async function searchByExpandedQueries(
   _originalQuery: string,
   intent: IntentExpandOutput,
   count: number,
-  _userContext?: UserContext
+  _userContext?: UserContext,
+  options: SearchByExpandedQueriesOptions = {}
 ): Promise<SearchByExpandedQueriesResult> {
-  const normalizedQueries = sortSearchQueryPlans(intent.searchQueries).slice(0, MAX_SEARCH_QUERIES);
+  const normalizedQueries = sortSearchQueryPlans(intent.searchQueries).slice(
+    0,
+    normalizeSearchQueryLimit(options.queryLimit)
+  );
   const perQueryCount = Math.min(Math.max(count, 3), 3);
-  const items: SearchItem[] = [];
-  const errors: string[] = [];
-  const searchQueryResults: DemoSearchQueryResultDebug[] = [];
-
-  for (const queryPlan of normalizedQueries) {
-    try {
-      const result = await searchService.search(queryPlan.query, perQueryCount);
-      const queryItems = result.items
-        .slice(0, perQueryCount)
-        .map((item) => attachMatchedQuery(item, queryPlan));
-      items.push(...queryItems);
-      searchQueryResults.push({
-        ...queryPlan,
-        returnedCount: queryItems.length
-      });
-    } catch (error) {
-      const errorSummary = formatErrorSummary(error);
-      errors.push(`${queryPlan.query}: ${errorSummary}`);
-      searchQueryResults.push({
-        ...queryPlan,
-        returnedCount: 0,
-        error: errorSummary
+  const queryResults = await runSearchQueryPlans(normalizedQueries, perQueryCount, {
+    concurrency: options.concurrency,
+    onProgress(partialResults) {
+      const partialItems = partialResults.flatMap((item) => item.items);
+      options.onProgress?.({
+        searchQueries: normalizedQueries,
+        searchQueryResults: partialResults.map((item) => item.result),
+        rawCandidateCount: partialItems.length,
+        dedupedCandidateCount: dedupeSearchItems(partialItems).length
       });
     }
-  }
+  });
+  const items = queryResults.flatMap((item) => item.items);
+  const errors = queryResults
+    .filter((item) => item.errorSummary)
+    .map((item) => `${item.result.query}: ${item.errorSummary}`);
+  const searchQueryResults = queryResults.map((item) => item.result);
 
   const dedupedItems = dedupeSearchItems(items);
   if (dedupedItems.length === 0) {
@@ -1297,7 +1516,8 @@ async function runCandidatePipeline(
   recalledSearch: SearchByExpandedQueriesResult,
   count: number,
   userContext?: UserContext,
-  budget?: PipelineBudget
+  budget?: PipelineBudget,
+  searchConcurrency?: number
 ): Promise<CandidatePipelineResult> {
   const startedAt = Date.now();
   const context = {
@@ -1315,19 +1535,25 @@ async function runCandidatePipeline(
   let rerankFailedReason = "";
   let rerankDropReasonById = new Map<string, string>();
   const rerankEnabled = llmRouter.isTaskConfigured("candidate_rerank");
-  const rerankHasBudget = hasBudgetForLlmStage("candidate_rerank", budget);
+  const rerankBudgetDecision = getLlmStageBudgetDecision("candidate_rerank", budget);
 
   if (rerankCandidates.length === 0) {
-    stageResult = createSkippedStage("candidate_rerank", "no rough-filtered candidates for rerank");
+    stageResult = attachStageBudgetDebug(
+      createSkippedStage("candidate_rerank", "no rough-filtered candidates for rerank"),
+      rerankBudgetDecision
+    );
   } else if (!rerankEnabled) {
-    stageResult = createSkippedStage("candidate_rerank", "DeepSeek not configured; rule rerank fallback used");
-  } else if (!rerankHasBudget) {
+    stageResult = attachStageBudgetDebug(
+      createSkippedStage("candidate_rerank", "DeepSeek not configured; rule rerank fallback used"),
+      rerankBudgetDecision
+    );
+  } else if (!rerankBudgetDecision.shouldRun) {
     rerankFailedReason =
       "request budget has insufficient remaining time for candidate_rerank; rule rerank fallback used";
-    stageResult = createBudgetSkippedStage("candidate_rerank");
+    stageResult = createBudgetSkippedStage("candidate_rerank", rerankBudgetDecision);
   } else {
     try {
-      const content = await runJsonTaskWithStageTimeout("candidate_rerank", {
+      const result = await runJsonTaskWithStageTimeout("candidate_rerank", {
         temperature: 0.1,
         maxTokens: 2200,
         messages: [
@@ -1347,15 +1573,21 @@ async function runCandidatePipeline(
             })
           }
         ]
-      }, budget);
+      }, budget, rerankBudgetDecision);
       rerankOutput = parseCandidateRerankOutput(
-        content,
+        result.content,
         new Set(rerankCandidates.map((candidate) => candidate.candidateId))
       );
-      stageResult = createSuccessStage("candidate_rerank");
+      stageResult = attachStageBudgetDebug(
+        createSuccessStage("candidate_rerank"),
+        result.budgetDecision
+      );
     } catch (error) {
       rerankFailedReason = formatErrorSummary(error);
-      stageResult = createFallbackStage("candidate_rerank", error);
+      stageResult = attachStageBudgetDebug(
+        createFallbackStage("candidate_rerank", error),
+        rerankBudgetDecision
+      );
     }
   }
 
@@ -1376,7 +1608,7 @@ async function runCandidatePipeline(
     refillQueries = buildRefillQueries(intent, selectedAssessments, recalledSearch.searchQueries);
 
     if (refillQueries.length > 0) {
-      const refillSearch = await searchByQueryPlans(refillQueries, 5);
+      const refillSearch = await searchByQueryPlans(refillQueries, 5, searchConcurrency);
       refillCandidateCount = refillSearch.items.length;
       allItems = dedupeSearchItems([...allItems, ...refillSearch.items]);
       assessments = assessSearchCandidates(
@@ -1456,35 +1688,99 @@ async function runCandidatePipeline(
 
 async function searchByQueryPlans(
   queries: DemoSearchQueryPlan[],
-  perQueryCount: number
+  perQueryCount: number,
+  concurrency?: number
 ): Promise<{ items: SearchItem[]; results: DemoSearchQueryResultDebug[] }> {
-  const items: SearchItem[] = [];
-  const results: DemoSearchQueryResultDebug[] = [];
+  const queryResults = await runSearchQueryPlans(queries, perQueryCount, { concurrency });
 
-  for (const queryPlan of queries) {
-    try {
-      const result = await searchService.search(queryPlan.query, perQueryCount);
-      const queryItems = result.items
-        .slice(0, perQueryCount)
-        .map((item) => attachMatchedQuery(item, queryPlan));
-      items.push(...queryItems);
-      results.push({
-        ...queryPlan,
-        returnedCount: queryItems.length
-      });
-    } catch (error) {
-      results.push({
-        ...queryPlan,
-        returnedCount: 0,
-        error: formatErrorSummary(error)
-      });
+  return {
+    items: queryResults.flatMap((item) => item.items),
+    results: queryResults.map((item) => item.result)
+  };
+}
+
+async function runSearchQueryPlans(
+  queries: DemoSearchQueryPlan[],
+  perQueryCount: number,
+  options: {
+    concurrency?: number;
+    onProgress?: (results: SearchQueryPlanRunResult[]) => void;
+  } = {}
+): Promise<SearchQueryPlanRunResult[]> {
+  const concurrency = normalizeSearchConcurrency(options.concurrency);
+  const results: Array<SearchQueryPlanRunResult | undefined> = new Array(queries.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < queries.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await runSearchQueryPlan(queries[index], perQueryCount, index);
+      options.onProgress?.(results.filter(isSearchQueryPlanRunResult));
     }
   }
 
-  return {
-    items,
-    results
-  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, Math.max(queries.length, 1)) }, () => worker())
+  );
+
+  return results.filter(isSearchQueryPlanRunResult).sort((left, right) => left.index - right.index);
+}
+
+async function runSearchQueryPlan(
+  queryPlan: DemoSearchQueryPlan,
+  perQueryCount: number,
+  index: number
+): Promise<SearchQueryPlanRunResult> {
+  try {
+    const result = await searchService.search(queryPlan.query, perQueryCount);
+    const queryItems = result.items
+      .slice(0, perQueryCount)
+      .map((item) => attachMatchedQuery(item, queryPlan));
+
+    return {
+      index,
+      items: queryItems,
+      result: {
+        ...queryPlan,
+        returnedCount: queryItems.length
+      }
+    };
+  } catch (error) {
+    const errorSummary = formatErrorSummary(error);
+    return {
+      index,
+      items: [],
+      result: {
+        ...queryPlan,
+        returnedCount: 0,
+        error: errorSummary
+      },
+      errorSummary
+    };
+  }
+}
+
+function normalizeSearchQueryLimit(queryLimit: number | undefined): number {
+  if (typeof queryLimit !== "number" || !Number.isFinite(queryLimit)) {
+    return MAX_SEARCH_QUERIES;
+  }
+
+  return Math.max(1, Math.min(Math.floor(queryLimit), MAX_SEARCH_QUERIES));
+}
+
+function normalizeSearchConcurrency(concurrency: number | undefined): number {
+  if (typeof concurrency !== "number" || !Number.isFinite(concurrency)) {
+    return 1;
+  }
+
+  return Math.max(1, Math.min(Math.floor(concurrency), 5));
+}
+
+function isSearchQueryPlanRunResult(
+  result: SearchQueryPlanRunResult | undefined
+): result is SearchQueryPlanRunResult {
+  return Boolean(result);
 }
 
 function dedupeSearchItems(items: SearchItem[]): SearchItem[] {

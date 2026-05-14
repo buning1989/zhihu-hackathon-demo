@@ -31,7 +31,12 @@ export interface DemoSearchOptions {
   bypassCache?: boolean;
   requestBudgetMs?: number;
   stageTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  stageMinTimeoutMs?: Partial<Record<LlmTaskType, number>>;
+  stageReservedAfterMs?: Partial<Record<LlmTaskType, number>>;
+  stageMaxRetry?: Partial<Record<LlmTaskType, number>>;
   searchStageTimeoutMs?: number;
+  searchQueryLimit?: number;
+  searchConcurrency?: number;
   pipelineCallbacks?: DemoSearchPipelineCallbacks;
 }
 
@@ -81,7 +86,12 @@ export class DemoSearchService {
             startedAt,
             requestBudgetMs,
             stageTimeoutMs: options.stageTimeoutMs,
+            stageMinTimeoutMs: options.stageMinTimeoutMs,
+            stageReservedAfterMs: options.stageReservedAfterMs,
+            stageMaxRetry: options.stageMaxRetry,
             searchStageTimeoutMs: options.searchStageTimeoutMs,
+            searchQueryLimit: options.searchQueryLimit,
+            searchConcurrency: options.searchConcurrency,
             userContext,
             callbacks: options.pipelineCallbacks
           }),

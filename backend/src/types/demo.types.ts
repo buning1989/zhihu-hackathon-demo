@@ -461,6 +461,15 @@ export interface DemoDebugLlmStageResult {
   repairUsed: number;
   repairFailed: number;
   fallbackReasons: string[];
+  budgetMs?: number;
+  remainingBudgetMs?: number;
+  maxTimeoutMs?: number;
+  minTimeoutMs?: number;
+  reserveAfterMs?: number;
+  effectiveTimeoutMs?: number;
+  attempts?: number;
+  provider?: string;
+  model?: string;
 }
 
 export interface DemoExperienceSummaryDebug {
