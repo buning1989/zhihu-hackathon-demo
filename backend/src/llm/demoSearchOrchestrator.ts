@@ -23,10 +23,13 @@ import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   type DemoDataMode,
   type DemoCandidateQuality,
+  type DemoContentRole,
   type DemoDebugFallbackKind,
   type DemoDebugIntentStage,
   type DemoDebugLlmStageResult,
   type DemoDebugTiming,
+  type DemoDisplayTier,
+  type DemoEvidenceStatus,
   type DemoExperienceSummaryDebug,
   type DemoPerson,
   type DemoPersona,
@@ -199,6 +202,43 @@ const DEMO_LLM_STAGE_TIMEOUT_MS: Partial<Record<LlmTaskType, number>> = {
   grounding_guard: 3000
 };
 
+const PATH_DISPLAY_COPY: Record<DemoContentRole, {
+  title: string;
+  summary: string;
+  tradeoff: string;
+}> = {
+  failure_review: {
+    title: "辞职后复盘：后悔、回流与再选择",
+    summary: "这类内容适合看离开工作之后的回头复盘：哪些选择后来显得草率，哪些回流接口还在，哪些问题需要重新选一次。",
+    tradeoff: "它能提醒坑在哪里，但不能保证换个人照做就得到同样结果；尤其要把现金流、回流成本和情绪恢复分开判断。"
+  },
+  decision_conflict: {
+    title: "待业中的拉扯：想走出去但没有确定路径",
+    summary: "这类内容呈现的是待业或暂停工作时的摇摆：想离开原来的节奏，又还没有形成足够确定的下一步。",
+    tradeoff: "它的价值在于暴露冲突，不在于给出答案；如果证据只到片段层面，就只能当作处境参考。"
+  },
+  life_path: {
+    title: "过渡型路径：先解决现金流，再决定下一步",
+    summary: "这类内容更像过渡方案：先把基本生活、收入来源和可回撤条件稳住，再判断要继续休整、找工作还是换一种生活半径。",
+    tradeoff: "它能降低短期失控感，但不等于长期路径已经清楚；现金流一旦接不上，选择空间会很快变窄。"
+  },
+  real_experience: {
+    title: "不上班后的真实日常：时间、成本和生活节奏",
+    summary: "这类内容更接近日常经验：不上班之后时间如何被重新安排，钱、社交和自我认同怎样变成具体问题。",
+    tradeoff: "它能提供生活质感和现实细节，但只代表公开内容里的那段经历，不能外推成普遍结论。"
+  },
+  alternative_solution: {
+    title: "低成本备选方案：回老家、自由职业、远程/副业",
+    summary: "这类内容提供的是低成本备选：用回老家、远程工作、自由职业或副业先换一段缓冲，而不是马上押上不可逆决定。",
+    tradeoff: "它会降低一部分压力，也可能低估孤独、收入波动和机会变少；适合先看来源片段，再判断可迁移性。"
+  },
+  viewpoint: {
+    title: "观点型参考：只能作为方向，不当作亲历",
+    summary: "这类内容主要是观点和变量拆解，可以帮助梳理方向、成本和风险，但不能包装成作者亲历过完整过程。",
+    tradeoff: "它只能作为方向参考；如果缺少明确经历和来源证据，就不开放追问，只建议查看来源片段。"
+  }
+};
+
 const experienceSummaryCache = new Map<
   string,
   {
@@ -268,6 +308,11 @@ export async function composeMultiLlmDemoSearchResponse(
   );
   stageResults.push(evidenceStage.stageResult);
   timings.push(createStageTiming(evidenceStage));
+  applyEvidenceExtractDisplayStatus(
+    response,
+    evidenceStage.output,
+    evidenceStage.stageResult.succeeded > 0
+  );
 
   const composeStage = await runTimedStage(() =>
     runDemoResponseComposeStage(
@@ -283,6 +328,7 @@ export async function composeMultiLlmDemoSearchResponse(
   timings.push(createStageTiming(composeStage));
 
   const applyStats = applyDemoResponseComposeOutput(response, composeStage.output, guardWarnings);
+  applyRoleBasedPathDisplayCopy(response, input.query);
   response.debug.pathDiversityCheck = enforceDemoPathDiversity(response.paths, {
     mergeCount: response.debug.pathDiversityCheck?.mergeCount,
     notes: [
@@ -293,6 +339,7 @@ export async function composeMultiLlmDemoSearchResponse(
     ]
   });
   response.debug.pathDuplicateFound = response.debug.pathDiversityCheck.duplicateFound;
+  applyDisplayGateFields(response);
   syncTopLevelPersonas(response);
 
   const experienceSummaryStage = await runTimedStage(() =>
@@ -307,6 +354,7 @@ export async function composeMultiLlmDemoSearchResponse(
   timings.push(createStageTiming(groundingStage));
   applyGroundingGuardOutput(response, groundingStage.output, guardWarnings);
   applyRuleGroundingGuard(response, guardWarnings);
+  applyDisplayGateFields(response);
   syncTopLevelPersonas(response);
   assertDemoSearchGrounding(response);
 
@@ -1891,6 +1939,90 @@ function applyExperienceSummaryOutput(
   }
 }
 
+function applyEvidenceExtractDisplayStatus(
+  response: DemoSearchResponse,
+  output: EvidenceExtractOutput,
+  llmExtracted: boolean
+): void {
+  const evidenceBySourceRef = new Map(output.evidenceRefs.map((item) => [item.sourceRefId, item]));
+  const evidenceStatus: DemoEvidenceStatus = llmExtracted ? "llm_extracted" : "raw_snippet_only";
+
+  for (const person of response.people) {
+    person.evidenceStatus = evidenceStatus;
+
+    for (const article of person.articles) {
+      const sourceRefId = article.sourceRefs[0] || person.sourceRefs[0] || article.evidence[0]?.sourceRefId || "";
+      const extracted = sourceRefId ? evidenceBySourceRef.get(sourceRefId) : undefined;
+      const evidenceText = llmExtracted && extracted?.evidenceText
+        ? extracted.evidenceText
+        : buildFallbackEvidenceText(article);
+      article.evidenceStatus = evidenceStatus;
+      article.evidenceText = evidenceText;
+
+      if (article.evidence[0]) {
+        article.evidence[0].label = llmExtracted ? "AI 证据提炼" : "来源片段";
+        article.evidence[0].text = evidenceText;
+      }
+    }
+  }
+}
+
+function applyRoleBasedPathDisplayCopy(response: DemoSearchResponse, query: string): void {
+  for (const path of response.paths) {
+    const role = readContentRole(path.contentRole ?? inferPathRoleFromQuality(response, path));
+    const copy = PATH_DISPLAY_COPY[role];
+    path.contentRole = role;
+    path.title = copy.title;
+    path.summary = truncateText(
+      `${copy.summary} 它回应「${truncateText(query, 24)}」时，只使用可追溯的来源片段做展示。`,
+      150
+    );
+    path.tradeoff = copy.tradeoff;
+    path.displayLabel = copy.title;
+    path.displayTradeoff = copy.tradeoff;
+  }
+}
+
+function applyDisplayGateFields(response: DemoSearchResponse): void {
+  const qualityBySourceRef = new Map(
+    (response.debug.candidateQuality ?? [])
+      .filter((item): item is DemoCandidateQuality & { sourceRefId: string } => Boolean(item.sourceRefId))
+      .map((item) => [item.sourceRefId, item])
+  );
+
+  for (const person of response.people) {
+    const sourceRefId = person.sourceRefs[0] || person.match.sourceRefs[0] || "";
+    const quality = sourceRefId ? qualityBySourceRef.get(sourceRefId) : undefined;
+    const displayTier = toDisplayTier(person.match);
+    const evidenceStatus = person.evidenceStatus ?? inferPersonEvidenceStatus(person);
+    const canChat = canPersonChat(person.aiPersona.enabled, person.match, quality);
+
+    person.displayTier = displayTier;
+    person.evidenceStatus = evidenceStatus;
+    person.canChat = canChat;
+    person.displayLabel = toDisplayLabel(displayTier);
+    person.displayTradeoff = toDisplayTradeoff(displayTier, canChat, evidenceStatus, quality);
+    person.aiPersona.canChat = canChat;
+    person.aiPersona.evidenceStatus = evidenceStatus;
+    person.aiPersona.displayLabel = canChat ? "可追问的经验回声" : "仅查看来源片段";
+    person.aiPersona.displayTradeoff = person.displayTradeoff;
+
+    for (const article of person.articles) {
+      const articleStatus = article.evidenceStatus ?? evidenceStatus;
+      article.evidenceStatus = articleStatus;
+      article.evidenceText = buildFallbackEvidenceText(article);
+      if (article.evidence[0] && articleStatus === "raw_snippet_only") {
+        article.evidence[0].label = "来源片段";
+      }
+    }
+
+    if (!canChat) {
+      person.aiPersona.openingLine = "这段公开内容目前只适合查看来源片段，暂不开放追问。";
+      person.aiPersona.suggestedQuestions = ["这段公开内容里，哪些信息是确定的？"];
+    }
+  }
+}
+
 function applyDemoResponseComposeOutput(
   response: DemoSearchResponse,
   output: DemoResponseComposeOutput,
@@ -2106,11 +2238,7 @@ function disablePersona(person: DemoPerson, reason: string): void {
 
 function syncTopLevelPersonas(response: DemoSearchResponse): void {
   response.personas = response.people.map(toPersona);
-
-  const personaSection = response.sections.find((section) => section.type === "personas");
-  if (personaSection) {
-    personaSection.itemRefs = response.personas.map((persona) => persona.id);
-  }
+  response.sections = buildDisplaySections(response);
 }
 
 function toPersona(person: DemoPerson): DemoPersona {
@@ -2120,12 +2248,57 @@ function toPersona(person: DemoPerson): DemoPersona {
     displayName: person.aiPersona.displayName,
     avatar: person.avatar,
     personaType: "experience_echo",
+    canChat: person.canChat,
+    displayTier: person.displayTier,
+    evidenceStatus: person.evidenceStatus,
+    displayLabel: person.aiPersona.displayLabel ?? (person.canChat ? "可追问的经验回声" : "仅查看来源片段"),
+    displayTradeoff: person.displayTradeoff,
     intro: person.aiPersona.openingLine,
     fitReason: person.fitReason,
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
     sourceRefs: person.sourceRefs,
     suggestedQuestions: person.aiPersona.suggestedQuestions
   };
+}
+
+function buildDisplaySections(response: DemoSearchResponse): DemoSearchResponse["sections"] {
+  const corePeople = response.people.filter((person) => person.displayTier === "core");
+  const supplementPeople = response.people.filter((person) => person.displayTier !== "core");
+  const chatPersonas = response.personas.filter((persona) => persona.canChat === true);
+  const sourceOnlyPersonas = response.personas.filter((persona) => persona.canChat !== true);
+
+  return [
+    {
+      id: "section_paths",
+      type: "paths",
+      title: "参考路径",
+      itemRefs: response.paths.map((path) => path.id)
+    },
+    {
+      id: "section_core_people",
+      type: "people",
+      title: "较匹配的公开经历",
+      itemRefs: corePeople.map((person) => person.id)
+    },
+    {
+      id: "section_supplement_people",
+      type: "people",
+      title: "补充参考样本",
+      itemRefs: supplementPeople.map((person) => person.id)
+    },
+    {
+      id: "section_chat_personas",
+      type: "personas",
+      title: "可追问的经验回声",
+      itemRefs: chatPersonas.map((persona) => persona.id)
+    },
+    {
+      id: "section_source_only_personas",
+      type: "personas",
+      title: "仅查看来源片段",
+      itemRefs: sourceOnlyPersonas.map((persona) => persona.id)
+    }
+  ];
 }
 
 function toDemoComposeContext(response: DemoSearchResponse): Record<string, unknown> {
@@ -2465,7 +2638,14 @@ function isSafeText(value: string): boolean {
     "加微信",
     "和作者聊",
     "和本人聊",
-    "模拟作者本人"
+    "模拟作者本人",
+    "roughTier",
+    "roughScore",
+    "diversityKey",
+    "contentRole",
+    "keepReason",
+    "used_as_core_evidence",
+    "规则兜底保留"
   ];
 
   return !forbiddenFragments.some((fragment) => value.includes(fragment));
@@ -2525,6 +2705,110 @@ function isExperiencePathTitle(value: string): boolean {
     (value.includes("有人") || value.includes("有些人")) &&
     !adviceTitleFragments.some((fragment) => value.includes(fragment))
   );
+}
+
+function buildFallbackEvidenceText(article: DemoPerson["articles"][number]): string {
+  return truncateText(
+    article.evidence[0]?.text || article.summary || normalizeText(article.text).slice(0, 260),
+    260
+  );
+}
+
+function inferPersonEvidenceStatus(person: DemoPerson): DemoEvidenceStatus {
+  return person.articles.some((article) => article.evidenceStatus === "llm_extracted")
+    ? "llm_extracted"
+    : "raw_snippet_only";
+}
+
+function toDisplayTier(match: DemoPerson["match"]): DemoDisplayTier {
+  return (match.level === "high" || match.level === "medium") &&
+    match.evidenceQuality >= 0.65 &&
+    match.contentRelevance >= 0.25
+    ? "core"
+    : "supplement";
+}
+
+function canPersonChat(
+  aiPersonaEnabled: boolean,
+  match: DemoPerson["match"],
+  quality?: Pick<
+    DemoCandidateQuality,
+    "penaltySignals" | "filterReason" | "penaltyScore" | "contentRole" | "queryType"
+  >
+): boolean {
+  return Boolean(
+    aiPersonaEnabled &&
+      match.personaReadiness >= 0.65 &&
+      match.evidenceQuality >= 0.65 &&
+      match.contentRelevance >= 0.25 &&
+      quality?.contentRole !== "viewpoint" &&
+      quality?.queryType !== "original" &&
+      !hasAdMarketingPenalty(quality, match)
+  );
+}
+
+function hasAdMarketingPenalty(
+  quality: Pick<DemoCandidateQuality, "penaltySignals" | "filterReason" | "penaltyScore"> | undefined,
+  match?: Pick<DemoPerson["match"], "riskNotes">
+): boolean {
+  const text = [
+    ...(quality?.penaltySignals ?? []),
+    quality?.filterReason ?? "",
+    ...(match?.riskNotes ?? [])
+  ].join(" ");
+
+  return /广告营销|加微信|私信|报名|课程|咨询|推广|带货/.test(text);
+}
+
+function toDisplayLabel(displayTier: DemoDisplayTier): string {
+  return displayTier === "core" ? "较匹配的公开经历" : "补充参考样本";
+}
+
+function toDisplayTradeoff(
+  displayTier: DemoDisplayTier,
+  canChat: boolean,
+  evidenceStatus: DemoEvidenceStatus,
+  quality?: Pick<DemoCandidateQuality, "penaltySignals" | "filterReason" | "penaltyScore">
+): string {
+  if (canChat) {
+    return "证据和相关度达到追问门槛，可基于来源片段继续理解这段公开经历。";
+  }
+
+  if (hasAdMarketingPenalty(quality)) {
+    return "内容含广告或营销风险，只保留为补充参考，不开放追问。";
+  }
+
+  if (evidenceStatus === "raw_snippet_only") {
+    return "当前只拿到来源片段，适合先看原文线索，不包装成完整经历。";
+  }
+
+  return displayTier === "core"
+    ? "证据可用于展示，但追问门槛暂未达到，建议先查看来源片段。"
+    : "相关度或证据质量不足，只作为补充参考展示。";
+}
+
+function inferPathRoleFromQuality(response: DemoSearchResponse, path: DemoSearchResponse["paths"][number]): DemoContentRole {
+  const sourceRefs = new Set(path.sourceRefs);
+  const quality = (response.debug.candidateQuality ?? []).find((candidate) =>
+    candidate.sourceRefId ? sourceRefs.has(candidate.sourceRefId) : false
+  );
+
+  return readContentRole(quality?.contentRole);
+}
+
+function readContentRole(value: unknown): DemoContentRole {
+  if (
+    value === "real_experience" ||
+    value === "life_path" ||
+    value === "failure_review" ||
+    value === "decision_conflict" ||
+    value === "alternative_solution" ||
+    value === "viewpoint"
+  ) {
+    return value;
+  }
+
+  return "viewpoint";
 }
 
 function formatErrorSummary(error: unknown): string {

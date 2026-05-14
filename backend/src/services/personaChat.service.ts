@@ -77,6 +77,15 @@ export class PersonaChatService {
       );
     }
 
+    if (person.canChat === false || person.aiPersona.canChat === false) {
+      return createMockFallback(
+        request,
+        "PERSONA_GATED: display canChat is false; grounded LLM chat skipped",
+        undefined,
+        person
+      );
+    }
+
     const grounding = buildChatGrounding(cachedResponse, person);
     if (grounding.sourceRefs.length === 0 || grounding.evidence.length === 0) {
       return createMockFallback(

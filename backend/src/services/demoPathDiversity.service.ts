@@ -67,14 +67,11 @@ export function enforceDemoPathDiversity(
 }
 
 function rewriteTitle(path: DemoPath, index: number): string {
-  const marker = truncateText(path.diversityKey || path.tradeoff || `第${index + 1}条路径`, 10);
-  const base = path.title.includes(marker) ? path.title : `${path.title}，重点看${marker}`;
-  return truncateText(base, 42);
+  return truncateText(`${path.title}（补充视角 ${index + 1}）`, 42);
 }
 
 function rewriteSummary(path: DemoPath): string {
-  const marker = path.diversityKey || path.title;
-  return truncateText(`${marker}：${path.summary}`, 150);
+  return truncateText(`${path.title}：${path.summary}`, 150);
 }
 
 function normalizeKey(value: string): string {

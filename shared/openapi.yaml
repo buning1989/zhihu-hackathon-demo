@@ -1219,6 +1219,12 @@ components:
         tradeoff:
           type: string
           description: Cost, risk, limitation, or uncertainty for this path.
+        displayLabel:
+          type: string
+          description: Human-facing path label. Must not expose roughTier, roughScore, diversityKey, contentRole, keepReason, or fallback/debug wording.
+        displayTradeoff:
+          type: string
+          description: Human-facing tradeoff copy safe for direct frontend display.
         fitReason:
           type: string
           description: Optional evidence-aware explanation of why this path may fit the user query/profile context.
@@ -1280,6 +1286,27 @@ components:
           description: Optional path-representative role label for this public sample.
         badge:
           type: string
+        displayTier:
+          type: string
+          enum:
+            - core
+            - supplement
+          description: core means match.level is high/medium, evidenceQuality >= 0.65, and contentRelevance >= 0.25; otherwise supplement.
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+          description: raw_snippet_only means frontend should show 来源片段 rather than AI 证据提炼.
+        canChat:
+          type: boolean
+          description: Whether the frontend may show a persona follow-up entry. False should degrade to 查看来源片段.
+        displayLabel:
+          type: string
+          example: 补充参考样本
+        displayTradeoff:
+          type: string
+          description: User-facing limitation or downgrade copy for this sample.
         avatar:
           type: string
         oneLine:
@@ -1392,6 +1419,14 @@ components:
           type: string
         summary:
           type: string
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+        evidenceText:
+          type: string
+          description: Display evidence text, preferring evidence[0].text, then summary, then a text slice.
         evidence:
           type: array
           minItems: 1
@@ -1479,6 +1514,18 @@ components:
       properties:
         enabled:
           type: boolean
+        canChat:
+          type: boolean
+          description: Final display gate for follow-up chat; false means keep the persona index but show 查看来源片段.
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+        displayLabel:
+          type: string
+        displayTradeoff:
+          type: string
         personaId:
           type: string
         displayName:
@@ -1526,6 +1573,22 @@ components:
         personId:
           type: string
         displayName:
+          type: string
+        canChat:
+          type: boolean
+        displayTier:
+          type: string
+          enum:
+            - core
+            - supplement
+        evidenceStatus:
+          type: string
+          enum:
+            - llm_extracted
+            - raw_snippet_only
+        displayLabel:
+          type: string
+        displayTradeoff:
           type: string
         entryType:
           type: string

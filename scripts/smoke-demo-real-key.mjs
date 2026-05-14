@@ -227,23 +227,33 @@ function assertExperiencePathTitles(paths, label) {
     throw new Error(`${label} expected 3-5 paths, got ${pathItems.length}.`);
   }
   const titles = pathItems.map((item) => readString(readRecord(item, label).title, `${label}.title`));
-  const adviceFragments = [
-    "比较工作机会",
-    "确认目标岗位",
-    "先试一个可逆周期",
-    "先确定停靠",
-    "把现金流和保障算清楚",
-    "小步试错控制"
+  const allowedTitles = new Set([
+    "辞职后复盘：后悔、回流与再选择",
+    "待业中的拉扯：想走出去但没有确定路径",
+    "过渡型路径：先解决现金流，再决定下一步",
+    "不上班后的真实日常：时间、成本和生活节奏",
+    "低成本备选方案：回老家、自由职业、远程/副业",
+    "观点型参考：只能作为方向，不当作亲历"
+  ]);
+  const internalFragments = [
+    "roughTier",
+    "roughScore",
+    "diversityKey",
+    "contentRole",
+    "keepReason",
+    "规则兜底保留",
+    "used_as_core_evidence"
   ];
 
   for (const title of titles) {
-    if (!title.includes("有人")) {
-      throw new Error(`${label} title expected experience-sample wording with 有人; got ${title}.`);
+    const normalized = title.replace(/（补充视角 \d+）$/, "");
+    if (!allowedTitles.has(normalized)) {
+      throw new Error(`${label} title expected role-mapped display wording; got ${title}.`);
     }
 
-    for (const fragment of adviceFragments) {
+    for (const fragment of internalFragments) {
       if (title.includes(fragment)) {
-        throw new Error(`${label} title should not be advice-style; got ${title}.`);
+        throw new Error(`${label} title leaked internal field ${fragment}; got ${title}.`);
       }
     }
   }
@@ -260,6 +270,14 @@ function assertPathExtractionFields(paths, debug, label) {
     assertNonEmptyString(item.tradeoff, `${label}[${index}].tradeoff`);
     assertNonEmptyArray(item.sourceRefs, `${label}[${index}].sourceRefs`);
     assertNonEmptyString(item.diversityKey, `${label}[${index}].diversityKey`);
+    for (const field of ["title", "summary", "tradeoff"]) {
+      const text = String(item[field] || "");
+      for (const fragment of ["roughTier", "roughScore", "diversityKey", "contentRole", "keepReason", "规则兜底保留"]) {
+        if (text.includes(fragment)) {
+          throw new Error(`${label}[${index}].${field} leaked internal field ${fragment}.`);
+        }
+      }
+    }
 
     const prefix = String(item.summary).slice(0, 20);
     if (summaryPrefixes.has(prefix)) {

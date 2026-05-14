@@ -9,6 +9,8 @@ export type DemoDataMode = "mock" | "cache_first" | "real";
 export type DemoPersonaChatMode = "off" | "mock" | "real";
 export type DemoExperienceSummarySource = "llm" | "fallback" | "none";
 export type DemoExperienceSummaryStatus = "ready" | "pending" | "failed";
+export type DemoDisplayTier = "core" | "supplement";
+export type DemoEvidenceStatus = "llm_extracted" | "raw_snippet_only";
 export type DemoSearchQueryType =
   | "original"
   | "real_experience"
@@ -91,8 +93,11 @@ export interface DemoPath {
   summary: string;
   whyRelevant?: string;
   tradeoff?: string;
+  displayLabel?: string;
+  displayTradeoff?: string;
   fitReason?: string;
   diversityKey?: string;
+  contentRole?: DemoContentRole;
   stance: "experience" | "viewpoint" | "mixed";
   personRefs?: string[];
   evidenceIds: string[];
@@ -107,6 +112,11 @@ export interface DemoPerson {
   role: string;
   roleLabel?: string;
   badge: string;
+  displayTier?: DemoDisplayTier;
+  evidenceStatus?: DemoEvidenceStatus;
+  canChat?: boolean;
+  displayLabel?: string;
+  displayTradeoff?: string;
   avatar: string;
   oneLine: string;
   experienceSummary: string | null;
@@ -144,6 +154,8 @@ export interface DemoArticle {
   sourceName: string;
   sourceUrl: string;
   summary: string;
+  evidenceStatus?: DemoEvidenceStatus;
+  evidenceText?: string;
   evidence: DemoEvidence[];
   body: DemoBlock[];
   sourceRefs: string[];
@@ -180,6 +192,10 @@ export interface DemoMatch {
 
 export interface DemoPersonPersona {
   enabled: boolean;
+  canChat?: boolean;
+  evidenceStatus?: DemoEvidenceStatus;
+  displayLabel?: string;
+  displayTradeoff?: string;
   personaId: string;
   displayName: string;
   label: string;
@@ -200,6 +216,11 @@ export interface DemoPersona {
   displayName: string;
   avatar: string;
   personaType: "experience_echo";
+  canChat?: boolean;
+  displayTier?: DemoDisplayTier;
+  evidenceStatus?: DemoEvidenceStatus;
+  displayLabel?: string;
+  displayTradeoff?: string;
   intro: string;
   fitReason?: string;
   boundaryNotice: string;

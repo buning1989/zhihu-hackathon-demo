@@ -5,7 +5,9 @@ import {
   type DemoCandidateQuality,
   type DemoContentRole,
   type DemoDataMode,
+  type DemoDisplayTier,
   type DemoEvidence,
+  type DemoEvidenceStatus,
   type DemoPath,
   type DemoPerson,
   type DemoPersona,
@@ -41,6 +43,8 @@ interface PathBucket {
   summary: string;
   whyRelevant: string;
   tradeoff: string;
+  displayLabel?: string;
+  displayTradeoff?: string;
   diversityKey: string;
   summaryAngle?: string;
   contentRole?: DemoContentRole;
@@ -49,6 +53,43 @@ interface PathBucket {
   stance: DemoPath["stance"];
   matchedItems: SearchItem[];
 }
+
+const PATH_DISPLAY_COPY: Record<DemoContentRole, {
+  title: string;
+  summary: string;
+  tradeoff: string;
+}> = {
+  failure_review: {
+    title: "辞职后复盘：后悔、回流与再选择",
+    summary: "这类内容适合看离开工作之后的回头复盘：哪些选择后来显得草率，哪些回流接口还在，哪些问题需要重新选一次。",
+    tradeoff: "它能提醒坑在哪里，但不能保证换个人照做就得到同样结果；尤其要把现金流、回流成本和情绪恢复分开判断。"
+  },
+  decision_conflict: {
+    title: "待业中的拉扯：想走出去但没有确定路径",
+    summary: "这类内容呈现的是待业或暂停工作时的摇摆：想离开原来的节奏，又还没有形成足够确定的下一步。",
+    tradeoff: "它的价值在于暴露冲突，不在于给出答案；如果证据只到片段层面，就只能当作处境参考。"
+  },
+  life_path: {
+    title: "过渡型路径：先解决现金流，再决定下一步",
+    summary: "这类内容更像过渡方案：先把基本生活、收入来源和可回撤条件稳住，再判断要继续休整、找工作还是换一种生活半径。",
+    tradeoff: "它能降低短期失控感，但不等于长期路径已经清楚；现金流一旦接不上，选择空间会很快变窄。"
+  },
+  real_experience: {
+    title: "不上班后的真实日常：时间、成本和生活节奏",
+    summary: "这类内容更接近日常经验：不上班之后时间如何被重新安排，钱、社交和自我认同怎样变成具体问题。",
+    tradeoff: "它能提供生活质感和现实细节，但只代表公开内容里的那段经历，不能外推成普遍结论。"
+  },
+  alternative_solution: {
+    title: "低成本备选方案：回老家、自由职业、远程/副业",
+    summary: "这类内容提供的是低成本备选：用回老家、远程工作、自由职业或副业先换一段缓冲，而不是马上押上不可逆决定。",
+    tradeoff: "它会降低一部分压力，也可能低估孤独、收入波动和机会变少；适合先看来源片段，再判断可迁移性。"
+  },
+  viewpoint: {
+    title: "观点型参考：只能作为方向，不当作亲历",
+    summary: "这类内容主要是观点和变量拆解，可以帮助梳理方向、成本和风险，但不能包装成作者亲历过完整过程。",
+    tradeoff: "它只能作为方向参考；如果缺少明确经历和来源证据，就不开放追问，只建议查看来源片段。"
+  }
+};
 
 export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSearchResponse {
   const limitedItems = input.items.slice(0, Math.min(Math.max(input.count, 10), 12));
@@ -140,26 +181,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     paths,
     people,
     personas,
-    sections: [
-      {
-        id: "section_paths",
-        type: "paths",
-        title: "真实内容聚合出的路径",
-        itemRefs: paths.map((path) => path.id)
-      },
-      {
-        id: "section_people",
-        type: "people",
-        title: "来自知乎公开内容的样本",
-        itemRefs: people.map((person) => person.id)
-      },
-      {
-        id: "section_personas",
-        type: "personas",
-        title: "可追问的经验回声",
-        itemRefs: personas.map((persona) => persona.id)
-      }
-    ],
+    sections: buildDisplaySections(paths, people, personas),
     meta: {
       sourceRefs: sourceRefsForReturnedPeople,
       evidenceCount: sourceRefsForReturnedPeople.reduce(
@@ -304,7 +326,7 @@ function buildMetadataPathBuckets(
     }
 
     const bucket = toMetadataPathBucket(query, item, index, quality);
-    const key = normalizeBucketKey(bucket.diversityKey || bucket.summaryAngle || bucket.title);
+    const key = normalizeBucketKey(bucket.contentRole || bucket.diversityKey || bucket.summaryAngle || bucket.title);
     const existing = buckets.get(key);
     if (existing) {
       existing.matchedItems.push(item);
@@ -338,11 +360,12 @@ function toMetadataPathBucket(
   const summaryAngle = quality?.summaryAngle || item.summaryAngle || `提炼「${variables[0]}」里的选择和代价`;
   const title = buildPathTitle(role, diversityKey, variables, query);
   const tradeoff = buildPathTradeoff(role, variables, item, quality);
+  const displayCopy = PATH_DISPLAY_COPY[role];
 
   return {
     id: `path_${hashId(`${normalizeBucketKey(diversityKey)}:${index}:${item.id || item.url}`)}`,
     title,
-    summary: buildPathSummary(title, summaryAngle, variables, item),
+    summary: buildPathSummary(role, variables, query),
     whyRelevant:
       quality?.relationToUserIntent ||
       item.relationToUserIntent ||
@@ -350,6 +373,8 @@ function toMetadataPathBucket(
         .slice(0, 2)
         .join("、") || "下一步怎么判断"}。`,
     tradeoff,
+    displayLabel: displayCopy.title,
+    displayTradeoff: displayCopy.tradeoff,
     diversityKey,
     summaryAngle,
     contentRole: role,
@@ -398,15 +423,20 @@ function toPath(
   );
   const whyRelevant = bucket.whyRelevant || buildContextFitReason(query, userContext, bucket.title);
   const tradeoff = bucket.tradeoff || buildFallbackTradeoff(bucket.variables);
+  const role = bucket.contentRole ?? stanceToContentRole(bucket.stance);
+  const displayCopy = PATH_DISPLAY_COPY[role];
 
   return {
     id: bucket.id,
-    title: bucket.title,
-    summary: bucket.summary,
+    title: bucket.contentRole ? displayCopy.title : bucket.title,
+    summary: bucket.contentRole ? displayCopy.summary : bucket.summary,
     whyRelevant,
-    tradeoff,
+    tradeoff: bucket.contentRole ? displayCopy.tradeoff : tradeoff,
+    displayLabel: bucket.displayLabel ?? (bucket.contentRole ? displayCopy.title : bucket.title),
+    displayTradeoff: bucket.displayTradeoff ?? (bucket.contentRole ? displayCopy.tradeoff : tradeoff),
     fitReason: buildContextFitReason(query, userContext, bucket.title),
     diversityKey: bucket.diversityKey,
+    contentRole: role,
     stance: sourceItems.some((item) => classifySampleType(item) === "experience_sample")
       ? "mixed"
       : bucket.stance,
@@ -457,6 +487,24 @@ function toPerson(
     userContext,
     variables.slice(0, 2).join("、") || path.title || item.title || "公开内容主题"
   );
+  const matchScore = toMatchScore(quality, index);
+  const match = {
+    score: matchScore,
+    level: toMatchLevel(matchScore),
+    reasons: toMatchReasons(item, sampleType, quality, path),
+    matchedVariables: variables,
+    riskNotes: ["该样本只代表知乎公开内容片段，不能代表作者完整人生或长期结果"],
+    contentRelevance: quality.relevanceScore,
+    experienceSimilarity: quality.experienceSignalScore,
+    evidenceQuality: quality.qualityScore,
+    personaReadiness: toPersonaReadiness(item, quality),
+    evidenceIds: sourceRef.evidenceIds,
+    sourceRefs: [sourceRef.id]
+  } satisfies DemoPerson["match"];
+  const displayTier = toDisplayTier(match);
+  const evidenceStatus: DemoEvidenceStatus = "raw_snippet_only";
+  const basePersonaEnabled = shouldEnablePersona(item, quality);
+  const canChat = canPersonChat(basePersonaEnabled, match, quality);
 
   return {
     id: personId,
@@ -466,6 +514,11 @@ function toPerson(
     role: roleLabel,
     roleLabel,
     badge: toBadge(sampleType, path),
+    displayTier,
+    evidenceStatus,
+    canChat,
+    displayLabel: toDisplayLabel(displayTier),
+    displayTradeoff: toDisplayTradeoff(displayTier, canChat, evidenceStatus, quality),
     avatar: item.author.avatar,
     oneLine: summary,
     experienceSummary: null,
@@ -486,21 +539,13 @@ function toPerson(
     ],
     lesson: toLesson(sampleType, path),
     articles: [article],
-    match: {
-      score: toMatchScore(quality, index),
-      level: toMatchLevel(toMatchScore(quality, index)),
-      reasons: toMatchReasons(item, sampleType, quality, path),
-      matchedVariables: variables,
-      riskNotes: ["该样本只代表知乎公开内容片段，不能代表作者完整人生或长期结果"],
-      contentRelevance: quality.relevanceScore,
-      experienceSimilarity: quality.experienceSignalScore,
-      evidenceQuality: quality.qualityScore,
-      personaReadiness: toPersonaReadiness(item, quality),
-      evidenceIds: sourceRef.evidenceIds,
-      sourceRefs: [sourceRef.id]
-    },
+    match,
     aiPersona: {
-      enabled: shouldEnablePersona(item, quality),
+      enabled: basePersonaEnabled,
+      canChat,
+      evidenceStatus,
+      displayLabel: canChat ? "可追问的经验回声" : "仅查看来源片段",
+      displayTradeoff: toDisplayTradeoff(displayTier, canChat, evidenceStatus, quality),
       personaId,
       displayName: `${displayName}的经验回声`,
       label: "基于公开内容生成",
@@ -526,6 +571,11 @@ function toPersona(person: DemoPerson): DemoPersona {
     displayName: person.aiPersona.displayName,
     avatar: person.avatar,
     personaType: "experience_echo",
+    canChat: person.canChat,
+    displayTier: person.displayTier,
+    evidenceStatus: person.evidenceStatus,
+    displayLabel: person.canChat ? "可追问的经验回声" : "仅查看来源片段",
+    displayTradeoff: person.displayTradeoff,
     intro: person.aiPersona.openingLine,
     fitReason: person.fitReason,
     boundaryNotice: DEMO_PERSONA_BOUNDARY_NOTICE,
@@ -534,8 +584,57 @@ function toPersona(person: DemoPerson): DemoPersona {
   };
 }
 
+function buildDisplaySections(
+  paths: DemoPath[],
+  people: DemoPerson[],
+  personas: DemoPersona[]
+): DemoSearchResponse["sections"] {
+  const corePeople = people.filter((person) => person.displayTier === "core");
+  const supplementPeople = people.filter((person) => person.displayTier !== "core");
+  const chatPersonas = personas.filter((persona) => persona.canChat === true);
+  const sourceOnlyPersonas = personas.filter((persona) => persona.canChat !== true);
+
+  return [
+    {
+      id: "section_paths",
+      type: "paths",
+      title: "参考路径",
+      itemRefs: paths.map((path) => path.id)
+    },
+    {
+      id: "section_core_people",
+      type: "people",
+      title: "较匹配的公开经历",
+      itemRefs: corePeople.map((person) => person.id)
+    },
+    {
+      id: "section_supplement_people",
+      type: "people",
+      title: "补充参考样本",
+      itemRefs: supplementPeople.map((person) => person.id)
+    },
+    {
+      id: "section_chat_personas",
+      type: "personas",
+      title: "可追问的经验回声",
+      itemRefs: chatPersonas.map((persona) => persona.id)
+    },
+    {
+      id: "section_source_only_personas",
+      type: "personas",
+      title: "仅查看来源片段",
+      itemRefs: sourceOnlyPersonas.map((persona) => persona.id)
+    }
+  ];
+}
+
 function toArticle(item: SearchItem, sourceRef: DemoSourceRef): DemoArticle {
   const evidence = toEvidence(item, sourceRef);
+  const evidenceText = buildRawEvidenceText({
+    evidenceText: evidence[0]?.text,
+    summary: toHumanSummary(item.text || item.title),
+    text: item.text
+  });
 
   return {
     id: `article_${hashId(item.id || item.url || item.title)}`,
@@ -547,6 +646,8 @@ function toArticle(item: SearchItem, sourceRef: DemoSourceRef): DemoArticle {
     sourceName: item.type || "知乎内容",
     sourceUrl: item.url,
     summary: toHumanSummary(item.text || item.title),
+    evidenceStatus: "raw_snippet_only",
+    evidenceText,
     evidence,
     body: evidence.map((itemEvidence) => ({
       type: "evidence",
@@ -562,7 +663,7 @@ function toEvidence(item: SearchItem, sourceRef: DemoSourceRef): DemoEvidence[] 
   return [
     {
       id: sourceRef.evidenceIds[0],
-      label: "公开内容片段",
+      label: "来源片段",
       text: toEvidenceQuote(item.text || item.title),
       sourceRefId: sourceRef.id,
       sourceUrl: item.url
@@ -671,43 +772,30 @@ function inferPathVariables(
   ]
     .flatMap(splitSignalText)
     .map((signal) => signal.replace(/(真实经历|失败复盘|怎么选|怎么办|后来怎么样)$/g, "").trim())
-    .filter((signal) => signal.length >= 2 && signal.length <= 12));
+    .filter((signal) => signal.length >= 2 && signal.length <= 12 && isPublicDisplaySignal(signal)));
 
   return variables.length > 0 ? variables.slice(0, 6) : ["当前问题", "代价边界", "下一步"];
 }
 
 function buildPathTitle(
   role: DemoContentRole,
-  diversityKey: string,
-  variables: string[],
-  query: string
+  _diversityKey: string,
+  _variables: string[],
+  _query: string
 ): string {
-  const first = variables[0] || truncateText(diversityKey || query, 8);
-  const second = variables.find((variable) => variable !== first) ?? "现实代价";
-  const titleByRole: Record<DemoContentRole, string> = {
-    real_experience: `有人把${first}先过了一遍`,
-    life_path: `有人把${first}变成一段过渡`,
-    failure_review: `有人走过${first}后回头复盘`,
-    decision_conflict: `有人在${first}和${second}之间拉扯`,
-    alternative_solution: `有人绕开原路先试${first}`,
-    viewpoint: `有人把${first}拆成现实账本`
-  };
-
-  return truncateText(titleByRole[role], 34);
+  return PATH_DISPLAY_COPY[role].title;
 }
 
 function buildPathSummary(
-  title: string,
-  summaryAngle: string,
+  role: DemoContentRole,
   variables: string[],
-  item: SearchItem
+  query: string
 ): string {
   const first = variables[0] ?? "当前问题";
-  const second = variables[1] ?? "现实约束";
-  const sourceHint = item.title ? `来源内容的切口是「${truncateText(item.title, 18)}」` : "来源内容只提供片段";
+  const base = PATH_DISPLAY_COPY[role].summary;
 
   return truncateText(
-    `${title}。这条路围绕${summaryAngle}，先处理${first}，同时把${second}摆到台面上；${sourceHint}。`,
+    `${base} 它回应「${truncateText(query, 24)}」时，优先看${first}这类可被来源片段支撑的信息。`,
     150
   );
 }
@@ -718,19 +806,11 @@ function buildPathTradeoff(
   item: SearchItem,
   quality?: DemoCandidateQuality
 ): string {
-  const first = variables[0] ?? "这条路";
-  const second = variables[1] ?? "现实成本";
-  const roleCost: Record<DemoContentRole, string> = {
-    real_experience: `代价是${second}会变得更具体，公开内容也只支撑到这段经历片段`,
-    life_path: `限制是${first}不能自动解决后续收入、关系或秩序问题`,
-    failure_review: `风险是复盘能提醒坑在哪里，但不能保证换个人照做就得到同样结果`,
-    decision_conflict: `代价是两个方向都要放弃一部分确定性，冲突不会因为命名成路径就消失`,
-    alternative_solution: `风险是绕路会降低原有稳定性，也可能让试错成本被低估`,
-    viewpoint: `限制是它更像变量拆解，不等同于作者亲历过完整过程`
-  };
-  const keepReason = quality?.keepReason || item.keepReason;
+  void variables;
+  void item;
+  void quality;
 
-  return truncateText([roleCost[role], keepReason].filter(Boolean).join("；"), 150);
+  return truncateText(PATH_DISPLAY_COPY[role].tradeoff, 150);
 }
 
 function buildPlanTradeoff(plan: DemoPathPlan): string {
@@ -750,7 +830,7 @@ function buildPersonOneLine(
   quality: DemoCandidateQuality
 ): string {
   const variables = inferMatchedVariables(item, quality);
-  const focus = variables[0] ?? path.diversityKey ?? "这条路";
+  const focus = variables[0] ?? path.displayLabel ?? path.title ?? "这条路";
   return truncateText(
     `这个人提供的是「${path.title}」的样本，价值在于把${focus}和${truncateText(
       path.tradeoff ?? "代价边界",
@@ -820,7 +900,7 @@ function classifySampleType(
 }
 
 function toRole(sampleType: DemoPerson["sampleType"], contentType: string, path: DemoPath): string {
-  const pathLabel = path.diversityKey || path.title;
+  const pathLabel = path.displayLabel || path.title;
   if (sampleType === "experience_sample") {
     return truncateText(`代表「${pathLabel}」的经历样本`, 40);
   }
@@ -833,7 +913,7 @@ function toRole(sampleType: DemoPerson["sampleType"], contentType: string, path:
 }
 
 function toBadge(sampleType: DemoPerson["sampleType"], path: DemoPath): string {
-  const pathBadge = truncateText(path.diversityKey || path.title, 12);
+  const pathBadge = truncateText(path.displayLabel || path.title, 12);
   if (pathBadge) {
     return pathBadge;
   }
@@ -881,7 +961,7 @@ function inferMatchedVariables(item: SearchItem, quality?: DemoCandidateQuality)
   ]
     .flatMap(splitSignalText)
     .map((signal) => signal.replace(/(真实经历|失败复盘|怎么选|怎么办|后来怎么样)$/g, "").trim())
-    .filter((signal) => signal.length >= 2 && signal.length <= 12);
+    .filter((signal) => signal.length >= 2 && signal.length <= 12 && isPublicDisplaySignal(signal));
 
   return unique(dynamicSignals).slice(0, 6).length > 0
     ? unique(dynamicSignals).slice(0, 6)
@@ -908,10 +988,11 @@ function toMatchReasons(
   return unique([
     `它被放入「${path.title}」，不是普通作者列表`,
     quality.relationToUserIntent ?? "",
-    quality.keepReason ?? "",
     prefix,
     `与当前问题共同涉及：${variables.join("、")}`,
-    `候选质量判断：${quality.filterReason}，正文长度 ${quality.contentLength} 字`
+    quality.contentLength >= 180
+      ? "来源片段相对完整，可以支持基础对照"
+      : "来源片段较短，只适合先作为补充参考"
   ].filter(Boolean)).slice(0, 4);
 }
 
@@ -974,7 +1055,7 @@ function toLesson(sampleType: DemoPerson["sampleType"], path: DemoPath): string 
 }
 
 function toPersonaOpeningLine(path: DemoPath, sampleType: DemoPerson["sampleType"]): string {
-  const focus = path.diversityKey || path.title;
+  const focus = path.displayLabel || path.title;
   const cost = truncateText(path.tradeoff || "代价和边界", 30);
 
   if (sampleType === "experience_sample") {
@@ -989,7 +1070,7 @@ function toPersonaOpeningLine(path: DemoPath, sampleType: DemoPerson["sampleType
 }
 
 function toSuggestedQuestions(sampleType: DemoPerson["sampleType"], path: DemoPath): string[] {
-  const focus = truncateText(path.diversityKey || path.title, 14);
+  const focus = truncateText(path.displayLabel || path.title, 14);
   const baseQuestions = [
     `这条路解决了什么问题？`,
     `它把什么代价放大了？`
@@ -1022,6 +1103,100 @@ function toEvidenceQuote(text: string): string {
   }
 
   return `${normalized.slice(0, 158)}...`;
+}
+
+function buildRawEvidenceText(input: {
+  evidenceText?: string;
+  summary?: string;
+  text?: string;
+}): string {
+  return truncateText(
+    input.evidenceText || input.summary || normalizeText(input.text ?? "").slice(0, 260),
+    260
+  );
+}
+
+function toDisplayTier(match: DemoPerson["match"]): DemoDisplayTier {
+  return (match.level === "high" || match.level === "medium") &&
+    match.evidenceQuality >= 0.65 &&
+    match.contentRelevance >= 0.25
+    ? "core"
+    : "supplement";
+}
+
+function canPersonChat(
+  aiPersonaEnabled: boolean,
+  match: DemoPerson["match"],
+  quality?: Pick<
+    DemoCandidateQuality,
+    "penaltySignals" | "filterReason" | "penaltyScore" | "contentRole" | "queryType"
+  >
+): boolean {
+  return Boolean(
+    aiPersonaEnabled &&
+      match.personaReadiness >= 0.65 &&
+      match.evidenceQuality >= 0.65 &&
+      match.contentRelevance >= 0.25 &&
+      quality?.contentRole !== "viewpoint" &&
+      quality?.queryType !== "original" &&
+      !hasAdMarketingPenalty(quality, match)
+  );
+}
+
+function hasAdMarketingPenalty(
+  quality: Pick<DemoCandidateQuality, "penaltySignals" | "filterReason" | "penaltyScore"> | undefined,
+  match?: Pick<DemoPerson["match"], "riskNotes">
+): boolean {
+  const text = [
+    ...(quality?.penaltySignals ?? []),
+    quality?.filterReason ?? "",
+    ...(match?.riskNotes ?? [])
+  ].join(" ");
+
+  return /广告营销|加微信|私信|报名|课程|咨询|推广|带货/.test(text);
+}
+
+function toDisplayLabel(displayTier: DemoDisplayTier): string {
+  return displayTier === "core" ? "较匹配的公开经历" : "补充参考样本";
+}
+
+function toDisplayTradeoff(
+  displayTier: DemoDisplayTier,
+  canChat: boolean,
+  evidenceStatus: DemoEvidenceStatus,
+  quality?: Pick<DemoCandidateQuality, "penaltySignals" | "filterReason" | "penaltyScore">
+): string {
+  if (canChat) {
+    return "证据和相关度达到追问门槛，可基于来源片段继续理解这段公开经历。";
+  }
+
+  if (hasAdMarketingPenalty(quality)) {
+    return "内容含广告或营销风险，只保留为补充参考，不开放追问。";
+  }
+
+  if (evidenceStatus === "raw_snippet_only") {
+    return "当前只拿到来源片段，适合先看原文线索，不包装成完整经历。";
+  }
+
+  return displayTier === "core"
+    ? "证据可用于展示，但追问门槛暂未达到，建议先查看来源片段。"
+    : "相关度或证据质量不足，只作为补充参考展示。";
+}
+
+function stanceToContentRole(stance: DemoPath["stance"]): DemoContentRole {
+  if (stance === "viewpoint") {
+    return "viewpoint";
+  }
+
+  if (stance === "experience") {
+    return "real_experience";
+  }
+
+  return "life_path";
+}
+
+function isPublicDisplaySignal(value: string): boolean {
+  return !/roughTier|roughScore|diversityKey|contentRole|keepReason|used_as_core_evidence|ranked_|downranked|规则兜底|兜底保留|保留用户|保留候选|候选质量/i.test(value);
 }
 
 function normalizeText(text: string): string {

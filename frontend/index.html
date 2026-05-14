@@ -1736,6 +1736,47 @@
       line-height: 1.35;
     }
 
+    .display-tier-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 10px 0 0;
+    }
+
+    .tier-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 9px;
+      border: 1px solid rgba(63, 138, 113, 0.22);
+      border-radius: 999px;
+      color: #315f50;
+      background: rgba(230, 241, 236, 0.74);
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.25;
+    }
+
+    .tier-pill.is-supplement,
+    .tier-pill.is-source-only {
+      border-color: rgba(111, 104, 95, 0.18);
+      color: var(--muted);
+      background: rgba(247, 241, 231, 0.82);
+    }
+
+    .sample-breakdown {
+      position: absolute;
+      z-index: 4;
+      left: 26px;
+      top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: calc(100% - 560px);
+      pointer-events: none;
+    }
+
     .article-list {
       display: grid;
       gap: 8px;
@@ -2999,6 +3040,23 @@
       return String(value);
     }
 
+    function boolOf(value, fallback = false) {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        if (value.toLowerCase() === "true") return true;
+        if (value.toLowerCase() === "false") return false;
+      }
+      return fallback;
+    }
+
+    function readDisplayTier(value) {
+      return value === "core" ? "core" : "supplement";
+    }
+
+    function readEvidenceStatus(value) {
+      return value === "llm_extracted" ? "llm_extracted" : "raw_snippet_only";
+    }
+
     function isGeneratedSampleLabel(value) {
       const text = textOf(value).trim();
       return /^样本\s*\d+$/i.test(text)
@@ -3100,11 +3158,17 @@
           sourceUrl: "",
           publishedAt: "",
           summary: "",
+          evidenceStatus: "raw_snippet_only",
+          evidenceText: "",
           evidence: [],
           sourceRefs: [],
           body: index === 0 ? normalizeTextBlocks(person.articleBody) : []
         };
       }
+      const evidence = normalizeEvidence(item.evidence || item.evidences);
+      const text = textOf(item.text || item.content || item.body || "");
+      const summary = textOf(item.summary || item.excerpt || "");
+      const evidenceText = textOf(item.evidenceText || item.evidence_text || evidence[0]?.text || summary || text.slice(0, 260));
       return {
         id: textOf(item.id || item.articleId || item.article_id || `article_${index + 1}`),
         title: textOf(item.title || item.name || `原文 ${index + 1}`),
@@ -3112,10 +3176,12 @@
         sourceName: textOf(item.sourceName || item.source || item.contentType || item.type || "知乎回答 / 文章"),
         sourceUrl: textOf(item.sourceUrl || item.source_url || item.url || item.link || ""),
         publishedAt: textOf(item.publishedAt || item.published_at || item.createdAt || item.created_at || ""),
-        summary: textOf(item.summary || item.excerpt || ""),
-        evidence: normalizeEvidence(item.evidence || item.evidences),
+        summary,
+        evidenceStatus: readEvidenceStatus(item.evidenceStatus || item.evidence_status || person.evidenceStatus),
+        evidenceText,
+        evidence,
         sourceRefs: normalizeSourceRefs(item.sourceRefs || item.source_refs || item.sources),
-        body: normalizeTextBlocks(item.body || item.paragraphs || item.content || item.text)
+        body: normalizeTextBlocks(item.body || item.paragraphs || item.content || item.text || evidenceText)
       };
     }
 
@@ -3128,6 +3194,14 @@
       const pathId = item.pathId || item.path_id || item.routeId || item.route_id || item.path?.id || matchedPath?.id || derivedPathId || fallbackPathId || paths[0]?.id || "";
       const aiPersona = item.aiPersona || item.ai_persona || item.persona || {};
       const match = item.match || {};
+      const inferredCoreTier = ["high", "medium"].includes(textOf(match.level))
+        && numberOf(match.evidenceQuality ?? match.evidence_quality, 0) >= 0.65
+        && numberOf(match.contentRelevance ?? match.content_relevance, 0) >= 0.25;
+      const displayTier = item.displayTier || item.display_tier
+        ? readDisplayTier(item.displayTier || item.display_tier)
+        : inferredCoreTier ? "core" : "supplement";
+      const evidenceStatus = readEvidenceStatus(item.evidenceStatus || item.evidence_status || aiPersona.evidenceStatus || aiPersona.evidence_status);
+      const canChat = boolOf(item.canChat ?? item.can_chat ?? aiPersona.canChat ?? aiPersona.can_chat ?? aiPersona.enabled, false);
       const matchReasons = toArray(match.reasons || match.reason || item.matchReasons || item.match_reasons);
       const overlaps = toArray(item.overlaps || item.similarities || item.reasons || matchReasons);
       const fitReason = textOf(item.fitReason || item.fit_reason || match.fitReason || match.fit_reason || "");
@@ -3140,6 +3214,11 @@
         pathDesc: textOf(pathDesc || ""),
         role: textOf(item.role || item.identity || item.bioTitle || item.bio_title || item.occupation || "知乎用户"),
         badge: textOf(item.badge || item.tagline || item.keyExperience || item.key_experience || item.subtitle || item.oneLine || item.summary || ""),
+        displayTier,
+        evidenceStatus,
+        canChat,
+        displayLabel: textOf(item.displayLabel || item.display_label || (displayTier === "core" ? "较匹配的公开经历" : "补充参考样本")),
+        displayTradeoff: textOf(item.displayTradeoff || item.display_tradeoff || aiPersona.displayTradeoff || aiPersona.display_tradeoff || (canChat ? "证据较充分，可基于来源片段继续追问。" : "只建议先查看来源片段，不包装成完整经历。")),
         gender: textOf(item.gender || item.sex || item.demographic?.gender || "未知"),
         avatar: textOf(item.avatar || item.avatarUrl || item.avatar_url || item.image || item.imageUrl || crowdPeepIds[index % crowdPeepIds.length]),
         oneLine: textOf(item.oneLine || item.one_line || item.summary || item.cardSummary || item.card_summary || item.badge || ""),
@@ -3155,6 +3234,9 @@
         personaDisplayName: textOf(aiPersona.displayName || aiPersona.display_name || item.personaDisplayName || item.persona_display_name || ""),
         personaLabel: textOf(aiPersona.label || aiPersona.personaType || aiPersona.persona_type || item.personaLabel || ""),
         personaOpeningLine: textOf(aiPersona.openingLine || aiPersona.opening_line || aiPersona.intro || item.personaOpeningLine || ""),
+        personaCanChat: canChat,
+        personaEvidenceStatus: evidenceStatus,
+        personaDisplayLabel: textOf(aiPersona.displayLabel || aiPersona.display_label || (canChat ? "可追问的经验回声" : "仅查看来源片段")),
         boundaryNotice: textOf(aiPersona.boundary || aiPersona.boundaryNotice || aiPersona.boundary_notice || item.boundaryNotice || item.boundary_notice || ""),
         suggestedQuestions: toArray(aiPersona.suggestedQuestions || aiPersona.suggested_questions || item.suggestedQuestions || item.suggested_questions).map(String),
         personaSourceRefs: normalizeSourceRefs(aiPersona.grounding?.sourceRefs || aiPersona.grounding?.source_refs || aiPersona.sourceRefs || aiPersona.source_refs),
@@ -3232,6 +3314,10 @@
           personaDisplayName: person.personaDisplayName || textOf(persona.displayName || persona.display_name || persona.name || ""),
           personaLabel: person.personaLabel || textOf(persona.label || persona.personaType || persona.persona_type || ""),
           personaOpeningLine: person.personaOpeningLine || textOf(persona.openingLine || persona.opening_line || persona.intro || ""),
+          canChat: boolOf(persona.canChat ?? persona.can_chat, person.canChat),
+          personaCanChat: boolOf(persona.canChat ?? persona.can_chat, person.personaCanChat),
+          personaDisplayLabel: person.personaDisplayLabel || textOf(persona.displayLabel || persona.display_label || ""),
+          displayTradeoff: person.displayTradeoff || textOf(persona.displayTradeoff || persona.display_tradeoff || ""),
           boundaryNotice: person.boundaryNotice || textOf(persona.boundary || persona.boundaryNotice || persona.boundary_notice || ""),
           suggestedQuestions: person.suggestedQuestions.length ? person.suggestedQuestions : toArray(persona.suggestedQuestions || persona.suggested_questions).map(String),
           personaSourceRefs: person.personaSourceRefs.length ? person.personaSourceRefs : normalizeSourceRefs(persona.sourceRefs || persona.source_refs)
@@ -3609,6 +3695,48 @@
       return people.find((item) => item.id === id) || people[0] || normalizePerson({ name: "知乎用户" });
     }
 
+    function personCanChat(person) {
+      return boolOf(person?.canChat ?? person?.personaCanChat, false);
+    }
+
+    function primaryPersonAction(person) {
+      return personCanChat(person) ? "ask-person" : "open-reader";
+    }
+
+    function primaryPersonCta(person) {
+      return personCanChat(person) ? "追问经验回声" : "查看来源片段";
+    }
+
+    function tierClass(person) {
+      return person?.displayTier === "core" ? "" : " is-supplement";
+    }
+
+    function renderDisplayTierRow(person) {
+      const label = person.displayLabel || (person.displayTier === "core" ? "较匹配的公开经历" : "补充参考样本");
+      const personaLabel = personCanChat(person) ? "可追问的经验回声" : "仅查看来源片段";
+      return `
+        <div class="display-tier-row">
+          <span class="tier-pill${tierClass(person)}">${escapeHtml(label)}</span>
+          <span class="tier-pill ${personCanChat(person) ? "" : "is-source-only"}">${escapeHtml(personaLabel)}</span>
+        </div>
+      `;
+    }
+
+    function renderSampleBreakdown(list = people) {
+      const coreCount = list.filter((person) => person.displayTier === "core").length;
+      const supplementCount = list.length - coreCount;
+      const chatCount = list.filter(personCanChat).length;
+      const sourceOnlyCount = list.length - chatCount;
+      return `
+        <div class="sample-breakdown" aria-label="样本分层">
+          <span class="tier-pill">较匹配的公开经历 ${coreCount}</span>
+          <span class="tier-pill is-supplement">补充参考样本 ${supplementCount}</span>
+          <span class="tier-pill">可追问的经验回声 ${chatCount}</span>
+          <span class="tier-pill is-source-only">仅查看来源片段 ${sourceOnlyCount}</span>
+        </div>
+      `;
+    }
+
     function getProfileUrl(person) {
       return person.raw?.profileUrl || person.raw?.profile_url || person.raw?.zhihuUrl || person.raw?.zhihu_url || person.raw?.homepage || person.raw?.url || `https://www.zhihu.com/people/${encodeURIComponent(person.id || person.name)}`;
     }
@@ -3905,7 +4033,7 @@
           <section class="screen paths-screen has-expanded is-single-person">
             <div class="paths-copy">
               <h1>我们先找到了这位走过相似路的人</h1>
-              <p class="lead">结果还不多，但 TA 的经历和你的问题比较接近。你可以先看看 TA 的经历，也可以把问题发到知乎圈子，等更多人回应。</p>
+              <p class="lead">已从知乎公开内容中找到参考路径和样本。部分样本仅支持来源片段查看，追问能力只对证据较充分的样本开放。</p>
             </div>
             ${renderSinglePersonResult(person)}
             ${renderCommunityExit({
@@ -3934,6 +4062,7 @@
         <section class="screen paths-screen ${state.pathExpanded ? "has-expanded" : "is-overview"}">
           <div class="paths-copy">
             <h1>${escapeHtml(title)}</h1>
+            <p class="lead">已从知乎公开内容中找到参考路径和样本。部分样本仅支持来源片段查看，追问能力只对证据较充分的样本开放。</p>
           </div>
           ${showPathShowcase ? `
             <div class="path-showcase ${layoutClass}" aria-label="前人路径">
@@ -4006,18 +4135,20 @@
             <aside class="single-person-profile">
               <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
               <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
+              ${renderDisplayTierRow(person)}
               ${roleBadge ? `<p class="single-person-meta">${escapeHtml(roleBadge)}</p>` : ""}
             </aside>
             <div class="single-person-content">
               <section class="section-block">
                 <h3>TA 是谁</h3>
                 <p>${escapeHtml(person.who || person.oneLine || "这位知友在公开内容里分享过与当前问题接近的经历。")}</p>
+                ${person.displayTradeoff ? `<p class="meta-line">${escapeHtml(person.displayTradeoff)}</p>` : ""}
               </section>
               <section class="section-block">
                 <h3>为什么匹配到 TA</h3>
                 ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
                 <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-                ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+                ${person.evidenceStatus === "raw_snippet_only" ? `<p class="meta-line">来源片段</p>` : ""}
                 ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
               </section>
               <section class="section-block">
@@ -4025,11 +4156,11 @@
                 <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
               </section>
               <section class="section-block">
-                <h3>TA的真实经历</h3>
+                <h3>${person.evidenceStatus === "raw_snippet_only" ? "来源片段" : "TA的公开经历"}</h3>
                 <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
               </section>
               <div class="single-person-actions">
-                <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
+                <button class="primary" type="button" data-action="${primaryPersonAction(person)}" data-index="0">${primaryPersonCta(person)}</button>
                 <button class="text-button" type="button" data-action="save-person">存入我的样本库</button>
               </div>
             </div>
@@ -4059,18 +4190,20 @@
             <aside class="single-person-profile">
               <div class="mini-peep-card"><img src="${avatarSrc(person.avatar)}" alt=""></div>
               <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
+              ${renderDisplayTierRow(person)}
               ${roleBadge ? `<p class="single-person-meta">${escapeHtml(roleBadge)}</p>` : ""}
             </aside>
             <div class="single-person-content">
               <section class="section-block">
                 <h3>TA 是谁</h3>
                 <p>${escapeHtml(person.who || person.oneLine || "这位知友在公开内容里分享过与当前问题接近的经历。")}</p>
+                ${person.displayTradeoff ? `<p class="meta-line">${escapeHtml(person.displayTradeoff)}</p>` : ""}
               </section>
               <section class="section-block">
                 <h3>为什么匹配到 TA</h3>
                 ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
                 <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-                ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+                ${person.evidenceStatus === "raw_snippet_only" ? `<p class="meta-line">来源片段</p>` : ""}
                 ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
               </section>
               <section class="section-block">
@@ -4078,11 +4211,11 @@
                 <div class="timeline">${person.timeline.map((item) => `<div><b>${escapeHtml(item[0])}</b><span>${escapeHtml(item[1])}</span></div>`).join("")}</div>
               </section>
               <section class="section-block">
-                <h3>TA的真实经历</h3>
+                <h3>${person.evidenceStatus === "raw_snippet_only" ? "来源片段" : "TA的公开经历"}</h3>
                 <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
               </section>
               <div class="card-actions single-person-path-actions">
-                <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
+                <button class="primary" type="button" data-action="${primaryPersonAction(person)}" data-index="0">${primaryPersonCta(person)}</button>
                 <button class="text-button" type="button" data-action="save-person">存入我的样本库</button>
                 <button class="text-button" type="button" data-action="collapse-path">再看看其他路径</button>
               </div>
@@ -4097,7 +4230,7 @@
       return `
         <button class="sample-person ${person.id === state.selectedPersonId ? "is-selected" : ""}" type="button" data-action="select-person" data-id="${person.id}" data-gender="${person.gender}" style="animation-delay:${duplicateIndex * -0.22}s">
           <img class="peep-img" src="${avatarSrc(person.avatar, duplicateIndex)}" alt="">
-          <span class="caption"><strong>Hi，我是${escapeHtml(personDisplayName(person))}</strong></span>
+          <span class="caption"><strong>Hi，我是${escapeHtml(personDisplayName(person))}</strong>${escapeHtml(person.displayLabel || "")}</span>
         </button>
       `;
     }
@@ -4141,10 +4274,12 @@
 
     function renderSampleStage() {
       const selectedPerson = state.selectedPersonId ? getPerson() : null;
+      const selectedPath = getPath();
       const railPeople = getRailPeopleForSelectedPath();
       const detailOpen = state.readerOpen || state.askPanelOpen;
       return `
         <div class="sample-stage ${selectedPerson ? "has-card" : ""} ${detailOpen ? "is-detail-open" : ""} ${state.readerOpen ? "is-reading" : ""} ${state.askPanelOpen ? "is-asking" : ""}">
+          ${renderSampleBreakdown(peopleForPath(selectedPath.id))}
           <div class="sample-rail">
             <div class="sample-track">
               ${railPeople.map((person, index) => renderSamplePerson(person, index)).join("")}
@@ -4170,16 +4305,18 @@
           <div class="person-card-body">
             <div class="card-peep" aria-hidden="true"><img src="${avatarSrc(person.avatar)}" alt=""></div>
             <h2><a class="person-name-link" href="${escapeHtml(getProfileUrl(person))}" target="_blank" rel="noreferrer">${escapeHtml(personDisplayName(person))}</a></h2>
+            ${renderDisplayTierRow(person)}
             ${person.oneLine ? `<p class="summary">${escapeHtml(person.oneLine)}</p>` : ""}
             <div class="section-block">
               <h3>TA 是谁</h3>
               <p>${person.who}</p>
+              ${person.displayTradeoff ? `<p class="meta-line">${escapeHtml(person.displayTradeoff)}</p>` : ""}
             </div>
             <div class="section-block">
               <h3>为什么匹配到 TA</h3>
               ${person.fitReason ? `<p>${escapeHtml(person.fitReason)}</p>` : ""}
               <ul>${[...person.overlaps, ...matchReasons].filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-              ${matchMeta ? `<p class="meta-line">${escapeHtml(matchMeta)}</p>` : ""}
+              ${person.evidenceStatus === "raw_snippet_only" ? `<p class="meta-line">来源片段</p>` : ""}
               ${matchedVariables.length ? `<div class="tag-row">${renderDataChips(matchedVariables)}</div>` : ""}
             </div>
             <div class="section-block">
@@ -4193,12 +4330,12 @@
               </div>
             ` : ""}
             <div class="section-block">
-              <h3>TA的真实经历</h3>
+              <h3>${person.evidenceStatus === "raw_snippet_only" ? "来源片段" : "TA的公开经历"}</h3>
               <div class="article-list">${articles.map((article, index) => `<button class="article-link ${state.readerOpen && index === state.readerArticleIndex ? "is-active" : ""}" type="button" data-action="open-reader" data-index="${index}"><span class="article-link-text">《${escapeHtml(article.title)}》</span></button>`).join("")}</div>
             </div>
           </div>
           <div class="card-actions">
-            <button class="primary" type="button" data-action="ask-person">向 TA 提问</button>
+            <button class="primary" type="button" data-action="${primaryPersonAction(person)}" data-index="0">${primaryPersonCta(person)}</button>
             <button class="text-button" type="button" data-action="save-person">存入我的样本库</button>
           </div>
         </article>
@@ -4208,14 +4345,14 @@
     function renderInlineAskPanel(person) {
       const questionText = state.questionText || buildQuestionText(person);
       return `
-        <section class="inline-ask-panel" aria-label="向 TA 提问">
+        <section class="inline-ask-panel" aria-label="追问经验回声">
           <div class="inline-ask-head">
-            <span class="inline-ask-kicker">向 TA 提问</span>
+            <span class="inline-ask-kicker">追问经验回声</span>
           </div>
           <textarea class="editable-text inline-ask-text" id="inlineAskText">${escapeHtml(questionText)}</textarea>
           <div class="inline-ask-actions">
-            <button class="primary" type="button" data-action="chat-from-inline-ask">呼叫 TA 的 AI 分身先聊聊</button>
-            <button class="text-button" type="button" data-action="mock-dm-from-inline-ask">递给 TA 本人</button>
+            <button class="primary" type="button" data-action="chat-from-inline-ask">开始追问</button>
+            <button class="text-button" type="button" data-action="open-reader" data-index="0">查看来源片段</button>
             <button class="ghost-text-button" type="button" data-action="close-inline-ask">先不问，我再看看</button>
           </div>
         </section>
@@ -4238,7 +4375,7 @@
           ${sourceUrl ? `<p class="reader-meta"><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">查看知乎原文</a></p>` : ""}
           <div class="reader-body">${body.map((p) => `<p>${escapeHtml(p)}</p>`).join("")}</div>
           <div class="reader-actions">
-            <button class="primary" type="button" data-action="question-from-reader">基于这篇原文继续提问</button>
+            ${personCanChat(person) ? `<button class="primary" type="button" data-action="question-from-reader">基于这篇原文继续追问</button>` : ""}
             <button class="ghost-text-button" type="button" data-action="close-reader">返回</button>
           </div>
         </article>
@@ -4247,6 +4384,17 @@
 
     function renderChat() {
       const person = getPerson();
+      if (!personCanChat(person)) {
+        return `
+          <section class="screen paths-screen has-expanded is-single-person">
+            <div class="paths-copy">
+              <h1>这条样本仅支持来源片段查看</h1>
+              <p class="lead">已从知乎公开内容中找到参考路径和样本。部分样本仅支持来源片段查看，追问能力只对证据较充分的样本开放。</p>
+            </div>
+            ${renderSinglePersonResult(person)}
+          </section>
+        `;
+      }
       return `
         <section class="screen">
           <div class="chat-layout">
@@ -4347,7 +4495,7 @@
           </div>
           <div class="library-row-actions">
             <button class="secondary" type="button" data-action="open-saved" data-id="${escapeHtml(person.id)}">回看 TA 的经历</button>
-            <button class="text-button" type="button" data-action="open-saved-chat" data-id="${escapeHtml(person.id)}">继续问 AI 分身</button>
+            <button class="text-button" type="button" data-action="open-saved-chat" data-id="${escapeHtml(person.id)}">${personCanChat(person) ? "继续追问经验回声" : "查看来源片段"}</button>
           </div>
         </article>
       `;
@@ -4429,6 +4577,10 @@
     }
 
     function openAskPanel(person = getPerson()) {
+      if (!personCanChat(person)) {
+        openReader(0);
+        return;
+      }
       const editable = document.getElementById("inlineAskText");
       state.questionText = editable ? (editable.value.trim() || state.questionText) : buildQuestionText(person);
       state.readerOpen = false;
@@ -4543,6 +4695,10 @@
     async function addChat(text) {
       if (!text.trim() || state.aiTyping) return;
       const person = getPerson();
+      if (!personCanChat(person)) {
+        openReader(0);
+        return;
+      }
       const history = chatHistoryMessages(state.messages);
       state.messages.push({ role: "user", text });
       state.aiTyping = true;
@@ -4684,6 +4840,10 @@
             openAskPanel(getPerson());
           }
           if (action === "chat-from-inline-ask") {
+            if (!personCanChat(getPerson())) {
+              openReader(0);
+              return;
+            }
             state.questionText = readEditableQuestion().trim() || state.questionText;
             const firstMessage = state.questionText;
             state.messages = [];
@@ -4715,6 +4875,13 @@
             state.selectedPersonId = target.dataset.id;
             state.selectedPathId = getPerson(state.selectedPersonId).pathId;
             state.singlePersonMode = people.length === 1;
+            if (!personCanChat(getPerson(state.selectedPersonId))) {
+              state.readerOpen = true;
+              state.askPanelOpen = false;
+              state.readerArticleIndex = 0;
+              setPage(state.singlePersonMode ? "paths" : "samples");
+              return;
+            }
             state.messages = [];
             setPage("chat");
           }
