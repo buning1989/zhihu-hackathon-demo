@@ -12,11 +12,15 @@ services:
       ZHIHU_API_KEY: ${ZHIHU_API_KEY:-}
       ZH_ACCESS_SECRET: ${ZHIHU_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:-postgres://zhihu:zhihu@postgres:5432/zhihu_hackathon}
+      AGENT_TASK_TTL_HOURS: ${AGENT_TASK_TTL_HOURS:-24}
     ports:
       - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
     volumes:
       - ..:/workspace
       - backend_node_modules:/workspace/backend/node_modules
+    depends_on:
+      - postgres
 
   frontend:
     image: nginx:1.27-alpine
@@ -27,5 +31,17 @@ services:
     depends_on:
       - backend
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zhihu_hackathon}
+      POSTGRES_USER: ${POSTGRES_USER:-zhihu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zhihu}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 volumes:
   backend_node_modules:
+  postgres_data:

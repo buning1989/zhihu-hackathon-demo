@@ -23,7 +23,7 @@ tags:
   - name: Demo
     description: Product-layer demo contracts for analysis, paths, people and AI personas.
   - name: Agent
-    description: Lightweight in-memory agent task wrapper around demo search.
+    description: Agent task APIs, including the legacy in-memory wrapper and the persistent Postgres task skeleton.
   - name: Personas
     description: AI persona chat contracts grounded in public content evidence.
   - name: Planned
@@ -575,14 +575,57 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks:
+    post:
+      tags:
+        - Agent
+      summary: Create a persistent Agent task
+      description: >
+        Phase 1 persistent Agent Runtime skeleton. Creates a queued task in
+        Postgres and writes a task.created event. It does not start a worker,
+        run search, call LLMs, or stream events.
+      operationId: createPersistentAgentTask
+      x-implementation-status: implemented-phase1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersistentAgentTaskCreateRequest"
+            examples:
+              default:
+                value:
+                  query: 不工作了之后，我想去新西兰生活
+                  metadata: {}
+      responses:
+        "200":
+          description: Persistent Agent task created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistentAgentTaskCreateResponse"
+        "400":
+          description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          description: DATABASE_URL is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/agent/tasks/{taskId}:
     get:
       tags:
         - Agent
       summary: Get current agent task state
       description: >
-        Returns stage progress, currentStage, partial result, final result,
-        error, debug, createdAt and updatedAt for an in-memory agent task.
+        First checks the legacy in-memory Agent task store used by
+        /api/agent/search. If no in-memory task exists, checks the Phase 1
+        persistent Postgres task store and returns task, stages, artifacts and
+        events.
       operationId: getDemoSearchAgentTask
       x-implementation-status: implemented
       parameters:
@@ -593,13 +636,13 @@ paths:
             type: string
       responses:
         "200":
-          description: Current agent task state.
+          description: Current in-memory Agent task or persistent Agent task snapshot.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentTaskResponse"
         "404":
-          description: Task does not exist or expired from the in-memory store.
+          description: Task does not exist or expired from the in-memory store and was not found in Postgres.
           content:
             application/json:
               schema:
@@ -1093,6 +1136,41 @@ components:
             createdAt:
               type: string
               format: date-time
+    PersistentAgentTaskCreateRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+          default: {}
+    PersistentAgentTaskCreateResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - taskId
+            - status
+            - eventsUrl
+          properties:
+            taskId:
+              type: string
+            status:
+              type: string
+              const: queued
+            eventsUrl:
+              type: string
+              description: Reserved for Phase 3 SSE; endpoint is not implemented in Phase 1.
     AgentTaskResponse:
       type: object
       required:
@@ -1103,7 +1181,216 @@ components:
           type: boolean
           const: true
         data:
-          $ref: "#/components/schemas/AgentTask"
+          oneOf:
+            - $ref: "#/components/schemas/AgentTask"
+            - $ref: "#/components/schemas/PersistentAgentTaskSnapshot"
+    PersistentAgentTaskSnapshot:
+      type: object
+      required:
+        - task
+        - stages
+        - artifacts
+        - events
+      properties:
+        task:
+          $ref: "#/components/schemas/PersistentAgentTask"
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersistentAgentStageRun"
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersistentAgentArtifact"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersistentAgentEvent"
+    PersistentAgentTask:
+      type: object
+      required:
+        - id
+        - query
+        - status
+        - progress
+        - metadata
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        userId:
+          type:
+            - string
+            - "null"
+        query:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - waiting_retry
+            - completed
+            - failed
+            - cancelled
+        currentStage:
+          type:
+            - string
+            - "null"
+        progress:
+          type: integer
+        resultArtifactId:
+          type:
+            - string
+            - "null"
+        error:
+          type:
+            - string
+            - "null"
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    PersistentAgentStageRun:
+      type: object
+      required:
+        - id
+        - taskId
+        - stageName
+        - status
+        - attempt
+        - inputArtifactIds
+        - outputArtifactIds
+        - fallbackUsed
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        stageName:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - retrying
+            - succeeded
+            - fallback
+            - failed
+            - skipped
+        attempt:
+          type: integer
+        timeoutMs:
+          type:
+            - integer
+            - "null"
+        inputArtifactIds:
+          type: array
+          items:
+            type: string
+        outputArtifactIds:
+          type: array
+          items:
+            type: string
+        model:
+          type:
+            - string
+            - "null"
+        fallbackUsed:
+          type: boolean
+        fallbackReason:
+          type:
+            - string
+            - "null"
+        error:
+          type:
+            - string
+            - "null"
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        endedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        durationMs:
+          type:
+            - integer
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PersistentAgentArtifact:
+      type: object
+      required:
+        - id
+        - taskId
+        - type
+        - data
+        - createdAt
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+        data:
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    PersistentAgentEvent:
+      type: object
+      required:
+        - id
+        - taskId
+        - type
+        - payload
+        - createdAt
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
     AgentTask:
       type: object
       required:
