@@ -3771,7 +3771,7 @@
 
     async function getAgentTask(taskId) {
       const payload = await getJson(`${API_CONFIG.agentTaskEndpoint}/${encodeURIComponent(taskId)}/view`);
-      return createAgentTaskSnapshot(getResponseBody(payload) || {});
+      return createAgentTaskSnapshot(payload?.data || payload || {});
     }
 
     function normalizeZhihuUser(payload) {
