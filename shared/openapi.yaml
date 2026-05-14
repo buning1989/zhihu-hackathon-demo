@@ -581,20 +581,21 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Phase 4 persistent Agent Runtime. Creates a queued task in
+        Phase 5 persistent Agent Runtime. Creates a queued task in
         Postgres, writes task.created, enqueues a BullMQ job, and writes
         task.enqueued. A separate worker consumes the job and runs the
         rule-based business stage workflow: understand_goal_rule,
-        plan_search_llm, retrieve_sources, and normalize_candidates.
-        plan_search_llm is the only Agent LLM stage in Phase 4 and must go
+        plan_search_llm, retrieve_sources, normalize_candidates, and
+        evidence_extract_llm. plan_search_llm and evidence_extract_llm must go
         through the LLM Gateway for timeout, retry, JSON parse, schema
         validation, and fallback control. retrieve_sources reuses the existing
         search service when Zhihu config is available and writes a fallback
-        stage/artifact otherwise. It does not run evidence extraction, response
-        composition, grounding guard, the demo search orchestrator, or stream
-        events.
+        stage/artifact otherwise. evidence_extract_llm produces an evidence
+        artifact or rule fallback artifact without failing the task. It does
+        not run response composition, grounding guard, persona build, the demo
+        search orchestrator, or stream events.
       operationId: createPersistentAgentTask
-      x-implementation-status: implemented-phase4
+      x-implementation-status: implemented-phase5
       requestBody:
         required: true
         content:
@@ -1183,7 +1184,7 @@ components:
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for future SSE; endpoint is not implemented in Phase 4.
+              description: Reserved for future SSE; endpoint is not implemented in Phase 5.
     AgentTaskResponse:
       type: object
       required:
@@ -1384,6 +1385,7 @@ components:
             - $ref: "#/components/schemas/PersistentAgentSearchPlanArtifact"
             - $ref: "#/components/schemas/PersistentAgentRawSourcesArtifact"
             - $ref: "#/components/schemas/PersistentAgentCandidatesArtifact"
+            - $ref: "#/components/schemas/PersistentAgentEvidenceArtifact"
             - type: object
               additionalProperties: true
         createdAt:
@@ -1555,6 +1557,53 @@ components:
         strategy:
           type: string
           const: rule_based
+    PersistentAgentEvidenceArtifact:
+      type: object
+      required:
+        - evidenceItems
+        - strategy
+        - llmUsed
+      properties:
+        evidenceItems:
+          type: array
+          items:
+            type: object
+            required:
+              - candidateId
+              - title
+              - author
+              - sourceUrl
+              - evidenceText
+              - reason
+              - confidence
+            properties:
+              candidateId:
+                type: string
+              title:
+                type: string
+              author:
+                type: string
+              sourceUrl:
+                type: string
+              evidenceText:
+                type: string
+                description: Evidence text extracted from the candidate excerpt or title.
+              reason:
+                type: string
+              confidence:
+                type: number
+                minimum: 0
+                maximum: 1
+        strategy:
+          type: string
+          enum:
+            - llm_extracted
+            - rule_fallback
+        llmUsed:
+          type: boolean
+        fallbackReason:
+          type: string
+          description: Present when evidence_extract_llm used Gateway or rule fallback.
     PersistentAgentEvent:
       type: object
       required:

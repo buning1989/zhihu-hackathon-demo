@@ -227,6 +227,10 @@ async function createMockCompletion<TData>(
     });
   }
 
+  if (input.schemaName === "agent.evidence.v1") {
+    return createMockEvidenceCompletion(input);
+  }
+
   const originalQuery = readString(input.metadata?.originalQuery) || "不工作了能去哪儿";
   return JSON.stringify({
     originalQuery,
@@ -249,6 +253,25 @@ async function createMockCompletion<TData>(
       "gap 后重新工作的人"
     ],
     strategy: "llm_planned",
+    llmUsed: true
+  });
+}
+
+function createMockEvidenceCompletion<TData>(input: LlmGatewayInput<TData>): string {
+  const candidates = readMockEvidenceCandidates(input.metadata?.candidates);
+  const evidenceItems = candidates.map((candidate, index) => ({
+    candidateId: candidate.id,
+    title: candidate.title,
+    author: candidate.author,
+    sourceUrl: candidate.sourceUrl,
+    evidenceText: truncateText(candidate.excerpt || candidate.title, 220),
+    reason: "这段内容体现了与用户问题相关的真实选择或经历",
+    confidence: clampScore(0.78 - index * 0.04)
+  }));
+
+  return JSON.stringify({
+    evidenceItems,
+    strategy: "llm_extracted",
     llmUsed: true
   });
 }
@@ -453,6 +476,34 @@ function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+interface MockEvidenceCandidate {
+  id: string;
+  title: string;
+  author: string;
+  sourceUrl: string;
+  excerpt: string;
+}
+
+function readMockEvidenceCandidates(value: unknown): MockEvidenceCandidate[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isRecord)
+    .map((candidate, index) => ({
+      id: readString(candidate.id) || `candidate_${index + 1}`,
+      title: readString(candidate.title) || `候选内容 ${index + 1}`,
+      author: readString(candidate.author) || "未知作者",
+      sourceUrl: readString(candidate.sourceUrl) || "",
+      excerpt: readString(candidate.excerpt) || readString(candidate.title) || ""
+    }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function uniqueNonEmpty(values: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -481,4 +532,8 @@ function truncateText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, Math.max(maxLength - 3, 0))}...`;
+}
+
+function clampScore(value: number): number {
+  return Math.min(Math.max(Number(value.toFixed(2)), 0), 1);
 }

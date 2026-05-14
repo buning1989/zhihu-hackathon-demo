@@ -69,6 +69,15 @@ try {
     "normalize_candidates stage did not succeed"
   );
   assert(
+    completedSnapshot.stages.some(
+      (stage) =>
+        stage.stageName === "evidence_extract_llm" &&
+        (stage.status === "succeeded" || stage.status === "fallback")
+    ),
+    "evidence_extract_llm stage did not succeed or fallback"
+  );
+  assert(completedSnapshot.stages.length === 5, "agent worker did not record 5 stages");
+  assert(
     completedSnapshot.artifacts.some((artifact) => artifact.type === "intent"),
     "intent artifact was not found"
   );
@@ -84,9 +93,17 @@ try {
     (artifact) => artifact.type === "candidates"
   );
   assert(candidatesArtifact, "candidates artifact was not found");
+  const evidenceArtifact = completedSnapshot.artifacts.find(
+    (artifact) => artifact.type === "evidence"
+  );
+  assert(evidenceArtifact, "evidence artifact was not found");
   assert(
-    completedSnapshot.task.resultArtifactId === candidatesArtifact.id,
-    "task.resultArtifactId does not point to candidates artifact"
+    Array.isArray(evidenceArtifact.data?.evidenceItems),
+    "evidence artifact did not include evidenceItems array"
+  );
+  assert(
+    completedSnapshot.task.resultArtifactId === evidenceArtifact.id,
+    "task.resultArtifactId does not point to evidence artifact"
   );
   assert(
     completedSnapshot.events.some((event) => event.type === "task.completed"),

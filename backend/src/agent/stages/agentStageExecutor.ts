@@ -10,16 +10,19 @@ import type {
   AgentBusinessStageName,
   AgentStageOutput,
   CandidatesArtifactData,
+  EvidenceArtifactData,
   IntentArtifactData,
   RawSourcesArtifactData,
   SearchPlanArtifactData
 } from "./stageTypes.js";
 import {
+  AGENT_STAGE_EVIDENCE_EXTRACT_LLM,
   AGENT_STAGE_NORMALIZE_CANDIDATES,
   AGENT_STAGE_PLAN_SEARCH_LLM,
   AGENT_STAGE_RETRIEVE_SOURCES,
   AGENT_STAGE_UNDERSTAND_GOAL_RULE
 } from "./stageTypes.js";
+import { runEvidenceExtractLlmStage } from "./evidenceExtractLlmStage.js";
 import { runUnderstandGoalRuleStage } from "./understandGoalRuleStage.js";
 
 interface ExecuteAgentStageInput<TData> {
@@ -75,7 +78,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_UNDERSTAND_GOAL_RULE,
       progressStarted: 10,
-      progressCompleted: 30,
+      progressCompleted: 28,
       run: () => runUnderstandGoalRuleStage(task)
     });
     const intent = intentStage.output.data;
@@ -84,8 +87,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_PLAN_SEARCH_LLM,
       inputArtifactIds: [intentStage.artifact.id],
-      progressStarted: 32,
-      progressCompleted: 45,
+      progressStarted: 30,
+      progressCompleted: 43,
       run: () => runPlanSearchLlmStage(taskId, intent)
     });
     const searchPlan = searchPlanStage.output.data;
@@ -94,8 +97,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_RETRIEVE_SOURCES,
       inputArtifactIds: [searchPlanStage.artifact.id],
-      progressStarted: 52,
-      progressCompleted: 70,
+      progressStarted: 48,
+      progressCompleted: 65,
       run: () => runRetrieveSourcesStage(searchPlan, intent)
     });
     const rawSources = rawSourcesStage.output.data;
@@ -104,9 +107,23 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       taskId,
       stageName: AGENT_STAGE_NORMALIZE_CANDIDATES,
       inputArtifactIds: [rawSourcesStage.artifact.id],
-      progressStarted: 75,
-      progressCompleted: 90,
+      progressStarted: 70,
+      progressCompleted: 82,
       run: () => runNormalizeCandidatesStage(rawSources)
+    });
+    const candidates = candidatesStage.output.data;
+
+    const evidenceStage = await executeAgentStage<EvidenceArtifactData>({
+      taskId,
+      stageName: AGENT_STAGE_EVIDENCE_EXTRACT_LLM,
+      inputArtifactIds: [
+        candidatesStage.artifact.id,
+        searchPlanStage.artifact.id,
+        intentStage.artifact.id
+      ],
+      progressStarted: 86,
+      progressCompleted: 95,
+      run: () => runEvidenceExtractLlmStage(taskId, candidates, searchPlan, intent)
     });
 
     const completedAt = new Date().toISOString();
@@ -114,7 +131,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       status: "completed",
       currentStage: "completed",
       progress: 100,
-      resultArtifactId: candidatesStage.artifact.id,
+      resultArtifactId: evidenceStage.artifact.id,
       completedAt,
       error: null
     });
@@ -123,7 +140,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       type: "task.completed",
       payload: {
         status: "completed",
-        resultArtifactId: candidatesStage.artifact.id
+        resultArtifactId: evidenceStage.artifact.id
       }
     });
   } catch (error) {

@@ -2,17 +2,20 @@ export const AGENT_STAGE_UNDERSTAND_GOAL_RULE = "understand_goal_rule";
 export const AGENT_STAGE_PLAN_SEARCH_LLM = "plan_search_llm";
 export const AGENT_STAGE_RETRIEVE_SOURCES = "retrieve_sources";
 export const AGENT_STAGE_NORMALIZE_CANDIDATES = "normalize_candidates";
+export const AGENT_STAGE_EVIDENCE_EXTRACT_LLM = "evidence_extract_llm";
 
 export type AgentBusinessStageName =
   | typeof AGENT_STAGE_UNDERSTAND_GOAL_RULE
   | typeof AGENT_STAGE_PLAN_SEARCH_LLM
   | typeof AGENT_STAGE_RETRIEVE_SOURCES
-  | typeof AGENT_STAGE_NORMALIZE_CANDIDATES;
+  | typeof AGENT_STAGE_NORMALIZE_CANDIDATES
+  | typeof AGENT_STAGE_EVIDENCE_EXTRACT_LLM;
 
 export const AGENT_ARTIFACT_INTENT = "intent";
 export const AGENT_ARTIFACT_SEARCH_PLAN = "search_plan";
 export const AGENT_ARTIFACT_RAW_SOURCES = "raw_sources";
 export const AGENT_ARTIFACT_CANDIDATES = "candidates";
+export const AGENT_ARTIFACT_EVIDENCE = "evidence";
 
 export interface AgentStageOutput<TData> {
   artifactType: string;
@@ -78,4 +81,21 @@ export interface CandidatesArtifactData {
   candidates: CandidateItem[];
   candidateCount: number;
   strategy: "rule_based";
+}
+
+export interface EvidenceItem {
+  candidateId: string;
+  title: string;
+  author: string;
+  sourceUrl: string;
+  evidenceText: string;
+  reason: string;
+  confidence: number;
+}
+
+export interface EvidenceArtifactData {
+  evidenceItems: EvidenceItem[];
+  strategy: "llm_extracted" | "rule_fallback";
+  llmUsed: boolean;
+  fallbackReason?: string;
 }

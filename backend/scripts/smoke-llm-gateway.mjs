@@ -85,10 +85,44 @@ try {
     "schema invalid did not expose SCHEMA_VALIDATION_FAILED"
   );
 
+  const evidenceSuccess = await llmGateway.runJson({
+    stageName: "smoke_llm_gateway_evidence_success",
+    schemaName: "agent.evidence.v1",
+    messages: [{ role: "user", content: "return valid evidence JSON" }],
+    timeoutMs: 1000,
+    retries: 0,
+    validate: isEvidenceArtifactData,
+    fallback: (context) => buildEvidenceFallback(context.fallbackReason),
+    metadata: {
+      originalQuery,
+      mockScenario: "success",
+      candidates: [
+        {
+          id: "candidate_smoke_1",
+          title: "裸辞后去小城市生活",
+          author: "知乎用户",
+          sourceUrl: "https://www.zhihu.com/question/mock/answer/1",
+          excerpt: "我离开原来的工作后，先在小城市住了三个月，重新整理生活节奏。"
+        }
+      ]
+    }
+  });
+  assert(evidenceSuccess.status === "success", "mock evidence success did not return success");
+  assert(
+    Array.isArray(evidenceSuccess.data.evidenceItems) &&
+      evidenceSuccess.data.evidenceItems.length > 0,
+    "mock evidence success did not return evidenceItems"
+  );
+  assert(
+    evidenceSuccess.data.strategy === "llm_extracted" && evidenceSuccess.data.llmUsed === true,
+    "mock evidence success did not mark llm extraction"
+  );
+
   console.log("llm gateway smoke ok");
   console.log(`successAttempts=${success.attempts}`);
   console.log(`timeoutStatus=${timeout.status}`);
   console.log(`schemaInvalidErrorType=${schemaInvalid.errorType}`);
+  console.log(`evidenceItemCount=${evidenceSuccess.data.evidenceItems.length}`);
 } catch (error) {
   console.error("llm gateway smoke failed");
   console.error(error);
@@ -106,6 +140,15 @@ function buildFallback(originalQuery, fallbackReason) {
     searchAngles: [],
     negativeKeywords: [],
     targetPersonTypes: [],
+    strategy: "rule_fallback",
+    llmUsed: false,
+    fallbackReason
+  };
+}
+
+function buildEvidenceFallback(fallbackReason) {
+  return {
+    evidenceItems: [],
     strategy: "rule_fallback",
     llmUsed: false,
     fallbackReason
@@ -130,6 +173,39 @@ function isSearchPlanArtifactData(value) {
     value.targetPersonTypes.every((item) => typeof item === "string") &&
     ["llm_planned", "rule_fallback"].includes(value.strategy) &&
     typeof value.llmUsed === "boolean"
+  );
+}
+
+function isEvidenceArtifactData(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.evidenceItems) &&
+    value.evidenceItems.every(isEvidenceItem) &&
+    ["llm_extracted", "rule_fallback"].includes(value.strategy) &&
+    typeof value.llmUsed === "boolean" &&
+    (value.fallbackReason === undefined || typeof value.fallbackReason === "string")
+  );
+}
+
+function isEvidenceItem(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.candidateId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.author === "string" &&
+    typeof value.sourceUrl === "string" &&
+    typeof value.evidenceText === "string" &&
+    typeof value.reason === "string" &&
+    typeof value.confidence === "number" &&
+    Number.isFinite(value.confidence) &&
+    value.confidence >= 0 &&
+    value.confidence <= 1
   );
 }
 
