@@ -90,7 +90,7 @@ export class AgentRepository {
         id,
         input.userId ?? null,
         input.query,
-        JSON.stringify(input.metadata ?? {}),
+        stringifyJsonb(input.metadata ?? {}),
         expiresAt
       ]
     );
@@ -144,7 +144,7 @@ export class AgentRepository {
         patch.progress ?? current.progress,
         patch.resultArtifactId === undefined ? current.resultArtifactId : patch.resultArtifactId,
         patch.error === undefined ? current.error : patch.error,
-        JSON.stringify(patch.metadata ?? current.metadata),
+        stringifyJsonb(patch.metadata ?? current.metadata),
         patch.startedAt === undefined ? current.startedAt : patch.startedAt,
         patch.completedAt === undefined ? current.completedAt : patch.completedAt,
         patch.expiresAt === undefined ? current.expiresAt : patch.expiresAt
@@ -181,8 +181,8 @@ export class AgentRepository {
         input.status ?? "pending",
         input.attempt ?? 1,
         input.timeoutMs ?? null,
-        JSON.stringify(input.inputArtifactIds ?? []),
-        JSON.stringify(input.outputArtifactIds ?? []),
+        stringifyJsonb(input.inputArtifactIds ?? []),
+        stringifyJsonb(input.outputArtifactIds ?? []),
         input.model ?? null,
         input.fallbackUsed ?? false,
         input.fallbackReason ?? null,
@@ -232,8 +232,8 @@ export class AgentRepository {
         patch.status ?? current.status,
         patch.attempt ?? current.attempt,
         patch.timeoutMs === undefined ? current.timeoutMs : patch.timeoutMs,
-        JSON.stringify(patch.inputArtifactIds ?? current.inputArtifactIds),
-        JSON.stringify(patch.outputArtifactIds ?? current.outputArtifactIds),
+        stringifyJsonb(patch.inputArtifactIds ?? current.inputArtifactIds),
+        stringifyJsonb(patch.outputArtifactIds ?? current.outputArtifactIds),
         patch.model === undefined ? current.model : patch.model,
         patch.fallbackUsed ?? current.fallbackUsed,
         patch.fallbackReason === undefined ? current.fallbackReason : patch.fallbackReason,
@@ -259,7 +259,7 @@ export class AgentRepository {
         VALUES ($1, $2, $3, $4::jsonb)
         RETURNING *
       `,
-      [id, input.taskId, input.type, JSON.stringify(input.data)]
+      [id, input.taskId, input.type, stringifyJsonb(input.data)]
     );
 
     return mapArtifactRow(result.rows[0]);
@@ -286,7 +286,7 @@ export class AgentRepository {
         VALUES ($1, $2, $3, $4::jsonb)
         RETURNING *
       `,
-      [id, input.taskId, input.type, JSON.stringify(input.payload ?? {})]
+      [id, input.taskId, input.type, stringifyJsonb(input.payload ?? {})]
     );
 
     return mapEventRow(result.rows[0]);
@@ -395,7 +395,7 @@ async function insertTask(
       id,
       input.userId ?? null,
       input.query,
-      JSON.stringify(input.metadata ?? {}),
+      stringifyJsonb(input.metadata ?? {}),
       input.expiresAt ?? createDefaultExpiresAt()
     ]
   );
@@ -414,7 +414,7 @@ async function insertEvent(
       VALUES ($1, $2, $3, $4::jsonb)
       RETURNING *
     `,
-    [id, input.taskId, input.type, JSON.stringify(input.payload ?? {})]
+    [id, input.taskId, input.type, stringifyJsonb(input.payload ?? {})]
   );
 
   return mapEventRow(result.rows[0]);
@@ -432,6 +432,48 @@ function assertConfigured(): void {
 
 function createAgentRecordId(prefix: string): string {
   return `${prefix}_${randomUUID()}`;
+}
+
+function stringifyJsonb(value: unknown): string {
+  return JSON.stringify(value, (_key, nestedValue) => {
+    if (typeof nestedValue === "string") {
+      return sanitizeJsonString(nestedValue);
+    }
+
+    return nestedValue;
+  });
+}
+
+function sanitizeJsonString(value: string): string {
+  let result = "";
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+
+    if (code === 0) {
+      continue;
+    }
+
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const nextCode = value.charCodeAt(index + 1);
+      if (nextCode >= 0xdc00 && nextCode <= 0xdfff) {
+        result += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        result += "\uFFFD";
+      }
+      continue;
+    }
+
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      result += "\uFFFD";
+      continue;
+    }
+
+    result += value[index];
+  }
+
+  return result;
 }
 
 function createDefaultExpiresAt(): string {
@@ -510,4 +552,3 @@ function toIsoString(value: Date | string): string {
 function toIsoStringOrNull(value: Date | string | null): string | null {
   return value ? toIsoString(value) : null;
 }
-

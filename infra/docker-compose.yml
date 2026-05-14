@@ -23,7 +23,7 @@ services:
       PORT: ${BACKEND_PORT:-8000}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       ZHIHU_API_KEY: ${ZHIHU_API_KEY:-}
-      ZH_ACCESS_SECRET: ${ZHIHU_API_KEY:-}
+      ZH_ACCESS_SECRET: ${ZH_ACCESS_SECRET:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://zhihu:zhihu@postgres:5432/zhihu_hackathon}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
@@ -78,7 +78,7 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       DEEPSEEK_JSON_MODE: ${DEEPSEEK_JSON_MODE:-true}
       ZHIHU_API_KEY: ${ZHIHU_API_KEY:-}
-      ZH_ACCESS_SECRET: ${ZHIHU_API_KEY:-}
+      ZH_ACCESS_SECRET: ${ZH_ACCESS_SECRET:-}
     volumes:
       - ..:/workspace
       - backend_node_modules:/workspace/backend/node_modules
