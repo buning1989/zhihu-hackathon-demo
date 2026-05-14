@@ -9,7 +9,7 @@ import { searchRoutes } from "./routes/search.routes.js";
 import { zhihuRoutes } from "./routes/zhihu.routes.js";
 
 export const app = express();
-const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
+const publicDir = fileURLToPath(new URL("../../public/", import.meta.url));
 const allowedCorsOrigins = new Set([
   "http://127.0.0.1:5173",
   "http://localhost:5173"
@@ -35,14 +35,11 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+app.use(express.static(publicDir));
 app.use("/preview", express.static(publicDir));
 
 app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    service: "zhihu-hackathon-backend",
-    version: "0.1.0"
-  });
+  res.json({ status: "ok" });
 });
 
 app.use("/api/health", healthRoutes);
