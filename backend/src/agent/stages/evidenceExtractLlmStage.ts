@@ -139,6 +139,7 @@ function buildEvidenceExtractMessages(
           : null,
         candidates: candidates.map((candidate) => ({
           id: candidate.id,
+          type: candidate.type,
           title: truncateText(candidate.title, 120),
           author: truncateText(candidate.author, 80),
           sourceUrl: candidate.url,
@@ -193,6 +194,7 @@ function normalizeEvidenceArtifactData(data: EvidenceArtifactData): EvidenceArti
 function toGatewayCandidateMetadata(candidate: CandidateItem): Record<string, unknown> {
   return {
     id: candidate.id,
+    type: candidate.type,
     title: candidate.title,
     author: candidate.author,
     sourceUrl: candidate.url,

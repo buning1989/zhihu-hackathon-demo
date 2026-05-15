@@ -75,6 +75,7 @@ export interface RawSourcesArtifactData {
 export interface CandidateItem {
   id: string;
   sourceId: string;
+  type?: string;
   title: string;
   author: string;
   excerpt: string;
@@ -86,6 +87,13 @@ export interface CandidateItem {
 export interface CandidatesArtifactData {
   candidates: CandidateItem[];
   candidateCount: number;
+  sourceCount?: number;
+  filteredOutCount?: number;
+  dedupedSourceCount?: number;
+  filters?: {
+    acceptedTypes: string[];
+    minScoreExclusive: number;
+  };
   strategy: "rule_based";
 }
 

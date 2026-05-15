@@ -116,6 +116,7 @@ function buildGroundingGuardMessages(
         finalResult,
         candidates: candidates.map((candidate) => ({
           id: candidate.id,
+          type: candidate.type,
           title: truncateText(candidate.title, 120),
           author: truncateText(candidate.author, 80),
           excerpt: truncateText(candidate.excerpt, MAX_EXCERPT_LENGTH),
@@ -213,6 +214,7 @@ function toEvidenceInputItem(item: EvidenceItem, index: number): EvidenceInputIt
 function toGatewayCandidateMetadata(candidate: CandidateItem): Record<string, unknown> {
   return {
     id: candidate.id,
+    type: candidate.type,
     title: candidate.title,
     author: candidate.author,
     excerpt: truncateText(candidate.excerpt, MAX_EXCERPT_LENGTH),

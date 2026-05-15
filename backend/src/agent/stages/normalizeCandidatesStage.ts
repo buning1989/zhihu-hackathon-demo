@@ -8,19 +8,44 @@ import {
   type RawSourcesArtifactData
 } from "./stageTypes.js";
 
+const ACCEPTED_SOURCE_TYPES = ["answer", "mock_answer"] as const;
+const MIN_CANDIDATE_SCORE_EXCLUSIVE = 0.5;
+
 export function runNormalizeCandidatesStage(
   rawSources: RawSourcesArtifactData
 ): AgentStageOutput<CandidatesArtifactData> {
-  const candidates = dedupeSources(rawSources.sources).map(mapRawSourceToCandidate);
+  const eligibleSources = rawSources.sources.filter(isEligibleSource);
+  const dedupedSources = dedupeSources(eligibleSources);
+  const candidates = dedupedSources.map(mapRawSourceToCandidate);
 
   return {
     artifactType: AGENT_ARTIFACT_CANDIDATES,
     data: {
       candidates,
       candidateCount: candidates.length,
+      sourceCount: rawSources.sources.length,
+      filteredOutCount: rawSources.sources.length - eligibleSources.length,
+      dedupedSourceCount: eligibleSources.length - dedupedSources.length,
+      filters: {
+        acceptedTypes: [...ACCEPTED_SOURCE_TYPES],
+        minScoreExclusive: MIN_CANDIDATE_SCORE_EXCLUSIVE
+      },
       strategy: "rule_based"
     }
   };
+}
+
+function isEligibleSource(source: RawSourceItem): boolean {
+  return isAcceptedSourceType(source) && source.score > MIN_CANDIDATE_SCORE_EXCLUSIVE;
+}
+
+function isAcceptedSourceType(source: RawSourceItem): boolean {
+  const normalizedType = source.type.trim().toLowerCase();
+  if (normalizedType === "answer") {
+    return true;
+  }
+
+  return source.provider === "mock" && normalizedType === "mock_answer";
 }
 
 function dedupeSources(sources: RawSourceItem[]): RawSourceItem[] {
@@ -44,6 +69,7 @@ function mapRawSourceToCandidate(source: RawSourceItem, index: number): Candidat
   return {
     id: `candidate_${hashStableId(source.sourceId || source.url || `${source.title}:${index}`)}`,
     sourceId: source.sourceId,
+    type: source.type,
     title: source.title || "未命名内容",
     author: source.author || "未知作者",
     excerpt: truncateText(source.excerpt, 500),

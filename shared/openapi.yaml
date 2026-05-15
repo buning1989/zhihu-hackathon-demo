@@ -1738,6 +1738,8 @@ components:
                 type: string
               sourceId:
                 type: string
+              type:
+                type: string
               title:
                 type: string
               author:
@@ -1752,6 +1754,21 @@ components:
                 type: string
         candidateCount:
           type: integer
+        sourceCount:
+          type: integer
+        filteredOutCount:
+          type: integer
+        dedupedSourceCount:
+          type: integer
+        filters:
+          type: object
+          properties:
+            acceptedTypes:
+              type: array
+              items:
+                type: string
+            minScoreExclusive:
+              type: number
         strategy:
           type: string
           const: rule_based

@@ -6,6 +6,8 @@ import { llmRouter, type LlmTaskType } from "../llm/llmRouter.js";
 import { createOpenAICompatibleJsonCompletion } from "../llm/clients/openaiCompatible.js";
 import { composeMultiLlmDemoSearchResponse } from "../llm/demoSearchOrchestrator.js";
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
+import { runNormalizeCandidatesStage } from "../agent/stages/normalizeCandidatesStage.js";
+import type { RawSourcesArtifactData } from "../agent/stages/stageTypes.js";
 import { demoSessionCacheService } from "../services/demoSessionCache.service.js";
 import { searchService } from "../services/search.service.js";
 import {
@@ -174,6 +176,7 @@ try {
   await assertDeepSeekResponseFormatFallback();
   await assertLoggedInUserContextInRealComposer();
   await assertCandidateQualityPrefersExperience();
+  assertAgentCandidateFiltersAnswerAndScore();
   await assertNoLlmConfigFallbackKind();
   await assertPartialLlmFallbackKind();
   await assertGroundingGuardInvalidFallback();
@@ -560,6 +563,46 @@ async function assertCandidateQualityPrefersExperience(): Promise<void> {
   );
 }
 
+function assertAgentCandidateFiltersAnswerAndScore(): void {
+  const rawSources: RawSourcesArtifactData = {
+    query: "真实 agent 过滤测试",
+    expandedQueries: ["真实 agent 过滤测试"],
+    sources: [
+      createRawSourceForAgentFilter("high_answer", "Answer", 0.51),
+      createRawSourceForAgentFilter("score_boundary_answer", "Answer", 0.5),
+      createRawSourceForAgentFilter("high_article", "Article", 0.9),
+      createRawSourceForAgentFilter("mock_answer", "mock_answer", 0.8, "mock")
+    ],
+    sourceCount: 4,
+    provider: "zhihu",
+    fallbackUsed: false,
+    fallbackReason: null
+  };
+
+  const result = runNormalizeCandidatesStage(rawSources).data;
+
+  assertEqual(result.candidateCount, 2, "agent candidate filter count");
+  assertEqual(result.filteredOutCount, 2, "agent candidate filteredOutCount");
+  assertEqual(
+    result.candidates[0].sourceId,
+    "high_answer",
+    "agent candidate keeps Answer score > 0.5"
+  );
+  assertEqual(
+    result.candidates[1].sourceId,
+    "mock_answer",
+    "agent candidate keeps mock answer fallback"
+  );
+  assertEqual(result.candidates.every((candidate) => candidate.score > 0.5), true, "agent candidates score gate");
+  assertEqual(
+    result.candidates.every((candidate) =>
+      ["answer", "mock_answer"].includes((candidate.type ?? "").toLowerCase())
+    ),
+    true,
+    "agent candidates type gate"
+  );
+}
+
 async function assertNoLlmConfigFallbackKind(): Promise<void> {
   const response = await withStubbedOrchestrator({
     configuredTasks: new Set(),
@@ -766,6 +809,24 @@ function assertSearchPlanDebug(response: Awaited<ReturnType<typeof withStubbedOr
   if (!response.debug.finalCandidates?.every((candidate) => candidate.diversityKey && candidate.sourceRefs?.length)) {
     throw new Error("debug.finalCandidates must include diversityKey and sourceRefs");
   }
+}
+
+function createRawSourceForAgentFilter(
+  sourceId: string,
+  type: string,
+  score: number,
+  provider: "zhihu" | "mock" = "zhihu"
+): RawSourcesArtifactData["sources"][number] {
+  return {
+    sourceId,
+    provider,
+    type,
+    title: `${sourceId} title`,
+    url: `https://www.zhihu.com/question/stub/answer/${sourceId}`,
+    author: "知乎用户",
+    excerpt: `${sourceId} excerpt`,
+    score
+  };
 }
 
 function createStubSearchItem(): SearchItem {
