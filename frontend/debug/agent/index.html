@@ -386,9 +386,12 @@
   </div>
 
   <script>
-    const API_BASE = ["3000", "5173"].includes(window.location.port)
-      ? "http://127.0.0.1:8000"
-      : window.location.origin;
+    const DEFAULT_LOCAL_API_BASE = "http://127.0.0.1:8000";
+    const API_BASE = window.location.protocol === "file:"
+      ? DEFAULT_LOCAL_API_BASE
+      : ["3000", "5173"].includes(window.location.port)
+        ? DEFAULT_LOCAL_API_BASE
+        : window.location.origin;
     const params = new URLSearchParams(window.location.search);
     const state = {
       tasks: [],
