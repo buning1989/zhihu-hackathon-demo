@@ -400,6 +400,7 @@
       autoTimer: null,
       loading: false,
       openArtifactIds: new Set(),
+      artifactScrollTops: new Map(),
       artifactOpenStateInitialized: false
     };
 
@@ -477,6 +478,7 @@
     async function selectTask(taskId) {
       if (state.selectedTaskId !== taskId) {
         state.openArtifactIds = new Set();
+        state.artifactScrollTops = new Map();
         state.artifactOpenStateInitialized = false;
       }
       state.selectedTaskId = taskId;
@@ -522,6 +524,7 @@
     }
 
     function renderDetail() {
+      captureArtifactScrollPositions();
       const snapshot = state.snapshot;
       if (!snapshot?.task) {
         detail.className = "empty";
@@ -563,6 +566,8 @@
         </section>
       `;
       bindArtifactToggles();
+      restoreArtifactScrollPositions();
+      requestAnimationFrame(restoreArtifactScrollPositions);
     }
 
     function renderStat(label, value) {
@@ -612,7 +617,7 @@
             <span>${escapeHtml(artifact.type)}</span>
             <span class="mono">${escapeHtml(artifact.id)}</span>
           </summary>
-          <pre>${escapeHtml(JSON.stringify(artifact.data, null, 2))}</pre>
+          <pre data-artifact-scroll-id="${escapeHtml(artifact.id)}">${escapeHtml(JSON.stringify(artifact.data, null, 2))}</pre>
         </details>
       `).join("");
     }
@@ -639,7 +644,30 @@
           }
         });
       });
+      document.querySelectorAll("[data-artifact-scroll-id]").forEach((node) => {
+        const artifactId = node.dataset.artifactScrollId;
+        if (!artifactId) return;
+        node.addEventListener("scroll", () => {
+          state.artifactScrollTops.set(artifactId, node.scrollTop);
+        }, { passive: true });
+      });
       state.artifactOpenStateInitialized = true;
+    }
+
+    function captureArtifactScrollPositions() {
+      document.querySelectorAll("[data-artifact-scroll-id]").forEach((node) => {
+        const artifactId = node.dataset.artifactScrollId;
+        if (!artifactId) return;
+        state.artifactScrollTops.set(artifactId, node.scrollTop);
+      });
+    }
+
+    function restoreArtifactScrollPositions() {
+      document.querySelectorAll("[data-artifact-scroll-id]").forEach((node) => {
+        const artifactId = node.dataset.artifactScrollId;
+        if (!artifactId || !state.artifactScrollTops.has(artifactId)) return;
+        node.scrollTop = state.artifactScrollTops.get(artifactId);
+      });
     }
 
     function formatTime(value) {
