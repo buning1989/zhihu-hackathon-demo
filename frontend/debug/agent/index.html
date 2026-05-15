@@ -287,12 +287,6 @@
       font-size: 12px;
     }
 
-    .details-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 12px;
-    }
-
     details {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -328,30 +322,6 @@
       overflow-wrap: anywhere;
     }
 
-    .event-list {
-      display: grid;
-      gap: 8px;
-    }
-
-    .event {
-      display: grid;
-      grid-template-columns: 170px minmax(160px, 220px) minmax(0, 1fr);
-      gap: 10px;
-      align-items: start;
-      border-bottom: 1px solid var(--line);
-      padding: 9px 0;
-      font-size: 13px;
-    }
-
-    .event:last-child {
-      border-bottom: 0;
-    }
-
-    .event code {
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
     .empty {
       border: 1px dashed var(--line);
       border-radius: 8px;
@@ -380,12 +350,7 @@
         height: auto;
       }
 
-      .grid,
-      .details-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .event {
+      .grid {
         grid-template-columns: 1fr;
       }
     }
@@ -430,7 +395,9 @@
       selectedTaskId: params.get("taskId") || "",
       snapshot: null,
       autoTimer: null,
-      loading: false
+      loading: false,
+      openArtifactIds: new Set(),
+      artifactOpenStateInitialized: false
     };
 
     const apiLine = document.getElementById("apiLine");
@@ -505,6 +472,10 @@
     }
 
     async function selectTask(taskId) {
+      if (state.selectedTaskId !== taskId) {
+        state.openArtifactIds = new Set();
+        state.artifactOpenStateInitialized = false;
+      }
       state.selectedTaskId = taskId;
       await refreshAll();
     }
@@ -583,17 +554,12 @@
           ${renderStages(snapshot.stages || [])}
         </section>
 
-        <section class="details-grid">
-          <section class="panel">
-            <h2>Artifacts JSON</h2>
-            ${renderArtifacts(snapshot.artifacts || [])}
-          </section>
-          <section class="panel">
-            <h2>Events Timeline</h2>
-            ${renderEvents(snapshot.events || [])}
-          </section>
+        <section class="panel">
+          <h2>Artifacts JSON</h2>
+          ${renderArtifacts(snapshot.artifacts || [])}
         </section>
       `;
+      bindArtifactToggles();
     }
 
     function renderStat(label, value) {
@@ -638,7 +604,7 @@
     function renderArtifacts(artifacts) {
       if (!artifacts.length) return `<div class="empty">尚无 artifact。</div>`;
       return artifacts.map((artifact, index) => `
-        <details ${index === artifacts.length - 1 ? "open" : ""}>
+        <details data-artifact-id="${escapeHtml(artifact.id)}" ${isArtifactOpen(artifact, index, artifacts) ? "open" : ""}>
           <summary>
             <span>${escapeHtml(artifact.type)}</span>
             <span class="mono">${escapeHtml(artifact.id)}</span>
@@ -648,19 +614,29 @@
       `).join("");
     }
 
-    function renderEvents(events) {
-      if (!events.length) return `<div class="empty">尚无 event。</div>`;
-      return `
-        <div class="event-list">
-          ${events.map((event) => `
-            <div class="event">
-              <span class="mono">${escapeHtml(formatTime(event.createdAt))}</span>
-              <code>${escapeHtml(event.type)}</code>
-              <pre>${escapeHtml(JSON.stringify(event.payload, null, 2))}</pre>
-            </div>
-          `).join("")}
-        </div>
-      `;
+    function isArtifactOpen(artifact, index, artifacts) {
+      if (!state.artifactOpenStateInitialized) {
+        return index === artifacts.length - 1;
+      }
+
+      return state.openArtifactIds.has(artifact.id);
+    }
+
+    function bindArtifactToggles() {
+      document.querySelectorAll("[data-artifact-id]").forEach((node) => {
+        const artifactId = node.dataset.artifactId;
+        if (!artifactId) return;
+        if (node.open) state.openArtifactIds.add(artifactId);
+        node.addEventListener("toggle", () => {
+          state.artifactOpenStateInitialized = true;
+          if (node.open) {
+            state.openArtifactIds.add(artifactId);
+          } else {
+            state.openArtifactIds.delete(artifactId);
+          }
+        });
+      });
+      state.artifactOpenStateInitialized = true;
     }
 
     function formatTime(value) {
