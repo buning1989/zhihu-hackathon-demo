@@ -10,3 +10,6 @@ __pycache__/
 .venv/
 *.pyc
 .vercel
+
+videos/**/.thumbnails/
+videos/**/.hyperframes/

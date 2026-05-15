@@ -25,8 +25,11 @@ npx hyperframes render --output renders/life-sample-library-intro.mp4 --quality 
 ## 本次产物
 
 - MP4: `renders/life-sample-library-intro.mp4`
+- 普通交互 HTML: `interactive.html`
 - Contact sheet: `renders/life-sample-library-intro-contact-sheet.jpg`
 - 抽查帧: `renders/frame-52s.jpg`, `renders/frame-58s.jpg`
+
+`index.html` 是 HyperFrames 视频源文件，直接用 `file://` 打开不会播放 timeline。需要预览动画时用 HyperFrames Studio；需要普通浏览器交互演示时打开 `interactive.html`。
 
 ## 本次验证
 
