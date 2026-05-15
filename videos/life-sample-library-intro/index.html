@@ -1,0 +1,1189 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>人生样本库 60s 产品介绍</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #26231f;
+        background: #fbf7ef;
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        letter-spacing: 0;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 0%, rgba(255, 244, 219, 0.82), rgba(255, 244, 219, 0) 36%),
+          linear-gradient(180deg, #fbf7ef 0%, #f7f1e7 100%);
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 0%, rgba(255, 244, 219, 0.78), rgba(255, 244, 219, 0) 38%),
+          linear-gradient(180deg, #fbf7ef 0%, #f7f1e7 100%);
+      }
+
+      #scene1 {
+        z-index: 2;
+      }
+
+      #scene2,
+      #scene3,
+      #scene4,
+      #scene5,
+      #scene6,
+      #scene7,
+      #scene8 {
+        z-index: 1;
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .scene-content {
+        position: relative;
+        z-index: 12;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        padding: 104px 132px;
+        gap: 34px;
+      }
+
+      .scene-row {
+        display: flex;
+        gap: 44px;
+        align-items: center;
+        width: 100%;
+      }
+
+      .brand-pill,
+      .section-label,
+      .scene-eyebrow,
+      .status-chip,
+      .query-pill,
+      .count-strip,
+      .source-line {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        min-height: 44px;
+        padding: 10px 16px;
+        border: 1px solid rgba(216, 154, 69, 0.24);
+        border-radius: 999px;
+        color: #8a6023;
+        background: rgba(255, 241, 199, 0.74);
+        font-size: 22px;
+        font-weight: 850;
+        line-height: 1.2;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .headline,
+      .scene-title,
+      .final-title {
+        max-width: 1180px;
+        color: #26231f;
+        font-family: "Songti SC", "STSong", serif;
+        font-size: 104px;
+        font-weight: 900;
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      .headline {
+        font-size: 78px;
+      }
+
+      .subline,
+      .scene-subtitle,
+      .closing-line {
+        max-width: 920px;
+        color: #6f685f;
+        font-size: 32px;
+        font-weight: 380;
+        line-height: 1.65;
+      }
+
+      .paper-panel,
+      .question-card,
+      .path-card,
+      .profile-card,
+      .reader,
+      .chat-panel,
+      .chat-side,
+      .final-card,
+      .contrast-card,
+      .step-card,
+      .evidence-card {
+        border: 1px solid rgba(38, 35, 31, 0.09);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.84);
+        box-shadow: 0 24px 76px rgba(52, 43, 32, 0.1);
+      }
+
+      .brand-mark {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border: 1px solid rgba(38, 35, 31, 0.08);
+        border-radius: 18px;
+        background: #fffdf8;
+        color: #d89a45;
+        box-shadow: 0 14px 30px rgba(52, 43, 32, 0.08);
+      }
+
+      .brand-mark::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        width: 14px;
+        height: 14px;
+        transform: translateX(-50%);
+        border: 3px solid currentColor;
+        border-radius: 50%;
+        background: #ffffff;
+      }
+
+      .brand-mark::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: 11px;
+        width: 27px;
+        height: 18px;
+        transform: translateX(-50%);
+        border: 3px solid currentColor;
+        border-bottom: 0;
+        border-radius: 18px 18px 0 0;
+        background: rgba(255, 241, 199, 0.72);
+      }
+
+      .soft-orb,
+      .ambient-line,
+      .ambient-dot,
+      .field-word {
+        position: absolute;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .soft-orb {
+        width: 520px;
+        height: 520px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 241, 199, 0.58), rgba(255, 241, 199, 0));
+      }
+
+      .ambient-line {
+        height: 1px;
+        background: rgba(216, 154, 69, 0.24);
+      }
+
+      .ambient-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: rgba(63, 138, 113, 0.26);
+      }
+
+      .field-word {
+        color: rgba(38, 35, 31, 0.045);
+        font-family: "Songti SC", "STSong", serif;
+        font-size: 172px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .field-word::before {
+        content: attr(data-word);
+      }
+
+      .peep {
+        display: block;
+        object-fit: contain;
+        filter: saturate(0.82) contrast(0.96) drop-shadow(0 18px 22px rgba(52, 43, 32, 0.12));
+      }
+
+      .question-card {
+        position: relative;
+        width: 930px;
+        min-height: 252px;
+        padding: 36px 108px 34px 38px;
+        background: #ffffff;
+      }
+
+      .prompt-line {
+        color: #6f685f;
+        font-size: 31px;
+        font-weight: 360;
+        line-height: 1.7;
+      }
+
+      .send-dot {
+        position: absolute;
+        right: 34px;
+        bottom: 34px;
+        display: grid;
+        place-items: center;
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        color: #3f2b0f;
+        background: #fff1c7;
+        border: 1px solid rgba(216, 154, 69, 0.36);
+        box-shadow: 0 18px 38px rgba(216, 154, 69, 0.24);
+        font-size: 36px;
+        font-weight: 900;
+      }
+
+      .home-layout {
+        justify-content: center;
+        padding-top: 116px;
+      }
+
+      .home-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+        max-width: 1020px;
+      }
+
+      .peep-cluster {
+        position: absolute;
+        right: 126px;
+        bottom: 28px;
+        z-index: 8;
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+      }
+
+      .peep-cluster img:nth-child(1) {
+        width: 166px;
+        height: 224px;
+      }
+
+      .peep-cluster img:nth-child(2) {
+        width: 132px;
+        height: 178px;
+      }
+
+      .peep-cluster img:nth-child(3) {
+        width: 150px;
+        height: 204px;
+      }
+
+      .contrast-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        width: 1180px;
+      }
+
+      .contrast-card {
+        min-height: 292px;
+        padding: 34px;
+      }
+
+      .contrast-card strong {
+        display: block;
+        color: #26231f;
+        font-size: 44px;
+        font-weight: 900;
+        line-height: 1.15;
+      }
+
+      .contrast-card p {
+        margin-top: 18px;
+        color: #6f685f;
+        font-size: 29px;
+        line-height: 1.58;
+      }
+
+      .contrast-card.good {
+        background: #fffdf8;
+        border-color: rgba(63, 138, 113, 0.28);
+      }
+
+      .boundary-note,
+      .guard-note,
+      .disclaimer {
+        max-width: 980px;
+        padding: 20px 24px;
+        border: 1px solid rgba(216, 154, 69, 0.24);
+        border-radius: 24px;
+        color: #6f5a2b;
+        background: rgba(255, 241, 199, 0.72);
+        font-size: 26px;
+        line-height: 1.55;
+      }
+
+      .workflow-layout {
+        justify-content: center;
+      }
+
+      .search-shell {
+        display: grid;
+        grid-template-columns: 560px 1fr;
+        gap: 36px;
+        width: 1340px;
+        min-height: 590px;
+        padding: 36px;
+      }
+
+      .query-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .query-box {
+        min-height: 222px;
+        padding: 28px;
+        border-radius: 24px;
+        color: #26231f;
+        background: #fffdf8;
+        font-size: 31px;
+        line-height: 1.62;
+      }
+
+      .agent-line {
+        height: 2px;
+        width: 420px;
+        background: linear-gradient(90deg, #d89a45, rgba(63, 138, 113, 0.38), rgba(23, 114, 246, 0.48));
+      }
+
+      .steps-grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .step-card {
+        display: grid;
+        grid-template-columns: 58px 1fr;
+        gap: 18px;
+        align-items: start;
+        min-height: 108px;
+        padding: 20px;
+        box-shadow: none;
+      }
+
+      .step-number,
+      .path-index {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border-radius: 17px;
+        color: #3f2b0f;
+        background: #fff1c7;
+        border: 1px solid rgba(216, 154, 69, 0.36);
+        font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+        font-size: 24px;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .step-card strong {
+        display: block;
+        color: #26231f;
+        font-size: 30px;
+        line-height: 1.2;
+      }
+
+      .step-card span {
+        display: block;
+        margin-top: 8px;
+        color: #6f685f;
+        font-size: 22px;
+        line-height: 1.45;
+      }
+
+      .paths-layout {
+        justify-content: center;
+        gap: 42px;
+      }
+
+      .path-showcase {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 20px;
+        width: 1660px;
+      }
+
+      .path-card {
+        position: relative;
+        min-height: 392px;
+        padding: 28px 26px 104px;
+        overflow: hidden;
+      }
+
+      .path-card h3 {
+        margin-top: 18px;
+        color: #26231f;
+        font-size: 37px;
+        font-weight: 900;
+        line-height: 1.18;
+      }
+
+      .path-card .path-count {
+        display: block;
+        margin-top: 18px;
+        color: #7a4f18;
+        font-size: 22px;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .path-card p {
+        margin-top: 16px;
+        color: #6f685f;
+        font-size: 22px;
+        line-height: 1.52;
+      }
+
+      .avatar-row {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        bottom: 22px;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .avatar-row img {
+        width: 54px;
+        height: 54px;
+        border: 3px solid rgba(255, 255, 255, 0.9);
+        border-radius: 50%;
+        background: #ffffff;
+        object-fit: cover;
+      }
+
+      .samples-layout {
+        justify-content: center;
+        gap: 30px;
+      }
+
+      .sample-stage {
+        position: relative;
+        width: 1328px;
+        height: 590px;
+        overflow: hidden;
+        border: 1px solid rgba(38, 35, 31, 0.08);
+        border-radius: 32px;
+        background:
+          radial-gradient(circle at 50% 34%, rgba(255, 241, 199, 0.46), rgba(255, 241, 199, 0) 36%),
+          #ffffff;
+        box-shadow: 0 24px 80px rgba(52, 43, 32, 0.1);
+      }
+
+      .sample-person {
+        position: absolute;
+        bottom: 56px;
+        width: 136px;
+        height: 184px;
+      }
+
+      .sample-person img {
+        width: 100%;
+        height: 100%;
+      }
+
+      .sample-person .caption {
+        position: absolute;
+        left: 50%;
+        bottom: -30px;
+        width: 220px;
+        transform: translateX(-50%);
+        padding: 11px 14px;
+        border: 1px solid rgba(38, 35, 31, 0.08);
+        border-radius: 16px;
+        color: #26231f;
+        background: #ffffff;
+        box-shadow: 0 14px 34px rgba(52, 43, 32, 0.12);
+        font-size: 18px;
+        font-weight: 800;
+        line-height: 1.3;
+        text-align: center;
+      }
+
+      .profile-card {
+        position: absolute;
+        top: 38px;
+        right: 38px;
+        width: 480px;
+        height: 514px;
+        padding: 30px;
+        background: #ffffff;
+      }
+
+      .profile-card h3 {
+        color: #26231f;
+        font-size: 44px;
+        font-weight: 900;
+        line-height: 1.1;
+      }
+
+      .profile-card .role {
+        margin-top: 8px;
+        color: #7a4f18;
+        font-size: 22px;
+        font-weight: 900;
+      }
+
+      .match-list,
+      .timeline-list {
+        display: grid;
+        gap: 10px;
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .match-list li,
+      .timeline-row {
+        padding: 12px 14px;
+        border-radius: 16px;
+        color: #6f685f;
+        background: #fbf7ef;
+        font-size: 20px;
+        line-height: 1.45;
+      }
+
+      .timeline-row {
+        display: grid;
+        grid-template-columns: 82px 1fr;
+        gap: 12px;
+      }
+
+      .timeline-row b {
+        color: #7a4f18;
+        font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .reader-layout {
+        justify-content: center;
+      }
+
+      .reader-row {
+        display: grid;
+        grid-template-columns: 880px 460px;
+        gap: 34px;
+        align-items: stretch;
+      }
+
+      .reader {
+        min-height: 614px;
+        padding: 48px 54px;
+        background: #fffdf8;
+      }
+
+      .reader h3 {
+        color: #26231f;
+        font-family: "Songti SC", "STSong", serif;
+        font-size: 54px;
+        font-weight: 900;
+        line-height: 1.18;
+      }
+
+      .reader-meta {
+        margin-top: 18px;
+        color: #8a6a2f;
+        font-size: 22px;
+        line-height: 1.4;
+      }
+
+      .reader p {
+        margin-top: 26px;
+        color: #4b453d;
+        font-size: 27px;
+        line-height: 1.9;
+      }
+
+      .evidence-stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      .evidence-card {
+        padding: 24px;
+        min-height: 138px;
+        box-shadow: 0 18px 48px rgba(52, 43, 32, 0.08);
+      }
+
+      .evidence-card strong {
+        display: block;
+        color: #26231f;
+        font-size: 27px;
+        font-weight: 900;
+      }
+
+      .evidence-card span {
+        display: block;
+        margin-top: 10px;
+        color: #6f685f;
+        font-size: 21px;
+        line-height: 1.5;
+      }
+
+      .chat-layout-scene {
+        display: grid;
+        grid-template-columns: 360px 900px;
+        gap: 30px;
+        align-items: stretch;
+        justify-content: center;
+      }
+
+      .chat-side {
+        min-height: 600px;
+        padding: 30px;
+      }
+
+      .chat-side img {
+        width: 132px;
+        height: 178px;
+      }
+
+      .chat-side h3 {
+        margin-top: 18px;
+        color: #26231f;
+        font-size: 42px;
+        font-weight: 900;
+      }
+
+      .chat-side p {
+        margin-top: 10px;
+        color: #6f685f;
+        font-size: 22px;
+        line-height: 1.55;
+      }
+
+      .chat-panel {
+        min-height: 600px;
+        padding: 30px;
+        background: #ffffff;
+      }
+
+      .chat-headline {
+        color: #26231f;
+        font-size: 40px;
+        font-weight: 900;
+      }
+
+      .bubble-stack {
+        display: grid;
+        gap: 18px;
+        margin-top: 28px;
+      }
+
+      .bubble {
+        max-width: 760px;
+        padding: 22px 26px;
+        border-radius: 28px;
+        font-size: 26px;
+        line-height: 1.62;
+      }
+
+      .bubble.user {
+        justify-self: end;
+        color: #3f2b0f;
+        background: rgba(255, 241, 199, 0.8);
+        border-bottom-right-radius: 10px;
+      }
+
+      .bubble.ai {
+        justify-self: start;
+        color: #26231f;
+        background: #fbf7ef;
+        border-bottom-left-radius: 10px;
+      }
+
+      .quick-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .quick-chip {
+        padding: 10px 14px;
+        border: 1px solid rgba(38, 35, 31, 0.08);
+        border-radius: 999px;
+        color: #6f685f;
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 20px;
+        font-weight: 800;
+      }
+
+      .final-layout {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+
+      .logo-lockup {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+
+      .logo-lockup span:last-child {
+        color: #26231f;
+        font-size: 42px;
+        font-weight: 900;
+      }
+
+      .final-title {
+        margin: 18px auto 0;
+        max-width: 1260px;
+      }
+
+      .final-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 22px;
+        width: 1120px;
+        margin: 12px auto 0;
+      }
+
+      .final-card {
+        min-height: 150px;
+        padding: 24px;
+      }
+
+      .final-card strong {
+        display: block;
+        color: #26231f;
+        font-size: 28px;
+        font-weight: 900;
+      }
+
+      .final-card span {
+        display: block;
+        margin-top: 10px;
+        color: #6f685f;
+        font-size: 20px;
+        line-height: 1.45;
+      }
+
+      #wipe {
+        position: absolute;
+        inset: 0;
+        z-index: 80;
+        width: 1920px;
+        height: 1080px;
+        background: #fff1c7;
+        transform: scaleX(0);
+        transform-origin: left center;
+        pointer-events: none;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="life-sample-library-intro"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="60"
+    >
+      <section id="scene1" class="scene s1">
+        <span class="soft-orb" data-layout-ignore style="left: -140px; top: -180px;"></span>
+        <span class="soft-orb" data-layout-ignore style="right: -210px; bottom: -210px;"></span>
+        <span class="ambient-line" data-layout-ignore style="left: 112px; bottom: 246px; width: 820px;"></span>
+        <span class="field-word" data-word="样本" data-layout-ignore style="right: 112px; top: 96px;"></span>
+        <div class="scene-content home-layout">
+          <div class="home-copy">
+            <div class="brand-pill"><span class="brand-mark" aria-hidden="true"></span><span style="margin-left: 12px;">人生样本库</span></div>
+            <h1 class="headline">有什么让你纠结了很久的事？越具体越好</h1>
+            <div class="question-card">
+              <p class="prompt-line">不工作了之后，我想去新西兰生活</p>
+              <span class="send-dot">→</span>
+            </div>
+            <p class="subline">从一个真实问题开始，去看见别人已经走过的路。</p>
+          </div>
+        </div>
+        <div class="peep-cluster">
+          <img class="peep" src="assets/mirofish-character-svgs/s1-peep-ahe.svg" alt="" />
+          <img class="peep" src="assets/mirofish-character-svgs/s1-peep-mia.svg" alt="" />
+          <img class="peep" src="assets/mirofish-character-svgs/s1-peep-yu.svg" alt="" />
+        </div>
+      </section>
+
+      <section id="scene2" class="scene s2">
+        <span class="soft-orb" data-layout-ignore style="left: 1260px; top: -230px;"></span>
+        <span class="ambient-dot" data-layout-ignore style="left: 260px; top: 210px;"></span>
+        <span class="ambient-dot" data-layout-ignore style="left: 1520px; bottom: 170px;"></span>
+        <span class="field-word" data-word="不是答案" data-layout-ignore style="left: 90px; bottom: 78px;"></span>
+        <div class="scene-content" style="justify-content: center;">
+          <span class="section-label">产品边界</span>
+          <h2 class="scene-title">不替你做人生决定。</h2>
+          <p class="scene-subtitle">它只把公开经历整理成可比较的路径，让你用别人的真实代价校准自己的下一步。</p>
+          <div class="contrast-grid">
+            <article class="contrast-card">
+              <strong>少一点标准答案</strong>
+              <p>不诊断你是谁，也不承诺哪条路一定正确。</p>
+            </article>
+            <article class="contrast-card good">
+              <strong>多一点走过的人</strong>
+              <p>每个建议都回到公开内容、来源片段和可检查证据。</p>
+            </article>
+          </div>
+          <p class="boundary-note">固定原则：表达可以有人味，事实不能拟人化。</p>
+        </div>
+      </section>
+
+      <section id="scene3" class="scene s3">
+        <span class="soft-orb" data-layout-ignore style="left: -180px; bottom: -160px;"></span>
+        <span class="ambient-line" data-layout-ignore style="right: 120px; top: 166px; width: 630px;"></span>
+        <span class="field-word" data-word="Agent" data-layout-ignore style="right: 120px; bottom: 84px;"></span>
+        <div class="scene-content workflow-layout">
+          <span class="scene-eyebrow">可见 Agent 流程</span>
+          <h2 class="scene-title" style="font-size: 74px;">先读懂问题，再匹配公开经历。</h2>
+          <div class="search-shell paper-panel">
+            <div class="query-stack">
+              <span class="query-pill">用户问题</span>
+              <div class="query-box">不工作了之后，我想去新西兰生活</div>
+              <span class="agent-line" data-layout-ignore></span>
+              <span class="status-chip">正在寻找可能与你有相似经历的知友……</span>
+            </div>
+            <div class="steps-grid">
+              <article class="step-card">
+                <span class="step-number">01</span>
+                <div><strong>读取问题</strong><span>保留用户的具体语境，而不是抽成关键词。</span></div>
+              </article>
+              <article class="step-card">
+                <span class="step-number">02</span>
+                <div><strong>识别核心变量</strong><span>暂停工作、现金流、身份周期、工作边界。</span></div>
+              </article>
+              <article class="step-card">
+                <span class="step-number">03</span>
+                <div><strong>生成待确认问题</strong><span>短暂停靠、长期迁移，还是重建生活节奏？</span></div>
+              </article>
+              <article class="step-card">
+                <span class="step-number">04</span>
+                <div><strong>匹配公开经历</strong><span>从知乎公开内容里寻找走过相似路的人。</span></div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene4" class="scene s4">
+        <span class="soft-orb" data-layout-ignore style="right: -170px; top: -220px;"></span>
+        <span class="ambient-line" data-layout-ignore style="left: 118px; top: 824px; width: 1320px;"></span>
+        <span class="field-word" data-word="路径" data-layout-ignore style="left: 94px; top: 84px;"></span>
+        <div class="scene-content paths-layout">
+          <span class="scene-eyebrow">路径卡橱窗</span>
+          <h2 class="scene-title" style="font-size: 70px; max-width: 1500px;">关于「不工作了之后，我想去新西兰生活」，TA 们是这样做的。</h2>
+          <div class="path-showcase">
+            <article class="path-card">
+              <span class="path-index">01</span>
+              <h3>先去一年试生活</h3>
+              <span class="path-count">128 人走过</span>
+              <p>先用一年确认：新西兰是答案，还是一次暂停。</p>
+              <span class="avatar-row"><img src="assets/mirofish-character-svgs/s4-trial-yu.svg" alt="" /><img src="assets/mirofish-character-svgs/s4-trial-ahe.svg" alt="" /></span>
+            </article>
+            <article class="path-card">
+              <span class="path-index">02</span>
+              <h3>留学转工签</h3>
+              <span class="path-count">76 人走过</span>
+              <p>用读书进入就业市场，把想留下变成长期尝试。</p>
+              <span class="avatar-row"><img src="assets/mirofish-character-svgs/s4-study-chen.svg" alt="" /><img src="assets/mirofish-character-svgs/s4-study-mia.svg" alt="" /></span>
+            </article>
+            <article class="path-card">
+              <span class="path-index">03</span>
+              <h3>去了又回来</h3>
+              <span class="path-count">61 人走过</span>
+              <p>认真试过以后，发现要解决的问题不一定在远方。</p>
+              <span class="avatar-row"><img src="assets/mirofish-character-svgs/s4-return-ahe.svg" alt="" /><img src="assets/mirofish-character-svgs/s4-return-lin.svg" alt="" /></span>
+            </article>
+            <article class="path-card">
+              <span class="path-index">04</span>
+              <h3>技术迁移留下来</h3>
+              <span class="path-count">54 人走过</span>
+              <p>把已有职业技能迁移到当地岗位，换稳定可能。</p>
+              <span class="avatar-row"><img src="assets/mirofish-character-svgs/s4-tech-lin.svg" alt="" /><img src="assets/mirofish-character-svgs/s4-tech-chen.svg" alt="" /></span>
+            </article>
+            <article class="path-card">
+              <span class="path-index">05</span>
+              <h3>远程工作旅居</h3>
+              <span class="path-count">43 人走过</span>
+              <p>带着收入换生活半径，不急着移民也不完全停工。</p>
+              <span class="avatar-row"><img src="assets/mirofish-character-svgs/s4-remote-mia.svg" alt="" /><img src="assets/mirofish-character-svgs/s4-remote-yu.svg" alt="" /></span>
+            </article>
+          </div>
+          <span class="count-strip">路径不是排名，是可比较的人生样本。</span>
+        </div>
+      </section>
+
+      <section id="scene5" class="scene s5">
+        <span class="soft-orb" data-layout-ignore style="left: 1060px; bottom: -230px;"></span>
+        <span class="field-word" data-word="人物" data-layout-ignore style="left: 100px; bottom: 90px;"></span>
+        <div class="scene-content samples-layout">
+          <span class="scene-eyebrow">人物样本</span>
+          <h2 class="scene-title" style="font-size: 72px;">点开一条路径，看见走到这里的人。</h2>
+          <div class="sample-stage">
+            <div class="sample-person" style="left: 86px;"><img class="peep" src="assets/mirofish-character-svgs/s5-yu.svg" alt="" /><span class="caption">小雨 · WHV 一年</span></div>
+            <div class="sample-person" style="left: 286px;"><img class="peep" src="assets/mirofish-character-svgs/s5-mia.svg" alt="" /><span class="caption">Mia · 远程工作</span></div>
+            <div class="sample-person" style="left: 486px;"><img class="peep" src="assets/mirofish-character-svgs/s5-lin.svg" alt="" /><span class="caption">林川 · 技术迁移</span></div>
+            <div class="sample-person" style="left: 686px;"><img class="peep" src="assets/mirofish-character-svgs/s5-chen.svg" alt="" /><span class="caption">陈沐 · 留学转工签</span></div>
+            <article class="profile-card">
+              <h3>阿禾</h3>
+              <p class="role">去奥克兰 9 个月后回国</p>
+              <ul class="match-list">
+                <li>都在“不想继续工作”的状态下想去新西兰。</li>
+                <li>都不确定这是长期迁移，还是一次暂停。</li>
+                <li>都需要面对身份、收入和下一步职业路径。</li>
+              </ul>
+              <div class="timeline-list">
+                <div class="timeline-row"><b>2022.05</b><span>前往新西兰</span></div>
+                <div class="timeline-row"><b>2022.12</b><span>发现身份和收入压力超预期</span></div>
+                <div class="timeline-row"><b>2023.02</b><span>回国，在成都重新开始</span></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene6" class="scene s6">
+        <span class="soft-orb" data-layout-ignore style="left: -180px; top: -190px;"></span>
+        <span class="ambient-dot" data-layout-ignore style="right: 252px; top: 208px;"></span>
+        <span class="field-word" data-word="证据" data-layout-ignore style="right: 110px; bottom: 74px;"></span>
+        <div class="scene-content reader-layout">
+          <span class="scene-eyebrow">公开内容与证据</span>
+          <h2 class="scene-title" style="font-size: 70px;">每一次总结，都要回到来源。</h2>
+          <div class="reader-row">
+            <article class="reader">
+              <h3>我去了新西兰 9 个月，最后还是回来了</h3>
+              <p class="reader-meta">阿禾 · 知乎回答 / 文章 · 公开内容片段</p>
+              <p>到了新西兰才知道，离开只会把问题挪到一个更安静的地方。真正站到前面的，是收入、身份、语言、租房和下一步职业。</p>
+            </article>
+            <div class="evidence-stack">
+              <article class="evidence-card"><strong>source</strong><span>公开知乎内容，不使用 OAuth 资料当证据。</span></article>
+              <article class="evidence-card"><strong>evidence</strong><span>卡片、匹配理由和回答都绑定来源片段。</span></article>
+              <article class="evidence-card"><strong>guard</strong><span>证据不足时，入口降级而不是补写剧情。</span></article>
+              <p class="guard-note">AI 只负责整理和表达，不负责编造作者经历。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene7" class="scene s7">
+        <span class="soft-orb" data-layout-ignore style="right: -210px; bottom: -220px;"></span>
+        <span class="ambient-line" data-layout-ignore style="left: 220px; top: 154px; width: 960px;"></span>
+        <span class="field-word" data-word="回声" data-layout-ignore style="left: 88px; bottom: 82px;"></span>
+        <div class="scene-content" style="justify-content: center;">
+          <span class="scene-eyebrow">经验分身</span>
+          <h2 class="scene-title" style="font-size: 70px;">证据足够时，可以继续追问这段公开经历。</h2>
+          <div class="chat-layout-scene">
+            <aside class="chat-side">
+              <img class="peep" src="assets/mirofish-character-svgs/s7-ahe.svg" alt="" />
+              <h3>阿禾的经验回声</h3>
+              <p>基于公开内容生成，不代表作者本人实时回应。</p>
+              <p class="disclaimer">边界始终可见：这不是私信，也不是本人在线。</p>
+            </aside>
+            <section class="chat-panel">
+              <h3 class="chat-headline">继续理解这段路</h3>
+              <div class="bubble-stack">
+                <div class="bubble user">刚到新西兰前三个月，最大的现实落差是什么？</div>
+                <div class="bubble ai">从公开分享看，落差主要不在风景，而在身份、收入和“我现在是谁”的空白感。</div>
+              </div>
+              <div class="quick-row">
+                <span class="quick-chip">如果重新来一次？</span>
+                <span class="quick-chip">出发前先确认什么？</span>
+                <span class="quick-chip">哪些信号说明该回流？</span>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene8" class="scene s8">
+        <span class="soft-orb final-ambient" data-layout-ignore style="left: -160px; bottom: -170px;"></span>
+        <span class="soft-orb final-ambient" data-layout-ignore style="right: -160px; top: -170px;"></span>
+        <span class="field-word final-ambient" data-word="下一步" data-layout-ignore style="left: 100px; top: 110px;"></span>
+        <div class="scene-content final-layout">
+          <div class="logo-lockup">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>人生样本库</span>
+          </div>
+          <h2 class="final-title">看见别人走过的路，再决定自己的下一步。</h2>
+          <p class="closing-line">输入一个真实困惑，得到路径、人物、来源和可追问的经验回声。</p>
+          <div class="final-grid">
+            <article class="final-card"><strong>路径</strong><span>同一个问题，拆成可比较的选择。</span></article>
+            <article class="final-card"><strong>人物</strong><span>从公开经历里找到走过的人。</span></article>
+            <article class="final-card"><strong>证据</strong><span>所有生成内容都回到 source。</span></article>
+          </div>
+        </div>
+      </section>
+
+      <div id="wipe"></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({ paused: true });
+      const wipe = "#wipe";
+
+      function paperWipe(current, next, t, color) {
+        tl.set(wipe, { backgroundColor: color, scaleX: 0, x: 0, transformOrigin: "left center" }, t);
+        tl.to(wipe, { scaleX: 1, duration: 0.42, ease: "power3.inOut" }, t);
+        tl.set(next, { visibility: "visible", opacity: 1, zIndex: 4 }, t + 0.34);
+        tl.set(current, { visibility: "hidden", opacity: 0, zIndex: 1 }, t + 0.35);
+        tl.to(wipe, { x: 1920, duration: 0.42, ease: "power2.inOut" }, t + 0.42);
+        tl.set(wipe, { scaleX: 0, x: 0 }, t + 0.86);
+      }
+
+      function enterScene1(t) {
+        tl.from("#scene1 .soft-orb", { scale: 0.82, opacity: 0, duration: 0.7, ease: "sine.out", stagger: 0.08 }, t);
+        tl.from("#scene1 .brand-pill", { y: 34, opacity: 0, duration: 0.55, ease: "power3.out" }, t + 0.12);
+        tl.from("#scene1 .headline", { y: 46, opacity: 0, duration: 0.72, ease: "expo.out" }, t + 0.26);
+        tl.from("#scene1 .question-card", { scale: 0.96, y: 38, opacity: 0, duration: 0.62, ease: "back.out(1.2)" }, t + 0.66);
+        tl.from("#scene1 .prompt-line", { x: -28, opacity: 0, duration: 0.46, ease: "power2.out" }, t + 0.9);
+        tl.from("#scene1 .send-dot", { scale: 0.72, rotation: -12, opacity: 0, duration: 0.42, ease: "back.out(1.8)" }, t + 1.08);
+        tl.from("#scene1 .subline", { y: 24, opacity: 0, duration: 0.48, ease: "sine.out" }, t + 1.26);
+        tl.from("#scene1 .peep-cluster img", { y: 74, scale: 0.88, opacity: 0, duration: 0.62, ease: "power4.out", stagger: 0.1 }, t + 1.02);
+      }
+
+      function enterScene2(t) {
+        tl.from("#scene2 .soft-orb, #scene2 .ambient-dot, #scene2 .field-word", { scale: 0.9, opacity: 0, duration: 0.6, ease: "sine.out", stagger: 0.06 }, t);
+        tl.from("#scene2 .section-label", { x: -32, opacity: 0, duration: 0.45, ease: "power2.out" }, t + 0.12);
+        tl.from("#scene2 .scene-title", { y: 42, opacity: 0, duration: 0.64, ease: "expo.out" }, t + 0.24);
+        tl.from("#scene2 .scene-subtitle", { y: 26, opacity: 0, duration: 0.5, ease: "sine.out" }, t + 0.5);
+        tl.from("#scene2 .contrast-card:first-child", { x: -44, opacity: 0, duration: 0.5, ease: "power3.out" }, t + 0.78);
+        tl.from("#scene2 .contrast-card.good", { x: 44, opacity: 0, duration: 0.5, ease: "back.out(1.1)" }, t + 0.92);
+        tl.from("#scene2 .boundary-note", { scale: 0.98, y: 22, opacity: 0, duration: 0.46, ease: "power2.out" }, t + 1.24);
+      }
+
+      function enterScene3(t) {
+        tl.from("#scene3 .soft-orb, #scene3 .ambient-line, #scene3 .field-word", { opacity: 0, scale: 0.92, duration: 0.55, ease: "sine.out", stagger: 0.06 }, t);
+        tl.from("#scene3 .scene-eyebrow", { x: -30, opacity: 0, duration: 0.42, ease: "power2.out" }, t + 0.12);
+        tl.from("#scene3 .scene-title", { y: 38, opacity: 0, duration: 0.58, ease: "expo.out" }, t + 0.24);
+        tl.from("#scene3 .search-shell", { scale: 0.97, y: 34, opacity: 0, duration: 0.58, ease: "power3.out" }, t + 0.56);
+        tl.from("#scene3 .query-pill", { x: -24, opacity: 0, duration: 0.36, ease: "sine.out" }, t + 0.74);
+        tl.from("#scene3 .query-box", { y: 22, opacity: 0, duration: 0.42, ease: "back.out(1.1)" }, t + 0.86);
+        tl.from("#scene3 .agent-line", { scaleX: 0, opacity: 0, duration: 0.5, ease: "power2.inOut", transformOrigin: "left center" }, t + 1.12);
+        tl.from("#scene3 .status-chip", { y: 16, opacity: 0, duration: 0.36, ease: "power3.out" }, t + 1.28);
+        tl.from("#scene3 .step-card", { x: 44, opacity: 0, duration: 0.44, ease: "expo.out", stagger: 0.14 }, t + 0.92);
+      }
+
+      function enterScene4(t) {
+        tl.from("#scene4 .soft-orb, #scene4 .ambient-line, #scene4 .field-word", { opacity: 0, scale: 0.9, duration: 0.58, ease: "sine.out", stagger: 0.05 }, t);
+        tl.from("#scene4 .scene-eyebrow", { x: -28, opacity: 0, duration: 0.42, ease: "power2.out" }, t + 0.12);
+        tl.from("#scene4 .scene-title", { y: 34, opacity: 0, duration: 0.56, ease: "expo.out" }, t + 0.26);
+        tl.from("#scene4 .path-card", { y: 58, scale: 0.96, opacity: 0, duration: 0.56, ease: "back.out(1.1)", stagger: 0.09 }, t + 0.72);
+        tl.from("#scene4 .path-index", { scale: 0.7, rotation: -8, opacity: 0, duration: 0.38, ease: "back.out(1.8)", stagger: 0.09 }, t + 0.88);
+        tl.from("#scene4 .avatar-row img", { y: 18, opacity: 0, duration: 0.34, ease: "power2.out", stagger: 0.04 }, t + 1.38);
+        tl.from("#scene4 .count-strip", { y: 20, opacity: 0, duration: 0.4, ease: "sine.out" }, t + 1.72);
+      }
+
+      function enterScene5(t) {
+        tl.from("#scene5 .soft-orb, #scene5 .field-word", { opacity: 0, scale: 0.9, duration: 0.58, ease: "sine.out", stagger: 0.06 }, t);
+        tl.from("#scene5 .scene-eyebrow", { x: -28, opacity: 0, duration: 0.42, ease: "power2.out" }, t + 0.12);
+        tl.from("#scene5 .scene-title", { y: 36, opacity: 0, duration: 0.58, ease: "expo.out" }, t + 0.26);
+        tl.from("#scene5 .sample-stage", { scale: 0.97, y: 34, opacity: 0, duration: 0.58, ease: "power3.out" }, t + 0.58);
+        tl.from("#scene5 .sample-person", { y: 64, scale: 0.9, opacity: 0, duration: 0.52, ease: "back.out(1.2)", stagger: 0.12 }, t + 0.9);
+        tl.from("#scene5 .profile-card", { x: 56, opacity: 0, duration: 0.54, ease: "expo.out" }, t + 1.18);
+        tl.from("#scene5 .match-list li", { x: 22, opacity: 0, duration: 0.34, ease: "power2.out", stagger: 0.08 }, t + 1.48);
+        tl.from("#scene5 .timeline-row", { x: 22, opacity: 0, duration: 0.34, ease: "sine.out", stagger: 0.07 }, t + 1.76);
+      }
+
+      function enterScene6(t) {
+        tl.from("#scene6 .soft-orb, #scene6 .ambient-dot, #scene6 .field-word", { opacity: 0, scale: 0.9, duration: 0.58, ease: "sine.out", stagger: 0.06 }, t);
+        tl.from("#scene6 .scene-eyebrow", { x: -28, opacity: 0, duration: 0.42, ease: "power2.out" }, t + 0.12);
+        tl.from("#scene6 .scene-title", { y: 36, opacity: 0, duration: 0.58, ease: "expo.out" }, t + 0.26);
+        tl.from("#scene6 .reader", { x: -44, y: 18, opacity: 0, duration: 0.58, ease: "power3.out" }, t + 0.62);
+        tl.from("#scene6 .reader h3", { y: 24, opacity: 0, duration: 0.42, ease: "expo.out" }, t + 0.84);
+        tl.from("#scene6 .reader-meta", { y: 16, opacity: 0, duration: 0.32, ease: "sine.out" }, t + 1.02);
+        tl.from("#scene6 .reader p:not(.reader-meta)", { y: 22, opacity: 0, duration: 0.42, ease: "power2.out" }, t + 1.16);
+        tl.from("#scene6 .evidence-card", { x: 42, opacity: 0, duration: 0.44, ease: "back.out(1.1)", stagger: 0.1 }, t + 0.82);
+        tl.from("#scene6 .guard-note", { y: 20, opacity: 0, duration: 0.4, ease: "power3.out" }, t + 1.36);
+      }
+
+      function enterScene7(t) {
+        tl.from("#scene7 .soft-orb, #scene7 .ambient-line, #scene7 .field-word", { opacity: 0, scale: 0.92, duration: 0.58, ease: "sine.out", stagger: 0.06 }, t);
+        tl.from("#scene7 .scene-eyebrow", { x: -28, opacity: 0, duration: 0.42, ease: "power2.out" }, t + 0.12);
+        tl.from("#scene7 .scene-title", { y: 34, opacity: 0, duration: 0.58, ease: "expo.out" }, t + 0.26);
+        tl.from("#scene7 .chat-side", { x: -42, opacity: 0, duration: 0.52, ease: "power3.out" }, t + 0.66);
+        tl.from("#scene7 .chat-side img", { scale: 0.86, y: 36, opacity: 0, duration: 0.48, ease: "back.out(1.3)" }, t + 0.86);
+        tl.from("#scene7 .chat-panel", { x: 42, opacity: 0, duration: 0.52, ease: "expo.out" }, t + 0.78);
+        tl.from("#scene7 .chat-headline", { y: 18, opacity: 0, duration: 0.36, ease: "sine.out" }, t + 1.02);
+        tl.from("#scene7 .bubble", { y: 28, opacity: 0, duration: 0.44, ease: "power2.out", stagger: 0.2 }, t + 1.2);
+        tl.from("#scene7 .quick-chip", { scale: 0.9, opacity: 0, duration: 0.32, ease: "back.out(1.5)", stagger: 0.06 }, t + 1.76);
+        tl.from("#scene7 .disclaimer", { y: 18, opacity: 0, duration: 0.36, ease: "power3.out" }, t + 1.58);
+      }
+
+      function enterScene8(t) {
+        tl.from("#scene8 .final-ambient", { opacity: 0, scale: 0.9, duration: 0.62, ease: "sine.out", stagger: 0.06 }, t);
+        tl.from("#scene8 .logo-lockup", { y: 28, opacity: 0, duration: 0.48, ease: "power3.out" }, t + 0.14);
+        tl.from("#scene8 .final-title", { y: 42, opacity: 0, duration: 0.68, ease: "expo.out" }, t + 0.34);
+        tl.from("#scene8 .closing-line", { y: 24, opacity: 0, duration: 0.46, ease: "sine.out" }, t + 0.82);
+        tl.from("#scene8 .final-card", { y: 30, scale: 0.97, opacity: 0, duration: 0.45, ease: "back.out(1.1)", stagger: 0.08 }, t + 1.08);
+      }
+
+      enterScene1(0.18);
+      paperWipe("#scene1", "#scene2", 6.45, "#fff1c7");
+      enterScene2(7.0);
+      paperWipe("#scene2", "#scene3", 13.45, "#e6f1ec");
+      enterScene3(14.0);
+      paperWipe("#scene3", "#scene4", 21.45, "#fff1c7");
+      enterScene4(22.0);
+      paperWipe("#scene4", "#scene5", 30.35, "#fffdf8");
+      enterScene5(31.0);
+      paperWipe("#scene5", "#scene6", 39.35, "#e6f1ec");
+      enterScene6(40.0);
+      paperWipe("#scene6", "#scene7", 47.3, "#fff1c7");
+      enterScene7(48.0);
+      paperWipe("#scene7", "#scene8", 54.65, "#fffdf8");
+      enterScene8(55.25);
+
+      tl.to(".soft-orb", { x: 26, y: -18, scale: 1.04, duration: 5.8, ease: "sine.inOut", yoyo: true, repeat: 9 }, 0.2);
+      tl.to(".ambient-line", { x: 38, scaleX: 1.05, duration: 4.6, ease: "sine.inOut", yoyo: true, repeat: 11, transformOrigin: "left center" }, 0.4);
+      tl.to(".ambient-dot", { y: -22, scale: 1.18, duration: 3.8, ease: "sine.inOut", yoyo: true, repeat: 14 }, 0.6);
+      tl.to("#scene3 .agent-line", { scaleX: 1.12, duration: 0.82, ease: "sine.inOut", yoyo: true, repeat: 6, transformOrigin: "left center" }, 15.25);
+      tl.to("#scene5 .sample-person", { y: -10, duration: 1.8, ease: "sine.inOut", yoyo: true, repeat: 3, stagger: 0.08 }, 32.2);
+      tl.to("#scene7 .bubble.ai", { scale: 1.018, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: 2 }, 50.1);
+      tl.to("#scene8 .scene-content, #scene8 .final-ambient", { opacity: 0, duration: 0.55, ease: "sine.inOut" }, 59.32);
+
+      window.__timelines["life-sample-library-intro"] = tl;
+    </script>
+  </body>
+</html>
