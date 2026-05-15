@@ -60,8 +60,8 @@
       .stage {
         position: relative;
         width: 100vw;
-        height: calc(100vh - 112px);
-        min-height: 620px;
+        height: 100vh;
+        min-height: 680px;
         overflow: hidden;
       }
 
@@ -760,89 +760,6 @@
         line-height: 1.45;
       }
 
-      .controls {
-        position: fixed;
-        left: 50%;
-        bottom: 18px;
-        z-index: 30;
-        display: grid;
-        grid-template-columns: auto auto auto minmax(240px, 520px) auto;
-        gap: 14px;
-        align-items: center;
-        width: min(1180px, calc(100vw - 36px));
-        padding: 16px 18px;
-        border: 1px solid rgba(38, 35, 31, 0.1);
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.9);
-        box-shadow: 0 16px 48px rgba(52, 43, 32, 0.12);
-        transform: translateX(-50%);
-        backdrop-filter: blur(16px);
-      }
-
-      .icon-button {
-        display: grid;
-        place-items: center;
-        width: 44px;
-        height: 44px;
-        border: 1px solid rgba(216, 154, 69, 0.28);
-        border-radius: 50%;
-        color: #3f2b0f;
-        background: var(--warm-soft);
-        font-size: 18px;
-        font-weight: 900;
-      }
-
-      .timeline {
-        display: grid;
-        gap: 8px;
-      }
-
-      .time-row {
-        display: flex;
-        justify-content: space-between;
-        color: var(--muted);
-        font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-        font-size: 12px;
-      }
-
-      input[type="range"] {
-        width: 100%;
-        accent-color: var(--warm);
-      }
-
-      .scene-tabs {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 6px;
-      }
-
-      .scene-tab {
-        min-height: 34px;
-        padding: 7px 10px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        color: var(--muted);
-        background: transparent;
-        font-size: 12px;
-        font-weight: 850;
-      }
-
-      .scene-tab.is-active {
-        color: #3f2b0f;
-        border-color: rgba(216, 154, 69, 0.36);
-        background: var(--warm-soft);
-      }
-
-      .top-note {
-        position: fixed;
-        top: 18px;
-        right: 22px;
-        z-index: 32;
-        color: rgba(111, 104, 95, 0.84);
-        font-size: 13px;
-      }
-
       @media (max-width: 980px) {
         body {
           overflow: auto;
@@ -855,7 +772,7 @@
 
         .scene-content {
           width: min(100% - 32px, 720px);
-          padding: 84px 0 150px;
+          padding: 72px 0;
         }
 
         .workflow,
@@ -875,20 +792,11 @@
           display: none;
         }
 
-        .controls {
-          grid-template-columns: auto auto 1fr;
-        }
-
-        .scene-tabs {
-          grid-column: 1 / -1;
-          justify-content: flex-start;
-        }
       }
     </style>
   </head>
   <body>
     <main class="app">
-      <span class="top-note">Space 播放/暂停 · ←/→ 切换场景</span>
       <section class="stage" aria-live="polite">
         <article class="scene is-active" data-title="开场">
           <span class="ghost" style="right: 8vw; top: 10vh;">样本</span>
@@ -1035,28 +943,13 @@
         </article>
       </section>
 
-      <nav class="controls" aria-label="演示控制">
-        <button class="icon-button" type="button" id="prevBtn" aria-label="上一幕">‹</button>
-        <button class="icon-button" type="button" id="playBtn" aria-label="播放或暂停">▶</button>
-        <button class="icon-button" type="button" id="nextBtn" aria-label="下一幕">›</button>
-        <div class="timeline">
-          <input id="progress" type="range" min="0" max="60" step="0.1" value="0" aria-label="进度" />
-          <div class="time-row"><span id="timeNow">00:00</span><span>01:00</span></div>
-        </div>
-        <div class="scene-tabs" id="sceneTabs"></div>
-      </nav>
     </main>
 
     <script>
       const duration = 60;
       const sceneStarts = [0, 7, 14, 22, 31, 40, 48, 55];
       const sceneEls = Array.from(document.querySelectorAll(".scene"));
-      const progress = document.getElementById("progress");
-      const playBtn = document.getElementById("playBtn");
-      const prevBtn = document.getElementById("prevBtn");
-      const nextBtn = document.getElementById("nextBtn");
-      const timeNow = document.getElementById("timeNow");
-      const sceneTabs = document.getElementById("sceneTabs");
+      const stage = document.querySelector(".stage");
       const pathGrid = document.getElementById("pathGrid");
       const peopleRow = document.getElementById("peopleRow");
       const personPanel = document.getElementById("personPanel");
@@ -1088,13 +981,6 @@
         return `assets/mirofish-character-svgs/${name}`;
       }
 
-      function formatTime(value) {
-        const total = Math.max(0, Math.min(duration, Math.round(value)));
-        const minutes = Math.floor(total / 60);
-        const seconds = total % 60;
-        return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-      }
-
       function sceneForTime(value) {
         let index = 0;
         for (let i = 0; i < sceneStarts.length; i += 1) {
@@ -1106,14 +992,11 @@
       function setScene(index, options = {}) {
         activeScene = Math.max(0, Math.min(sceneEls.length - 1, index));
         sceneEls.forEach((scene, i) => scene.classList.toggle("is-active", i === activeScene));
-        document.querySelectorAll(".scene-tab").forEach((tab, i) => tab.classList.toggle("is-active", i === activeScene));
         if (options.seek !== false) setTime(sceneStarts[activeScene], { syncScene: false });
       }
 
       function setTime(value, options = {}) {
         currentTime = Math.max(0, Math.min(duration, value));
-        progress.value = currentTime.toFixed(1);
-        timeNow.textContent = formatTime(currentTime);
         const nextScene = sceneForTime(currentTime);
         if (options.syncScene !== false && nextScene !== activeScene) setScene(nextScene, { seek: false });
       }
@@ -1124,7 +1007,6 @@
           setTime(currentTime + delta);
           if (currentTime >= duration) {
             playing = false;
-            playBtn.textContent = "▶";
           }
         }
         lastTick = now;
@@ -1134,14 +1016,7 @@
       function togglePlay() {
         playing = !playing;
         if (playing && currentTime >= duration) setTime(0);
-        playBtn.textContent = playing ? "Ⅱ" : "▶";
         lastTick = performance.now();
-      }
-
-      function renderTabs() {
-        sceneTabs.innerHTML = sceneEls
-          .map((scene, index) => `<button class="scene-tab ${index === activeScene ? "is-active" : ""}" type="button" data-scene="${index}">${index + 1}. ${scene.dataset.title}</button>`)
-          .join("");
       }
 
       function renderPaths() {
@@ -1184,26 +1059,36 @@
         `;
       }
 
-      renderTabs();
+      function isFullscreen() {
+        return document.fullscreenElement || document.webkitFullscreenElement;
+      }
+
+      async function toggleFullscreen() {
+        try {
+          if (isFullscreen()) {
+            const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exitFullscreen) await exitFullscreen.call(document);
+          } else {
+            const requestFullscreen = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+            if (requestFullscreen) await requestFullscreen.call(document.documentElement);
+          }
+        } catch (error) {
+          // Some browsers reject fullscreen outside direct user gestures.
+        }
+      }
+
       renderPaths();
       renderPeople();
       setTime(0);
       rafId = requestAnimationFrame(tick);
 
-      playBtn.addEventListener("click", togglePlay);
-      prevBtn.addEventListener("click", () => setScene(activeScene - 1));
-      nextBtn.addEventListener("click", () => setScene(activeScene + 1));
-      progress.addEventListener("input", (event) => {
-        playing = false;
-        playBtn.textContent = "▶";
-        setTime(Number(event.target.value));
+      stage.addEventListener("click", (event) => {
+        if (event.target.closest("button")) return;
+        togglePlay();
       });
-      sceneTabs.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-scene]");
-        if (!button) return;
-        playing = false;
-        playBtn.textContent = "▶";
-        setScene(Number(button.dataset.scene));
+      stage.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        toggleFullscreen();
       });
       pathGrid.addEventListener("click", (event) => {
         const button = event.target.closest("[data-path]");
@@ -1222,8 +1107,20 @@
           event.preventDefault();
           togglePlay();
         }
-        if (event.key === "ArrowRight") setScene(activeScene + 1);
-        if (event.key === "ArrowLeft") setScene(activeScene - 1);
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          playing = false;
+          setScene(activeScene + 1);
+        }
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          playing = false;
+          setScene(activeScene - 1);
+        }
+        if (event.key.toLowerCase() === "f") {
+          event.preventDefault();
+          toggleFullscreen();
+        }
       });
       window.addEventListener("beforeunload", () => cancelAnimationFrame(rafId));
     </script>

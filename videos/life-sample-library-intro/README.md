@@ -31,6 +31,8 @@ npx hyperframes render --output renders/life-sample-library-intro.mp4 --quality 
 
 `index.html` 是 HyperFrames 视频源文件，直接用 `file://` 打开不会播放 timeline。需要预览动画时用 HyperFrames Studio；需要普通浏览器交互演示时打开 `interactive.html`。
 
+`interactive.html` 默认是大屏放映模式，不显示底部控制条：空格播放/暂停，点击空白处播放/暂停，左右方向键切换场景，`F` 或双击进入/退出全屏。
+
 ## 本次验证
 
 - `npx --yes hyperframes lint .`: 0 errors，1 warning（单文件较大，当前作为单 composition 交付保留）。
