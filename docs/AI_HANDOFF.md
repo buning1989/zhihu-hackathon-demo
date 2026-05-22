@@ -1,5 +1,21 @@
 # AI Handoff
 
+## 2026-05-22 - Frontend v2 architecture constraints
+
+本轮目标：执行 GitHub Issue #2，只更新前端 v2 架构约束和 Codex 执行说明，不开始前端实现，不修改后端代码。
+
+已完成：
+
+- 新增 `docs/frontend/frontend-v2-architecture.md`，明确前端 v2 验证版采用原生 HTML/CSS/JS 模块化，不继续堆单文件 `frontend/index.html`，暂不引入 React / Vue / Vite。
+- 新增 `docs/tasks/frontend-v2-refactor-codex.md`，记录后续 Codex 执行前端 v2 重构时的目标、范围、推荐结构、产品主链路、架构约束、禁止事项和验收方式。
+- 明确本阶段使用 mock 登录和 mock AI 分身回复，不接真实 OAuth、真实 LLM、`/api/demo/search` 或 `/api/personas/chat`。
+- 明确本轮不修改 `backend/`，不重构 `frontend/` 实现代码。
+
+验证记录：
+
+- `git diff --check` 通过。
+- `npm run build -w backend` 通过。
+
 ## 2026-05-14 - Visible persistent Agent product loop
 
 本轮目标：把已完成的持久化 Agent Runtime 接到用户可见前端，让页面不再只跑旧内存 Agent 或快速搜索，而是创建 Postgres task、入 Redis 队列、由独立 worker 执行 7 阶段 workflow，并轮询展示最终结果。
