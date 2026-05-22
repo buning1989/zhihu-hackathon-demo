@@ -48,6 +48,8 @@ const EVAL_QUERIES = [
 ];
 const queryLimit = readPositiveInteger(process.env.EVAL_AGENT_PRODUCTION_LIMIT, EVAL_QUERIES.length);
 const failOnFailed = readBoolean(process.env.EVAL_AGENT_PRODUCTION_FAIL_ON_FAILED, false);
+const freshRun = readBoolean(process.env.EVAL_AGENT_PRODUCTION_FRESH, false);
+const evalRunId = process.env.EVAL_AGENT_PRODUCTION_RUN_ID || `eval_${Date.now().toString(36)}`;
 const evalQueries = EVAL_QUERIES.slice(0, Math.min(queryLimit, EVAL_QUERIES.length));
 
 const rows = [];
@@ -131,9 +133,12 @@ async function createTask(query, index) {
     body: JSON.stringify({
       query,
       metadata: {
-        source: "agent_production_eval",
+        source: freshRun ? `agent_production_eval_${evalRunId}` : "agent_production_eval",
         createdBy: "backend/scripts/eval-agent-production.mjs",
-        anonymousId: `agent_production_eval_${index + 1}`
+        ...(freshRun ? { evalRunId } : {}),
+        anonymousId: freshRun
+          ? `agent_production_eval_${evalRunId}_${index + 1}`
+          : `agent_production_eval_${index + 1}`
       }
     })
   });
@@ -202,11 +207,24 @@ function buildEvalRow({ item, started, status, debug, requestDurationMs }) {
     selectedForEvidenceCount: readNumber(candidateSummary.selectedForEvidenceCount, 0),
     evidenceCount: readNumber(evidenceSummary.evidenceCount, 0),
     experienceEvidenceCount: readNumber(evidenceSummary.experienceEvidenceCount, 0),
+    evidenceChunkCount: readNumber(evidenceSummary.chunkCount, 0),
+    evidenceChunkSuccessCount: readNumber(evidenceSummary.chunkSuccessCount, 0),
+    evidenceChunkFailureCount: readNumber(evidenceSummary.chunkFailureCount, 0),
+    evidenceRepairCount: readNumber(evidenceSummary.repairCount, 0),
+    evidenceRetryCount: readNumber(evidenceSummary.retryCount, 0),
+    evidenceChunkFailureReasons: Array.isArray(evidenceSummary.chunkFailureReasons)
+      ? evidenceSummary.chunkFailureReasons
+      : [],
     pathCount: readNumber(finalSummary.pathCount, 0),
     personaCount: readNumber(finalSummary.personaCount, 0),
     degraded: readBooleanValue(finalSummary.degraded),
     degradedReason: readNullableString(finalSummary.degradedReason),
     deterministicValidator: readNullableString(finalSummary.deterministicValidatorStatus),
+    llmGuardStatus: readNullableString(finalSummary.llmGuardStatus),
+    groundingWarningCount: readNumber(finalSummary.groundingWarningCount, 0),
+    groundingRemovedItemCount: readNumber(finalSummary.groundingRemovedItemCount, 0),
+    deterministicRemovedPathCount: readNumber(finalSummary.deterministicRemovedPathCount, 0),
+    deterministicRemovedPersonaCount: readNumber(finalSummary.deterministicRemovedPersonaCount, 0),
     lowQualityCandidateIdsCount: readNumber(finalSummary.lowQualityCandidateCount, 0),
     lowConfidenceEvidenceIdsCount: readNumber(finalSummary.lowConfidenceEvidenceCount, 0),
     personaWithoutExperienceEvidenceIdsCount: readNumber(
@@ -249,6 +267,12 @@ function buildFailedCreateRow(item, error, totalDurationMs) {
     selectedForEvidenceCount: 0,
     evidenceCount: 0,
     experienceEvidenceCount: 0,
+    evidenceChunkCount: 0,
+    evidenceChunkSuccessCount: 0,
+    evidenceChunkFailureCount: 0,
+    evidenceRepairCount: 0,
+    evidenceRetryCount: 0,
+    evidenceChunkFailureReasons: [],
     pathCount: 0,
     personaCount: 0,
     degraded: false,
@@ -284,6 +308,14 @@ function buildSummary(resultRows) {
       row.pathWithoutEvidenceIdsCount,
     0
   );
+  const degradedReasonCounts = countReasons(resultRows.flatMap((row) => splitReasons(row.degradedReason)));
+  const deterministicValidatorCounts = countReasons(
+    resultRows.map((row) => row.deterministicValidator).filter(Boolean)
+  );
+  const llmGuardStatusCounts = countReasons(resultRows.map((row) => row.llmGuardStatus).filter(Boolean));
+  const evidenceChunkFailureReasonCounts = countReasons(
+    resultRows.flatMap((row) => row.evidenceChunkFailureReasons ?? [])
+  );
 
   return {
     total,
@@ -292,6 +324,9 @@ function buildSummary(resultRows) {
     avgDurationMs: average(resultRows.map((row) => row.totalDurationMs)),
     avgSelectedForEvidence: average(resultRows.map((row) => row.selectedForEvidenceCount)),
     avgEvidence: average(resultRows.map((row) => row.evidenceCount)),
+    avgEvidenceChunkFailures: average(resultRows.map((row) => row.evidenceChunkFailureCount)),
+    evidenceRepairCount: resultRows.reduce((sum, row) => sum + row.evidenceRepairCount, 0),
+    evidenceRetryCount: resultRows.reduce((sum, row) => sum + row.evidenceRetryCount, 0),
     avgPaths: average(resultRows.map((row) => row.pathCount)),
     avgPersonas: average(resultRows.map((row) => row.personaCount)),
     degradedRate: ratio(resultRows.filter((row) => row.degraded).length, total),
@@ -303,6 +338,10 @@ function buildSummary(resultRows) {
     cacheHitCount: resultRows.filter((row) => row.cacheHit).length,
     reusedCount: resultRows.filter((row) => row.reused).length,
     stageCacheHitCount: resultRows.reduce((sum, row) => sum + row.stageCacheHitCount, 0),
+    degradedReasonCounts,
+    deterministicValidatorCounts,
+    llmGuardStatusCounts,
+    evidenceChunkFailureReasonCounts,
     failedTaskList: failedRows.map((row) => ({
       category: row.category,
       query: row.query,
@@ -333,6 +372,39 @@ function ratio(count, total) {
   }
 
   return roundNumber(count / total);
+}
+
+function splitReasons(value) {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      if (item.includes("JSON parse failed")) {
+        return "evidence_json_parse_failed";
+      }
+      if (item.includes("grounding_guard_repaired")) {
+        return "grounding_guard_repaired";
+      }
+      if (item.includes("deterministic_validator_repaired")) {
+        return "deterministic_validator_repaired";
+      }
+      if (item.includes("deterministic_validator_failed")) {
+        return "deterministic_validator_failed";
+      }
+      return item;
+    });
+}
+
+function countReasons(values) {
+  return values.reduce((result, value) => {
+    result[value] = (result[value] ?? 0) + 1;
+    return result;
+  }, {});
 }
 
 function roundNumber(value) {

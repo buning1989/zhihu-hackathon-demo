@@ -333,6 +333,12 @@ function summarizeEvidence(data: EvidenceArtifactData) {
     experienceEvidenceCount: experienceEvidence.length,
     lowConfidenceEvidenceIds: data.qualityReport?.lowConfidenceEvidenceIds ?? [],
     invalidCandidateEvidenceCount: data.qualityReport?.invalidCandidateEvidenceCount ?? 0,
+    chunkCount: data.qualityReport?.chunkCount ?? null,
+    chunkSuccessCount: data.qualityReport?.chunkSuccessCount ?? null,
+    chunkFailureCount: data.qualityReport?.chunkFailureCount ?? null,
+    repairCount: data.qualityReport?.repairCount ?? null,
+    retryCount: data.qualityReport?.retryCount ?? null,
+    chunkFailureReasons: data.qualityReport?.chunkFailureReasons ?? [],
     strategy: data.strategy,
     llmUsed: data.llmUsed,
     fallbackReason: data.fallbackReason ?? null,
@@ -362,6 +368,11 @@ function summarizeProductionFinalResult(data: ProductionFinalResultData) {
     degraded: data.degraded,
     degradedReason: data.degradedReason,
     deterministicValidatorStatus: data.groundingReport.deterministicValidator.status,
+    llmGuardStatus: data.groundingReport.llmGuard.status,
+    groundingWarningCount: data.groundingReport.llmGuard.warnings.length,
+    groundingRemovedItemCount: data.groundingReport.llmGuard.removedItems.length,
+    deterministicRemovedPathCount: data.groundingReport.deterministicValidator.removedPathIds.length,
+    deterministicRemovedPersonaCount: data.groundingReport.deterministicValidator.removedPersonaIds.length,
     lowQualityCandidateCount: qualityReport.lowQualityCandidateIds.length,
     lowConfidenceEvidenceCount: qualityReport.lowConfidenceEvidenceIds.length,
     personaWithoutExperienceEvidenceCount: qualityReport.personaWithoutExperienceEvidenceIds.length,
@@ -449,7 +460,9 @@ function sanitizeCacheIdentity(value: unknown): Record<string, unknown> | null {
     provider: readNullableString(value.provider),
     schemaVersion: readNullableString(value.schemaVersion),
     promptVersion: readNullableString(value.promptVersion),
-    scoringVersion: readNullableString(value.scoringVersion)
+    scoringVersion: readNullableString(value.scoringVersion),
+    evidenceExtractionVersion: readNullableString(value.evidenceExtractionVersion),
+    llm: sanitizeValue(value.llm)
   };
 }
 

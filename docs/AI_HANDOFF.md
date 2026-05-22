@@ -1,5 +1,28 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 4.1 LLM evidence stability
+
+本轮目标：只修 Phase 4.1 的真实 LLM evidence 抽取稳定性；不进入 Phase 5，不做前端 UI、信息补充卡或后台。
+
+已完成：
+
+- `evidence_extract_llm` 改为按 2 个 candidate 一片分片调用，每片最多抽 2 条 evidence，最终仍受全局 evidence 上限约束。
+- evidence prompt 改为极简 JSON，要求短 `evidenceText/excerpt/normalizedClaim`，不再要求 LLM 重复输出 title/author/sourceUrl/reason，后端按 candidate 补齐。
+- LLM 成功但片内遗漏合格 candidate 时，后端会用该 candidate 的原始 excerpt 做保守 evidence backfill；仍只覆盖已 `selectedForEvidence`、quality/relevance 过线的候选，且不突破全局 evidence 上限。
+- 片级 JSON parse/schema 失败时先尝试从 rawText 修复完整 evidence item；仍失败则该片重试一次。单片失败会落到该片 fallback evidence，不再导致整 stage fallback。
+- evidence `qualityReport` 增加 `chunkCount/chunkSuccessCount/chunkFailureCount/repairCount/retryCount/chunkFailureReasons`，debug/eval 会输出这些指标。
+- Agent cache identity 纳入 `AGENT_LLM_ENABLED`、`AGENT_LLM_TEST_MODE`、provider/model、promptVersion 和 evidence extraction version，避免 LLM off/on 或新旧 evidence prompt 复用旧结果。
+- eval runner 增加 `EVAL_AGENT_PRODUCTION_FRESH=true`，可用唯一 metadata 绕开 task reuse；summary 增加 evidence chunk failure/repair/retry 和 grounding reason 分布。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- `FRONTEND_PORT=3001 npm run smoke`
+- `AGENT_LLM_ENABLED=true AGENT_LLM_TEST_MODE=real EVAL_AGENT_PRODUCTION_FRESH=true EVAL_AGENT_PRODUCTION_TIMEOUT_MS=240000 npm run eval:agent-production -w backend`
+
+最新真实 LLM fresh eval 摘要：30/30 succeeded，`avgEvidence=3.867`、`avgPaths=2.2`、`avgPersonas=1.733`、`degradedRate=0.9`、`groundingPassedRate=0.933`、`badRefsCount=0`，evidence chunk failure/repair/retry 均为 0。剩余 degraded 主要来自 `grounding_guard_repaired`，尤其是自我低谷类问题的真实经历证据较弱。
+
 ## 2026-05-22 - Agent production Phase 4 observability eval debug loop
 
 本轮目标：只执行 Phase 4 的观测、评估、debug 最小闭环；不做完整管理后台、图表页面、前端 UI 或 Phase 5 信息补充卡。

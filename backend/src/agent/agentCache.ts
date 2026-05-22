@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { config } from "../config/env.js";
+import { AGENT_EVIDENCE_EXTRACTION_VERSION } from "./stages/evidenceExtractLlmStage.js";
 
 export const AGENT_CACHE_SCHEMA_VERSION = "agent.production.cache.v1";
 export const AGENT_SCORING_VERSION = "agent.scoring.v2.rank-normalized";
-export const AGENT_PROMPT_VERSION = "agent.prompts.v1";
+export const AGENT_PROMPT_VERSION = "agent.prompts.v4.evidence-chunked-claims-backfill";
 
 export interface AgentCacheIdentity {
   normalizedQuery: string;
@@ -13,6 +14,13 @@ export interface AgentCacheIdentity {
   schemaVersion: string;
   promptVersion: string;
   scoringVersion: string;
+  evidenceExtractionVersion: string;
+  llm: {
+    enabled: boolean;
+    testMode: string;
+    provider: string;
+    model: string;
+  };
 }
 
 export interface AgentActorIdentity {
@@ -39,7 +47,14 @@ export function buildAgentCacheIdentity(input: {
     provider,
     schemaVersion: AGENT_CACHE_SCHEMA_VERSION,
     promptVersion: AGENT_PROMPT_VERSION,
-    scoringVersion: AGENT_SCORING_VERSION
+    scoringVersion: AGENT_SCORING_VERSION,
+    evidenceExtractionVersion: AGENT_EVIDENCE_EXTRACTION_VERSION,
+    llm: {
+      enabled: config.agent.llm.enabled,
+      testMode: config.agent.llm.testMode,
+      provider: config.agent.llm.provider,
+      model: resolveAgentLlmModel()
+    }
   };
 }
 
@@ -113,6 +128,16 @@ export function getAgentCostBudget(): Record<string, number> {
 
 export function hashString(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function resolveAgentLlmModel(): string {
+  if (config.agent.llm.model) {
+    return config.agent.llm.model;
+  }
+
+  return config.agent.llm.provider === "kimi"
+    ? config.llm.kimi.model
+    : config.llm.deepseek.model;
 }
 
 function sanitizeMetadataForCache(metadata: Record<string, unknown>): Record<string, unknown> {

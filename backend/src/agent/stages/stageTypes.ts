@@ -149,6 +149,12 @@ export interface EvidenceArtifactData {
     experienceEvidenceCount: number;
     lowConfidenceEvidenceIds: string[];
     invalidCandidateEvidenceCount: number;
+    chunkCount?: number;
+    chunkSuccessCount?: number;
+    chunkFailureCount?: number;
+    repairCount?: number;
+    retryCount?: number;
+    chunkFailureReasons?: string[];
   };
   strategy: "llm_extracted" | "rule_fallback";
   llmUsed: boolean;
