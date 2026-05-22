@@ -35,8 +35,8 @@ const db = new Client({ connectionString: databaseUrl });
 
 try {
   await db.connect();
-  for (const query of queries) {
-    const started = await createTask(query);
+  for (const [index, query] of queries.entries()) {
+    const started = await createTask(query, index);
     const status = await waitForTerminalStatus(started.taskId, query);
     if (status.status !== "succeeded") {
       throw new Error(`${query}: task did not succeed: ${JSON.stringify(status.error ?? status)}`);
@@ -60,7 +60,7 @@ if (exitCode) {
   process.exit(exitCode);
 }
 
-async function createTask(query) {
+async function createTask(query, index) {
   const response = await fetch(`${apiBaseUrl}/api/agent/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -68,7 +68,8 @@ async function createTask(query) {
       query,
       metadata: {
         source: "phase2_1_real_quality_spotcheck",
-        createdBy: "backend/scripts/spotcheck-agent-production-real.mjs"
+        createdBy: "backend/scripts/spotcheck-agent-production-real.mjs",
+        anonymousId: `agent_real_spotcheck_${index + 1}`
       }
     })
   });

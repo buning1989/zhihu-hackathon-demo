@@ -1,5 +1,25 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 3 cost cache and limits
+
+本轮目标：只执行 Phase 3 的成本、缓存、限流；不进入观测后台、信息补充卡或前端 UI。
+
+已完成：
+
+- task 创建时生成 `queryCacheKey`，key 包含 normalized query、metadata hash、dataMode/provider、cache schema、promptVersion、scoringVersion；不保存 anonymousId/IP 明文。
+- 相同 `queryCacheKey` 若已有 running task，会直接返回 existing `taskId`；若有 TTL 内 succeeded task，会返回 existing result task，并标记 `cacheHit/reused`。
+- stage workflow 会复用 TTL 内的 `raw_sources`、`candidates`、`evidence` artifacts；缓存 miss 或读取失败不影响主链路。
+- 最小限流：anonymous 默认每小时 3 次、最多 1 个 active task；登录用户默认每天 20 次、最多 2 个 active task。可用环境变量 `AGENT_LIMIT_*` 放宽。
+- 单任务预算写入 task metadata，并在现有链路约束 search query、source candidates、selected evidence 和 evidence source 数量。
+- production smoke 增加 succeeded cache reuse、running task reuse 和 RATE_LIMITED 校验。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- `FRONTEND_PORT=3001 npm run smoke`
+- 有真实知乎 key 时执行 `node backend/scripts/spotcheck-agent-production-real.mjs`
+
 ## 2026-05-22 - Agent production Phase 2.1 real score normalization
 
 本轮目标：修正真实知乎搜索返回 `score` 量级过低导致 `selectedForEvidence=0` 的问题；不进入 Phase 3，不做缓存限流、后台或前端 UI。

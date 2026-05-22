@@ -53,12 +53,15 @@ const STAGE_LABELS: Record<string, string> = {
 
 export interface PersistentAgentTaskStartData {
   taskId: string;
-  status: "queued";
+  status: "queued" | "running" | "succeeded";
   frontendStatus: string;
   pollAfterMs: number;
   resultUrl: string;
-  queueStatus: "enqueued";
+  queueStatus: "enqueued" | "reused_running" | "reused_succeeded";
   eventsUrl: string;
+  cacheHit?: boolean;
+  reused?: boolean;
+  reusedReason?: "running_task" | "recent_succeeded_task";
 }
 
 export interface PersistentAgentTaskStatusData {
@@ -108,16 +111,26 @@ export interface PersistentAgentTaskStatusData {
 }
 
 export function buildPersistentAgentTaskStartData(
-  task: PersistentAgentTask
+  task: PersistentAgentTask,
+  options: {
+    status?: PersistentAgentTaskStartData["status"];
+    queueStatus?: PersistentAgentTaskStartData["queueStatus"];
+    cacheHit?: boolean;
+    reused?: boolean;
+    reusedReason?: PersistentAgentTaskStartData["reusedReason"];
+  } = {}
 ): PersistentAgentTaskStartData {
   return {
     taskId: task.id,
-    status: "queued",
-    frontendStatus: "正在理解你的问题",
-    pollAfterMs: POLL_AFTER_MS,
+    status: options.status ?? "queued",
+    frontendStatus: readString(task.metadata.frontendStatus) || "正在理解你的问题",
+    pollAfterMs: options.status === "succeeded" ? 0 : POLL_AFTER_MS,
     resultUrl: `/api/agent/tasks/${encodeURIComponent(task.id)}/result`,
-    queueStatus: "enqueued",
-    eventsUrl: `/api/agent/tasks/${encodeURIComponent(task.id)}/events`
+    queueStatus: options.queueStatus ?? "enqueued",
+    eventsUrl: `/api/agent/tasks/${encodeURIComponent(task.id)}/events`,
+    ...(options.cacheHit !== undefined ? { cacheHit: options.cacheHit } : {}),
+    ...(options.reused !== undefined ? { reused: options.reused } : {}),
+    ...(options.reusedReason ? { reusedReason: options.reusedReason } : {})
   };
 }
 

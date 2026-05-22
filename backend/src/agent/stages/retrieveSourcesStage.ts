@@ -12,7 +12,6 @@ import {
   type SearchPlanArtifactData
 } from "./stageTypes.js";
 
-const RETRIEVE_SOURCE_COUNT = 10;
 const SEARCH_MAX_ATTEMPTS = 3;
 
 export async function runRetrieveSourcesStage(
@@ -21,6 +20,7 @@ export async function runRetrieveSourcesStage(
 ): Promise<AgentStageOutput<RawSourcesArtifactData>> {
   const expandedQueries = selectExpandedQueries(searchPlan, intent);
   const query = expandedQueries[0] || intent.normalizedQuery || intent.originalQuery;
+  const sourceCount = Math.min(config.agent.limits.sourceCandidateMax, 10);
 
   if (!config.zhihu.accessSecret) {
     return buildFallbackRawSources(
@@ -33,7 +33,7 @@ export async function runRetrieveSourcesStage(
   let lastError: unknown;
   for (let attempt = 1; attempt <= SEARCH_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const searchResult = await searchService.search(query, RETRIEVE_SOURCE_COUNT);
+      const searchResult = await searchService.search(query, sourceCount);
       const sources = searchResult.items.map(mapSearchItemToRawSource);
 
       return {
@@ -137,7 +137,7 @@ function selectExpandedQueries(
     ...intent.expandedQueries,
     intent.normalizedQuery,
     intent.originalQuery
-  ]);
+  ]).slice(0, config.agent.limits.searchQueryMax);
 }
 
 function mapSearchItemToRawSource(item: SearchItem, index: number): RawSourceItem {

@@ -24,8 +24,13 @@ const queries = [
 
 let exitCode = 0;
 try {
-  for (const query of queries) {
-    const started = await createTask(query);
+  const startedByQuery = new Map();
+  for (const [index, query] of queries.entries()) {
+    const anonymousId = `agent_production_smoke_${index + 1}`;
+    const started = await createTask(query, {
+      anonymousId
+    });
+    startedByQuery.set(query, { ...started, anonymousId });
     const status = await waitForTerminalStatus(started.taskId, query);
 
     if (status.status === "failed") {
@@ -41,6 +46,8 @@ try {
     console.log(`agent production smoke ok: ${query} taskId=${started.taskId}`);
   }
 
+  await assertSucceededTaskReuse(queries[0], startedByQuery.get(queries[0]));
+  await assertRunningTaskReuseAndRateLimit();
   console.log("agent production smoke ok");
 } catch (error) {
   console.error("agent production smoke failed");
@@ -52,7 +59,7 @@ if (exitCode) {
   process.exit(exitCode);
 }
 
-async function createTask(query) {
+async function createTask(query, options = {}) {
   const response = await fetch(`${apiBaseUrl}/api/agent/tasks`, {
     method: "POST",
     headers: {
@@ -62,7 +69,8 @@ async function createTask(query) {
       query,
       metadata: {
         source: "agent_production_smoke",
-        createdBy: "backend/scripts/smoke-agent-production.mjs"
+        createdBy: "backend/scripts/smoke-agent-production.mjs",
+        ...(options.anonymousId ? { anonymousId: options.anonymousId } : {})
       }
     })
   });
@@ -86,12 +94,63 @@ async function createTask(query) {
   }
 
   assert(typeof body.data?.taskId === "string" && body.data.taskId, `${query}: taskId missing`);
-  assert(body.data.status === "queued", `${query}: create status was not queued`);
+  assert(["queued", "running", "succeeded"].includes(body.data.status), `${query}: create status invalid`);
   assert(typeof body.data.frontendStatus === "string" && body.data.frontendStatus, `${query}: frontendStatus missing`);
   assert(Number.isFinite(body.data.pollAfterMs), `${query}: pollAfterMs missing`);
   assert(typeof body.data.resultUrl === "string" && body.data.resultUrl, `${query}: resultUrl missing`);
 
   return body.data;
+}
+
+async function assertSucceededTaskReuse(query, originalTask) {
+  assert(originalTask?.taskId, `${query}: original task missing for reuse check`);
+  const reused = await createTask(query, {
+    anonymousId: originalTask.anonymousId
+  });
+
+  assert(reused.taskId === originalTask.taskId, `${query}: succeeded cache did not reuse taskId`);
+  assert(reused.cacheHit === true, `${query}: succeeded cacheHit was not true`);
+  assert(reused.reused === true, `${query}: succeeded reused was not true`);
+  assert(reused.queueStatus === "reused_succeeded", `${query}: succeeded queueStatus invalid`);
+}
+
+async function assertRunningTaskReuseAndRateLimit() {
+  const suffix = Date.now().toString(36);
+  const anonymousId = `agent_phase3_limit_${suffix}`;
+  const query = `Phase 3 running reuse ${suffix}`;
+  const started = await createTask(query, { anonymousId });
+  const reused = await createTask(query, { anonymousId });
+
+  assert(reused.taskId === started.taskId, "running task reuse did not return existing taskId");
+  assert(reused.reused === true, "running task reuse missing reused flag");
+  assert(
+    reused.queueStatus === "reused_running" || reused.queueStatus === "reused_succeeded",
+    "running task reuse queueStatus invalid"
+  );
+
+  await assertRateLimited(`${query} different`, anonymousId);
+  const status = await waitForTerminalStatus(started.taskId, query);
+  assert(status.status === "succeeded", "running reuse seed task did not succeed");
+}
+
+async function assertRateLimited(query, anonymousId) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      query,
+      metadata: {
+        source: "agent_production_smoke",
+        createdBy: "backend/scripts/smoke-agent-production.mjs",
+        anonymousId
+      }
+    })
+  });
+  const body = await readJsonResponse(response);
+  assert(response.status === 429, `${query}: expected RATE_LIMITED status 429`);
+  assert(body?.error?.code === "RATE_LIMITED", `${query}: expected RATE_LIMITED error code`);
 }
 
 async function waitForTerminalStatus(taskId, query) {

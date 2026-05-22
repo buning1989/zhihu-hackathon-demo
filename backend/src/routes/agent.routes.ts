@@ -3,14 +3,23 @@ import { Router } from "express";
 import { getCurrentUserContext, type UserContext } from "../auth/session.js";
 import { assertAgentTaskQueueReady, enqueueAgentTask } from "../agent/agentQueue.js";
 import {
+  buildActorIdentity,
+  buildAgentCacheIdentity,
+  buildAgentCacheKey,
+  getAgentCostBudget,
+  sanitizeMetadataForStorage
+} from "../agent/agentCache.js";
+import {
   buildPersistentAgentTaskPendingResultData,
   buildPersistentAgentTaskStartData,
   buildPersistentAgentTaskStatusData,
   resolveProductionFinalResult
 } from "../agent/agentTaskApi.js";
 import { agentRepository } from "../agent/agentRepository.js";
+import type { PersistentAgentTask } from "../agent/agentModels.js";
 import { completeTask, createTask, failTask, getTask } from "../agent/agentTaskStore.js";
 import { buildPersistentAgentTaskView } from "../agent/agentTaskView.js";
+import { config } from "../config/env.js";
 import type {
   AgentSearchTaskStartApiResponse,
   AgentTaskApiResponse,
@@ -29,17 +38,73 @@ agentRoutes.post("/tasks", async (req, res, next) => {
     const userContext = getCurrentUserContext(req);
     const createdAt = new Date().toISOString();
     const normalizedQuery = normalizeQuery(request.query);
+    const storedMetadata = sanitizeMetadataForStorage(request.metadata);
+    const anonymousId = readString(request.metadata.anonymousId) || req.ip || "anonymous";
+    const actor = buildActorIdentity({
+      userId: userContext.userId,
+      anonymousId
+    });
+    const cacheIdentity = buildAgentCacheIdentity({
+      normalizedQuery,
+      metadata: storedMetadata,
+      userId: userContext.userId
+    });
+    const queryCacheKey = buildAgentCacheKey(cacheIdentity);
     await assertAgentDatabaseReady();
+
+    const runningReusableTask = await agentRepository.findReusableTaskByCacheKey({
+      queryCacheKey,
+      statuses: ["created", "queued", "running", "partial_ready", "waiting_retry"]
+    });
+    if (runningReusableTask) {
+      res.json({
+        success: true,
+        data: buildPersistentAgentTaskStartData(runningReusableTask, {
+          status: mapReusableTaskStartStatus(runningReusableTask),
+          queueStatus: "reused_running",
+          cacheHit: false,
+          reused: true,
+          reusedReason: "running_task"
+        })
+      });
+      return;
+    }
+
+    const succeededReusableTask = await agentRepository.findReusableTaskByCacheKey({
+      queryCacheKey,
+      statuses: ["succeeded", "completed"],
+      ttlHours: config.agent.cache.finalResultTtlHours
+    });
+    if (succeededReusableTask) {
+      res.json({
+        success: true,
+        data: buildPersistentAgentTaskStartData(succeededReusableTask, {
+          status: "succeeded",
+          queueStatus: "reused_succeeded",
+          cacheHit: true,
+          reused: true,
+          reusedReason: "recent_succeeded_task"
+        })
+      });
+      return;
+    }
+
+    await assertAgentRateLimit(actor);
     await assertAgentTaskQueueReady();
     const snapshot = await agentRepository.createTaskWithCreatedEvent({
       query: request.query,
       userId: userContext.userId ?? null,
       metadata: {
-        ...request.metadata,
-        anonymousId: readString(request.metadata.anonymousId) || req.ip || "anonymous",
+        ...storedMetadata,
         originalQuery: request.query,
         normalizedQuery,
         queryHash: hashQuery(normalizedQuery),
+        queryCacheKey,
+        cacheIdentity,
+        metadataHash: cacheIdentity.metadataHash,
+        actorHash: actor.actorHash,
+        actorType: actor.actorType,
+        costBudget: getAgentCostBudget(),
         frontendStatus: "任务已创建",
         progressPercent: 0,
         partialAvailable: false,
@@ -95,7 +160,10 @@ agentRoutes.post("/tasks", async (req, res, next) => {
 
     res.json({
       success: true,
-      data: buildPersistentAgentTaskStartData(queuedTask ?? snapshot.task)
+      data: buildPersistentAgentTaskStartData(queuedTask ?? snapshot.task, {
+        cacheHit: false,
+        reused: false
+      })
     });
   } catch (error) {
     next(toPersistentAgentTaskHttpError(error));
@@ -304,6 +372,56 @@ function normalizeQuery(query: string): string {
 
 function hashQuery(query: string): string {
   return createHash("sha256").update(query).digest("hex");
+}
+
+function mapReusableTaskStartStatus(
+  task: PersistentAgentTask
+): "queued" | "running" | "succeeded" {
+  if (task.status === "succeeded" || task.status === "completed") {
+    return "succeeded";
+  }
+
+  if (task.status === "running" || task.status === "partial_ready" || task.status === "waiting_retry") {
+    return "running";
+  }
+
+  return "queued";
+}
+
+async function assertAgentRateLimit(actor: {
+  actorHash: string;
+  actorType: "anonymous" | "user";
+}): Promise<void> {
+  const activeCount = await agentRepository.countActiveTasksByActor(actor.actorHash);
+  const activeLimit =
+    actor.actorType === "user"
+      ? config.agent.limits.userRunning
+      : config.agent.limits.anonymousRunning;
+  if (activeCount >= activeLimit) {
+    throw new HttpError(
+      429,
+      "RATE_LIMITED",
+      `Too many running Agent tasks; limit is ${activeLimit}`
+    );
+  }
+
+  const windowHours = actor.actorType === "user" ? 24 : 1;
+  const createLimit =
+    actor.actorType === "user"
+      ? config.agent.limits.userDaily
+      : config.agent.limits.anonymousHourly;
+  const createdCount = await agentRepository.countTasksByActorSince({
+    actorHash: actor.actorHash,
+    since: new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString()
+  });
+
+  if (createdCount >= createLimit) {
+    throw new HttpError(
+      429,
+      "RATE_LIMITED",
+      `Too many Agent tasks in the current window; limit is ${createLimit}`
+    );
+  }
 }
 
 function toErrorMessage(error: unknown): string {

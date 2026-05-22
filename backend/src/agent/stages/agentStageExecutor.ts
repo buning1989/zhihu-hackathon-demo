@@ -1,4 +1,5 @@
 import { agentRepository } from "../agentRepository.js";
+import { getAgentCacheTtlHours } from "../agentCache.js";
 import { buildProductionFinalResult } from "../agentProductionResult.js";
 import type { PersistentAgentTaskStatus } from "../agentModels.js";
 import type {
@@ -20,11 +21,14 @@ import type {
   SearchPlanArtifactData
 } from "./stageTypes.js";
 import {
+  AGENT_ARTIFACT_CANDIDATES,
+  AGENT_ARTIFACT_EVIDENCE,
   AGENT_STAGE_EVIDENCE_EXTRACT_LLM,
   AGENT_STAGE_GROUNDING_GUARD_LLM,
   AGENT_STAGE_NORMALIZE_CANDIDATES,
   AGENT_STAGE_PLAN_SEARCH_LLM,
   AGENT_ARTIFACT_PRODUCTION_FINAL_RESULT,
+  AGENT_ARTIFACT_RAW_SOURCES,
   AGENT_STAGE_RESPONSE_COMPOSE_LLM,
   AGENT_STAGE_RETRIEVE_SOURCES,
   AGENT_STAGE_UNDERSTAND_GOAL_RULE
@@ -42,6 +46,12 @@ interface ExecuteAgentStageInput<TData> {
   progressCompleted: number;
   taskStatus?: Extract<PersistentAgentTaskStatus, "running" | "partial_ready">;
   partialAvailableAfter?: boolean;
+  cache?: {
+    cacheKey: string;
+    artifactType: string;
+    ttlHours: number;
+    validate: (value: unknown) => value is TData;
+  };
   run: () => Promise<AgentStageOutput<TData>> | AgentStageOutput<TData>;
 }
 
@@ -93,6 +103,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
   });
 
   try {
+    const queryCacheKey = readString(task.metadata.queryCacheKey);
     const intentStage = await executeAgentStage<IntentArtifactData>({
       taskId,
       stageName: AGENT_STAGE_UNDERSTAND_GOAL_RULE,
@@ -119,6 +130,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       progressStarted: 38,
       progressCompleted: 52,
       partialAvailableAfter: true,
+      cache: buildStageCache(queryCacheKey, AGENT_ARTIFACT_RAW_SOURCES, isRawSourcesArtifactData),
       run: () => runRetrieveSourcesStage(searchPlan, intent)
     });
     const rawSources = rawSourcesStage.output.data;
@@ -131,6 +143,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       progressCompleted: 66,
       taskStatus: "partial_ready",
       partialAvailableAfter: true,
+      cache: buildStageCache(queryCacheKey, AGENT_ARTIFACT_CANDIDATES, isCandidatesArtifactData),
       run: () => runNormalizeCandidatesStage(rawSources)
     });
     const candidates = candidatesStage.output.data;
@@ -147,6 +160,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       progressCompleted: 80,
       taskStatus: "partial_ready",
       partialAvailableAfter: true,
+      cache: buildStageCache(queryCacheKey, AGENT_ARTIFACT_EVIDENCE, isEvidenceArtifactData),
       run: () => runEvidenceExtractLlmStage(taskId, candidates, searchPlan, intent)
     });
     const evidence = evidenceStage.output.data;
@@ -308,7 +322,7 @@ async function executeAgentStage<TData>(
   });
 
   try {
-    const output = await input.run();
+    const output = (await readCachedStageOutput(input)) ?? (await input.run());
     const outputStatus = output.status ?? "succeeded";
     const status = outputStatus === "fallback" ? "degraded" : outputStatus;
     const fallbackUsed =
@@ -350,6 +364,8 @@ async function executeAgentStage<TData>(
         status,
         fallbackUsed,
         fallbackReason,
+        cacheHit: output.cacheHit ?? false,
+        cacheKey: output.cacheKey ?? null,
         artifactId: artifact.id,
         durationMs
       }
@@ -404,6 +420,45 @@ async function executeAgentStage<TData>(
   }
 }
 
+async function readCachedStageOutput<TData>(
+  input: ExecuteAgentStageInput<TData>
+): Promise<AgentStageOutput<TData> | undefined> {
+  if (!input.cache?.cacheKey) {
+    return undefined;
+  }
+
+  const cachedArtifact = await agentRepository.findCachedArtifactByTaskCacheKey({
+    queryCacheKey: input.cache.cacheKey,
+    artifactType: input.cache.artifactType,
+    ttlHours: input.cache.ttlHours
+  });
+  if (!cachedArtifact || !input.cache.validate(cachedArtifact.data)) {
+    return undefined;
+  }
+
+  await agentRepository.createEvent({
+    taskId: input.taskId,
+    type: "stage.cache_hit",
+    payload: {
+      stageName: input.stageName,
+      cacheKey: input.cache.cacheKey,
+      cachedTaskId: cachedArtifact.taskId,
+      cachedArtifactId: cachedArtifact.id,
+      type: cachedArtifact.type
+    }
+  });
+
+  return {
+    artifactType: input.cache.artifactType,
+    data: cachedArtifact.data,
+    status: "succeeded",
+    fallbackUsed: false,
+    fallbackReason: null,
+    cacheHit: true,
+    cacheKey: input.cache.cacheKey
+  };
+}
+
 async function updateTaskStatusWithMetadata(
   taskId: string,
   patch: Parameters<typeof agentRepository.updateTaskStatus>[1],
@@ -433,6 +488,49 @@ function getFrontendStatus(stageName: string): string {
   return labels[stageName] ?? "正在处理任务";
 }
 
+function buildStageCache<TData>(
+  cacheKey: string,
+  artifactType: string,
+  validate: (value: unknown) => value is TData
+): ExecuteAgentStageInput<TData>["cache"] | undefined {
+  const ttlHours = getAgentCacheTtlHours(artifactType);
+  if (!cacheKey || !ttlHours) {
+    return undefined;
+  }
+
+  return {
+    cacheKey,
+    artifactType,
+    ttlHours,
+    validate
+  };
+}
+
+function isRawSourcesArtifactData(value: unknown): value is RawSourcesArtifactData {
+  return Boolean(
+    isRecord(value) &&
+      typeof value.query === "string" &&
+      Array.isArray(value.expandedQueries) &&
+      Array.isArray(value.sources)
+  );
+}
+
+function isCandidatesArtifactData(value: unknown): value is CandidatesArtifactData {
+  return Boolean(isRecord(value) && Array.isArray(value.candidates));
+}
+
+function isEvidenceArtifactData(value: unknown): value is EvidenceArtifactData {
+  return Boolean(isRecord(value) && Array.isArray(value.evidenceItems));
+}
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

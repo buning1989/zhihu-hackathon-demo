@@ -64,6 +64,23 @@ export const config = {
       timeoutMs: parsePositiveInteger(process.env.AGENT_LLM_TIMEOUT_MS, 90000),
       retries: parseNonNegativeInteger(process.env.AGENT_LLM_RETRIES, 1),
       testMode: parseAgentLlmTestMode(process.env.AGENT_LLM_TEST_MODE)
+    },
+    cache: {
+      searchTtlHours: parsePositiveInteger(process.env.AGENT_CACHE_SEARCH_TTL_HOURS, 24),
+      candidatesTtlHours: parsePositiveInteger(process.env.AGENT_CACHE_CANDIDATES_TTL_HOURS, 24),
+      evidenceTtlHours: parsePositiveInteger(process.env.AGENT_CACHE_EVIDENCE_TTL_HOURS, 14 * 24),
+      finalResultTtlHours: parsePositiveInteger(process.env.AGENT_CACHE_FINAL_RESULT_TTL_HOURS, 7 * 24)
+    },
+    limits: {
+      anonymousHourly: parsePositiveInteger(process.env.AGENT_LIMIT_ANON_HOURLY, 3),
+      anonymousRunning: parsePositiveInteger(process.env.AGENT_LIMIT_ANON_RUNNING, 1),
+      userDaily: parsePositiveInteger(process.env.AGENT_LIMIT_USER_DAILY, 20),
+      userRunning: parsePositiveInteger(process.env.AGENT_LIMIT_USER_RUNNING, 2),
+      searchQueryMax: parsePositiveInteger(process.env.AGENT_BUDGET_SEARCH_QUERY_MAX, 5),
+      sourceCandidateMax: parsePositiveInteger(process.env.AGENT_BUDGET_SOURCE_CANDIDATE_MAX, 30),
+      selectedForEvidenceMax: parsePositiveInteger(process.env.AGENT_BUDGET_SELECTED_FOR_EVIDENCE_MAX, 6),
+      llmCallMax: parsePositiveInteger(process.env.AGENT_BUDGET_LLM_CALL_MAX, 6),
+      evidenceSourceMax: parsePositiveInteger(process.env.AGENT_BUDGET_EVIDENCE_SOURCE_MAX, 8)
     }
   },
   host: process.env.HOST || "127.0.0.1",

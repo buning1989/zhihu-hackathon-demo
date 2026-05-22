@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { config } from "../../config/env.js";
 import {
   AGENT_ARTIFACT_CANDIDATES,
   type AgentStageOutput,
@@ -9,7 +10,6 @@ import {
 } from "./stageTypes.js";
 
 const ACCEPTED_SOURCE_TYPES = ["answer", "mock_answer"] as const;
-const MAX_SELECTED_FOR_EVIDENCE = 6;
 const MIN_SELECTED_QUALITY_SCORE = 0.42;
 const MIN_SELECTED_RELEVANCE_SCORE = 0.28;
 const MIN_SELECTED_EXPERIENCE_SCORE = 0.22;
@@ -131,7 +131,7 @@ export function runNormalizeCandidatesStage(
       filters: {
         acceptedTypes: [...ACCEPTED_SOURCE_TYPES],
         minSelectedQualityScore: MIN_SELECTED_QUALITY_SCORE,
-        maxSelectedForEvidence: MAX_SELECTED_FOR_EVIDENCE
+        maxSelectedForEvidence: getMaxSelectedForEvidence()
       },
       qualityReport: {
         selectedForEvidenceCount,
@@ -535,7 +535,7 @@ function applyEvidenceSelectionBudget(candidates: CandidateItem[]): CandidateIte
     }
 
     selectedCount += 1;
-    if (selectedCount <= MAX_SELECTED_FOR_EVIDENCE) {
+    if (selectedCount <= getMaxSelectedForEvidence()) {
       return candidate;
     }
 
@@ -545,6 +545,10 @@ function applyEvidenceSelectionBudget(candidates: CandidateItem[]): CandidateIte
       rejectReason: "not_selected_budget_limit"
     };
   });
+}
+
+function getMaxSelectedForEvidence(): number {
+  return Math.min(config.agent.limits.selectedForEvidenceMax, config.agent.limits.evidenceSourceMax);
 }
 
 function countRejectReasons(

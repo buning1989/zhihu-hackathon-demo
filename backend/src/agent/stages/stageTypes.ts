@@ -30,6 +30,8 @@ export interface AgentStageOutput<TData> {
   status?: "succeeded" | "fallback" | "degraded";
   fallbackUsed?: boolean;
   fallbackReason?: string | null;
+  cacheHit?: boolean;
+  cacheKey?: string | null;
 }
 
 export interface IntentArtifactData {

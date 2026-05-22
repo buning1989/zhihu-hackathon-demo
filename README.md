@@ -123,6 +123,7 @@ npm run smoke
 - 前端首页 `/` 可访问。
 - `POST /api/agent/tasks` 可创建持久化 Agent task，5 个固定问题能轮询到 `succeeded`，并通过 `/api/agent/tasks/:taskId/result` 读取带 `sourceRefs` 的 `final_result`。
 - Agent production smoke 还会校验候选质量分、evidence 质量字段、persona 真实经历证据、deterministic quality report 和 bad refs。
+- Agent production smoke 还会校验相同 query 的 succeeded/running task 复用、`cacheHit/reused` 标识和 active task 限流返回 `RATE_LIMITED`。
 
 如果 smoke 在 Agent 检查处返回 `AGENT_DATABASE_UNCONFIGURED` 或 `AGENT_QUEUE_UNCONFIGURED`，表示当前后端没有读取到 `DATABASE_URL` 或 `REDIS_URL`；请先启动 compose 环境，或按上面的本机变量补齐后重新启动 backend 和 worker。
 

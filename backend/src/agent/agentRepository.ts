@@ -121,6 +121,96 @@ export class AgentRepository {
     return result.rows.map(mapTaskRow);
   }
 
+  async findReusableTaskByCacheKey(input: {
+    queryCacheKey: string;
+    statuses: PersistentAgentTask["status"][];
+    ttlHours?: number;
+  }): Promise<PersistentAgentTask | undefined> {
+    assertConfigured();
+
+    if (input.statuses.length === 0) {
+      return undefined;
+    }
+
+    const result = await queryPostgres<AgentTaskRow>(
+      `
+        SELECT *
+        FROM agent_tasks
+        WHERE metadata->>'queryCacheKey' = $1
+          AND status = ANY($2::text[])
+          AND (
+            $3::int IS NULL
+            OR COALESCE(completed_at, updated_at, created_at) >= now() - make_interval(hours => $3::int)
+          )
+        ORDER BY COALESCE(completed_at, updated_at, created_at) DESC
+        LIMIT 1
+      `,
+      [input.queryCacheKey, input.statuses, input.ttlHours ?? null]
+    );
+
+    return result.rows[0] ? mapTaskRow(result.rows[0]) : undefined;
+  }
+
+  async countTasksByActorSince(input: {
+    actorHash: string;
+    since: string;
+  }): Promise<number> {
+    assertConfigured();
+
+    const result = await queryPostgres<{ count: string }>(
+      `
+        SELECT count(*)::text AS count
+        FROM agent_tasks
+        WHERE metadata->>'actorHash' = $1
+          AND created_at >= $2
+      `,
+      [input.actorHash, input.since]
+    );
+
+    return Number.parseInt(result.rows[0]?.count ?? "0", 10);
+  }
+
+  async countActiveTasksByActor(actorHash: string): Promise<number> {
+    assertConfigured();
+
+    const result = await queryPostgres<{ count: string }>(
+      `
+        SELECT count(*)::text AS count
+        FROM agent_tasks
+        WHERE metadata->>'actorHash' = $1
+          AND status = ANY($2::text[])
+      `,
+      [actorHash, ["created", "queued", "running", "partial_ready", "waiting_retry"]]
+    );
+
+    return Number.parseInt(result.rows[0]?.count ?? "0", 10);
+  }
+
+  async findCachedArtifactByTaskCacheKey(input: {
+    queryCacheKey: string;
+    artifactType: string;
+    ttlHours: number;
+  }): Promise<PersistentAgentArtifact | undefined> {
+    assertConfigured();
+
+    const result = await queryPostgres<AgentArtifactRow>(
+      `
+        SELECT artifacts.*
+        FROM agent_artifacts artifacts
+        JOIN agent_tasks tasks ON tasks.id = artifacts.task_id
+        WHERE tasks.metadata->>'queryCacheKey' = $1
+          AND tasks.status = ANY($2::text[])
+          AND artifacts.type = $3
+          AND artifacts.created_at >= now() - make_interval(hours => $4::int)
+        ORDER BY artifacts.created_at DESC
+        LIMIT 1
+      `,
+      [input.queryCacheKey, ["succeeded", "completed"], input.artifactType, input.ttlHours]
+    );
+
+    return result.rows[0] ? mapArtifactRow(result.rows[0]) : undefined;
+  }
+
   async updateTaskStatus(
     taskId: string,
     patch: UpdatePersistentAgentTaskStatusInput
