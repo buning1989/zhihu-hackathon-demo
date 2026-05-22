@@ -202,11 +202,24 @@ img {
   background: transparent;
   border: 0;
   border-radius: 0;
+  transform: translateY(0);
+}
+
+.entry-center.is-clarify-entering {
+  animation: entryStageLift 380ms ease-out both;
+}
+
+.entry-center.is-clarifying:not(.is-clarify-entering) {
+  transform: translateY(-56px);
 }
 
 .view-exit-to-top {
   pointer-events: none;
   animation: viewExitToTop 320ms ease-in both;
+}
+
+.entry-center.is-clarifying.view-exit-to-top {
+  animation-name: composerExitToTop;
 }
 
 .brand-line {
@@ -223,6 +236,15 @@ img {
   letter-spacing: 0;
 }
 
+.entry-title.is-fading {
+  animation: entryTitleFade 280ms ease-out both;
+}
+
+.entry-center.is-clarifying:not(.is-clarify-entering) .entry-title {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
 .entry-input-shell {
   position: relative;
   width: 100%;
@@ -231,7 +253,7 @@ img {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   text-align: left;
-  transition: border-color 180ms ease, background-color 180ms ease;
+  transition: border-color 180ms ease, background-color 180ms ease, min-height 380ms ease;
 }
 
 .entry-input-shell:focus-within {
@@ -239,7 +261,11 @@ img {
 }
 
 .entry-input-shell.is-expanded {
-  transition: border-color 180ms ease, min-height 200ms ease;
+  min-height: 520px;
+}
+
+.entry-input-shell.is-entering {
+  animation: composerExpand 380ms ease-out both;
 }
 
 .entry-input {
@@ -270,6 +296,30 @@ img {
 .entry-input-shell.is-expanded .entry-input {
   min-height: 92px;
   padding-bottom: 10px;
+}
+
+.query-preview {
+  min-height: 68px;
+  padding: 18px 18px 14px;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.entry-input-shell.is-entering .query-preview {
+  animation: queryPreviewIn 300ms ease-out both;
+}
+
+.composer-divider {
+  height: 1px;
+  margin: 0 18px;
+  background: #f1f2f5;
+  transform-origin: left center;
+}
+
+.entry-input-shell.is-entering .composer-divider {
+  animation: dividerReveal 260ms ease-out 80ms both;
 }
 
 .top-input:focus,
@@ -582,8 +632,14 @@ img {
 }
 
 .clarify-entry {
-  border-top: 1px solid #f1f2f5;
-  animation: clarifyExpand 180ms ease-out both;
+  overflow: hidden;
+  max-height: 720px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.entry-input-shell.is-entering .clarify-entry {
+  animation: clarifyExpand 320ms ease-out 100ms both;
 }
 
 .clarify-entry .clarify-panel {
@@ -653,13 +709,71 @@ img {
 
 @keyframes clarifyExpand {
   from {
+    max-height: 0;
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateY(12px);
+  }
+
+  to {
+    max-height: 720px;
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes entryStageLift {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-56px);
+  }
+}
+
+@keyframes entryTitleFade {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes composerExpand {
+  from {
+    min-height: 118px;
+  }
+
+  to {
+    min-height: 520px;
+  }
+}
+
+@keyframes queryPreviewIn {
+  from {
+    opacity: 0.55;
+    transform: translateY(4px);
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes dividerReveal {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleX(1);
   }
 }
 
@@ -672,6 +786,18 @@ img {
   to {
     opacity: 0;
     transform: translateY(-24px);
+  }
+}
+
+@keyframes composerExitToTop {
+  from {
+    opacity: 1;
+    transform: translateY(-56px);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-84px);
   }
 }
 
@@ -778,6 +904,24 @@ img {
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.result-notices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.result-notices span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .feed-summary .status-clarify {
@@ -1688,6 +1832,12 @@ img {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .entry-center.is-clarify-entering,
+  .entry-title.is-fading,
+  .entry-input-shell.is-entering,
+  .entry-input-shell.is-entering .query-preview,
+  .entry-input-shell.is-entering .composer-divider,
+  .entry-input-shell.is-entering .clarify-entry,
   .view-exit-to-top,
   .loading-card.loading-enter,
   .loading-card.loading-exit,

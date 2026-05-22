@@ -74,11 +74,50 @@
 
   function renderFeedSummary(result) {
     const { escapeHtml } = App.utils;
+    const notices = [];
+    if (result.meta?.cacheHit || result.meta?.reused) {
+      notices.push("已使用近期相似结果");
+    }
+    if (result.degraded || result.meta?.degraded) {
+      notices.push("证据有限，结果已保守收敛");
+    }
+    if (result.meta?.emptyResult) {
+      notices.push("当前证据不足，暂时没有可展示样本");
+    }
+
     return `
       <header class="feed-summary">
         <p class="feed-summary-text">${escapeHtml(`先从 ${result.paths.length} 种走法里，看几段最接近的经历。`)}</p>
         <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点</button>
       </header>
+      ${notices.length ? `<div class="result-notices">${notices.map((notice) => `<span>${escapeHtml(notice)}</span>`).join("")}</div>` : ""}
+    `;
+  }
+
+  function renderError(state) {
+    const { escapeHtml } = App.utils;
+    const icon = App.components.renderIcon;
+    const error = state.task.error || {};
+    const code = error.errorCode || "";
+    const message = state.search.error || error.errorMessage || "后端暂时不可用，请稍后再试。";
+    const title = code === "RATE_LIMITED" ? "今天的任务有点多" : "暂时没能生成结果";
+
+    return `
+      <section class="empty-panel result-empty">
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(message)}</p>
+        <button class="btn-s" type="button" data-action="open-feed">${icon("arrow-left")}返回</button>
+      </section>
+    `;
+  }
+
+  function renderEmptyResult(result) {
+    const { escapeHtml } = App.utils;
+    return `
+      <section class="empty-panel result-empty">
+        <h2>证据有限，结果已保守收敛</h2>
+        <p>${escapeHtml(result.degradedReason || result.meta?.degradedReason || "当前没有足够可绑定来源的 paths/personas，先不展示强结论。")}</p>
+      </section>
     `;
   }
 
@@ -91,13 +130,14 @@
       const people = result.people.filter((person) => person.pathId === path.id);
       return App.components.renderPathModule(path, people, state);
     }).join("");
+    const isEmpty = result.paths.length === 0 || result.people.length === 0;
 
     return `
       <main class="layout ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
           ${renderSideNav(state, result)}
           <section class="main-feed">
             ${renderFeedSummary(result)}
-            ${modules}
+            ${isEmpty ? renderEmptyResult(result) : modules}
           </section>
           ${App.components.renderRightRail(state)}
       </main>
@@ -114,6 +154,10 @@
         ${App.components.renderClarifyCard(state)}
         ${state.search.status === "clarify" && !state.result ? "" : content}
       `;
+    }
+
+    if (state.search.status === "error") {
+      return `${topBar}<main class="layout"><aside></aside><section class="main-feed">${renderError(state)}</section><aside></aside></main>`;
     }
 
     if (state.search.status !== "loaded" || !state.result) {

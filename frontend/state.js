@@ -24,6 +24,21 @@
       clarifyOpen: false,
       error: ""
     },
+    task: {
+      taskId: "",
+      status: "",
+      frontendStatus: "",
+      progressPercent: 0,
+      stages: [],
+      polling: false,
+      error: null,
+      needInput: null,
+      cacheHit: false,
+      reused: false,
+      degraded: false,
+      degradedReason: null,
+      refinedFromTaskId: ""
+    },
     transitionPhase: "entry",
     result: null,
     activePathId: "all",

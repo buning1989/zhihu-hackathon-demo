@@ -52,26 +52,42 @@
   }
 
   App.views.renderEntryView = function renderEntryView(state) {
-    const { escapeAttribute } = App.utils;
+    const { escapeHtml, escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
     const query = escapeAttribute(state.query || "");
     const isClarifying = state.search.clarifyOpen || state.search.status === "clarify";
+    const isClarifyEntering = state.transitionPhase === "clarifyEntering";
     const isExiting = state.transitionPhase === "entryExiting";
     const clarifyPanel = isClarifying
       ? App.components.renderClarifyCard(state, { variant: "entry" })
       : "";
+    const stageClass = [
+      isClarifying ? "is-clarifying" : "",
+      isClarifyEntering ? "is-clarify-entering" : "",
+      isExiting ? "view-exit-to-top" : ""
+    ].filter(Boolean).join(" ");
+    const shellClass = [
+      isClarifying ? "is-expanded" : "",
+      isClarifyEntering ? "is-entering" : ""
+    ].filter(Boolean).join(" ");
+    const queryPreview = escapeHtml(state.query || state.pendingQuery || "");
 
     return `
       <main class="entry-view">
         ${renderEntryTop(state)}
-        <section class="entry-center ${isExiting ? "view-exit-to-top" : ""}">
-          <h1 class="entry-title">有什么让你纠结了很久的事？越具体越好</h1>
+        <section class="entry-center ${stageClass}">
+          <h1 class="entry-title ${isClarifyEntering ? "is-fading" : ""}">有什么让你纠结了很久的事？越具体越好</h1>
           <form data-form="search">
             <label class="sr-only" for="entry-query">输入你的处境</label>
-            <div class="entry-input-shell ${isClarifying ? "is-expanded" : ""}">
-              <textarea class="entry-input" id="entry-query" name="query">${query}</textarea>
-              ${isClarifying ? "" : `<button class="btn-p entry-submit" type="submit" aria-label="开始看看">${icon("search")}</button>`}
-              ${clarifyPanel}
+            <div class="entry-input-shell ${shellClass}">
+              ${isClarifying ? `
+                <div class="query-preview">${queryPreview}</div>
+                <div class="composer-divider" aria-hidden="true"></div>
+                ${clarifyPanel}
+              ` : `
+                <textarea class="entry-input" id="entry-query" name="query">${query}</textarea>
+                <button class="btn-p entry-submit" type="submit" aria-label="开始看看">${icon("search")}</button>
+              `}
             </div>
           </form>
         </section>

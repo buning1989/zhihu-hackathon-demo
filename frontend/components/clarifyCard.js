@@ -8,6 +8,7 @@
     const questions = state.search.clarifyQuestions || [];
     const answers = state.search.clarifyAnswers || {};
     const variant = options.variant || "feed";
+    const description = state.task?.needInput?.reason || "这些信息会帮你找到更像的人，选几项就好。";
 
     const questionHtml = questions.map((question) => {
       const options = question.options.map((option) => {
@@ -36,7 +37,7 @@
         <div class="clarify-card">
           <div class="clarify-panel">
             <h2 class="clarify-title">再补充一点你的处境</h2>
-            <p class="clarify-desc">这些信息会帮你找到更像的人，选几项就好。</p>
+            <p class="clarify-desc">${escapeHtml(description)}</p>
             ${questionHtml}
             <div class="clarify-actions">
               <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}先直接看</button>

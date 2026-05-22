@@ -4,8 +4,11 @@
   let requestSeq = 0;
   let capsuleTypingTimer = null;
   let entryPlaceholderTimer = null;
+  let pollTimer = null;
+  let pollController = null;
   const mockMinimumLoadingMs = 3000;
-  const defaultMinimumLoadingMs = 2000;
+  const defaultMinimumLoadingMs = 3000;
+  const defaultPollMs = 1500;
   const entryPlaceholderTypeMs = 90;
   const entryPlaceholderHoldTicks = 36;
   const entryPlaceholderExamples = [
@@ -93,11 +96,114 @@
     });
   }
 
+  function getAnonymousId() {
+    const key = "lifeSampleAnonymousId";
+    const existing = window.localStorage.getItem(key);
+    if (existing) {
+      return existing;
+    }
+
+    const next = `frontend_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    window.localStorage.setItem(key, next);
+    return next;
+  }
+
+  function buildTaskMetadata(extra = {}) {
+    return {
+      source: "frontend_agent_main",
+      createdBy: "frontend",
+      anonymousId: getAnonymousId(),
+      ...extra
+    };
+  }
+
+  function emptyTaskState() {
+    return {
+      taskId: "",
+      status: "",
+      frontendStatus: "",
+      progressPercent: 0,
+      stages: [],
+      polling: false,
+      error: null,
+      needInput: null,
+      cacheHit: false,
+      reused: false,
+      degraded: false,
+      degradedReason: null,
+      refinedFromTaskId: ""
+    };
+  }
+
+  function cancelPolling() {
+    if (pollTimer) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+    if (pollController) {
+      pollController.abort();
+      pollController = null;
+    }
+  }
+
+  function normalizeTaskData(data) {
+    return {
+      taskId: data?.taskId || "",
+      status: data?.status || "",
+      frontendStatus: data?.frontendStatus || "",
+      progressPercent: Number.isFinite(data?.progressPercent) ? data.progressPercent : 0,
+      stages: Array.isArray(data?.stages) ? data.stages : [],
+      polling: ["queued", "running", "partial_ready"].includes(data?.status),
+      error: data?.error || null,
+      needInput: data?.needInput || null,
+      cacheHit: Boolean(data?.cacheHit),
+      reused: Boolean(data?.reused),
+      degraded: Boolean(data?.degraded),
+      degradedReason: data?.degradedReason || null,
+      refinedFromTaskId: data?.refinedFromTaskId || ""
+    };
+  }
+
+  function applyTaskState(draft, data, overrides = {}) {
+    draft.task = {
+      ...draft.task,
+      ...normalizeTaskData(data),
+      ...overrides
+    };
+  }
+
+  function setTaskError(requestId, error) {
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    const code = error?.code || error?.errorCode || "AGENT_FRONTEND_ERROR";
+    const message = error?.message || error?.errorMessage || "任务处理失败，请稍后再试。";
+    App.store.update((draft) => {
+      draft.page = "feed";
+      draft.search.status = "error";
+      draft.search.message = "";
+      draft.search.error = message;
+      draft.search.clarifyOpen = false;
+      draft.task = {
+        ...draft.task,
+        polling: false,
+        error: {
+          errorCode: code,
+          errorMessage: message
+        }
+      };
+      draft.transitionPhase = "feed";
+      return draft;
+    });
+  }
+
   function transitionTimings() {
     const reducedMotion = window.matchMedia
       && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reducedMotion) {
       return {
+        clarifyEnter: 0,
         entryExit: 0,
         loadingEnter: 0,
         loadingExit: 0,
@@ -105,6 +211,7 @@
       };
     }
     return {
+      clarifyEnter: 420,
       entryExit: 320,
       loadingEnter: 380,
       loadingExit: 320,
@@ -119,11 +226,176 @@
     });
   }
 
+  async function finishClarifyEnter(requestId) {
+    const timings = transitionTimings();
+    if (timings.clarifyEnter > 0) {
+      await wait(timings.clarifyEnter);
+    }
+
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    const state = App.store.getState();
+    if (state.page === "entry" && state.transitionPhase === "clarifyEntering") {
+      setTransitionPhase("clarifying");
+    }
+  }
+
+  function shouldUseMockFallback(error) {
+    const fallbackCodes = new Set([
+      "BACKEND_UNAVAILABLE",
+      "404",
+      "405",
+      "501"
+    ]);
+    return Boolean(
+      fallbackCodes.has(String(error?.code || error?.errorCode || ""))
+      || [0, 404, 405, 501].includes(Number(error?.status || 0))
+    );
+  }
+
+  async function showClarifyQuestions({ questions, requestId, pageBeforeSubmit, taskStatus = null }) {
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    App.store.update((draft) => {
+      draft.page = pageBeforeSubmit === "entry" ? "entry" : "feed";
+      draft.search.status = "clarify";
+      draft.search.message = "";
+      draft.search.error = "";
+      draft.search.clarifyQuestions = questions || [];
+      draft.search.clarifyAnswers = {};
+      draft.search.clarifyOpen = true;
+      if (taskStatus) {
+        applyTaskState(draft, taskStatus, {
+          polling: false,
+          needInput: taskStatus.needInput || null
+        });
+      }
+      draft.transitionPhase = draft.page === "entry" ? "clarifyEntering" : draft.transitionPhase;
+      return draft;
+    });
+
+    if (pageBeforeSubmit === "entry") {
+      await finishClarifyEnter(requestId);
+    }
+  }
+
+  async function startLoadingView(requestId, message, taskStatus = null, taskOverrides = {}) {
+    const timings = transitionTimings();
+    const currentState = App.store.getState();
+    if (currentState.page === "entry") {
+      App.store.update((draft) => {
+        draft.search.requestId = requestId;
+        draft.transitionPhase = "entryExiting";
+        return draft;
+      });
+      if (timings.entryExit > 0) {
+        await wait(timings.entryExit);
+      }
+      if (!isCurrentRequest(requestId)) {
+        return null;
+      }
+    }
+
+    App.store.update((draft) => {
+      draft.page = "feed";
+      draft.search.status = "loading";
+      draft.search.message = message || "正在从真实经历里找相似的人";
+      draft.search.requestId = requestId;
+      draft.search.error = "";
+      draft.search.clarifyOpen = false;
+      if (taskStatus) {
+        applyTaskState(draft, taskStatus, taskOverrides);
+      }
+      draft.transitionPhase = "loadingEntering";
+      return draft;
+    });
+
+    const loadingStartedAt = Date.now();
+    if (timings.loadingEnter > 0) {
+      await wait(timings.loadingEnter);
+    }
+    if (!isCurrentRequest(requestId)) {
+      return null;
+    }
+
+    setTransitionPhase("loading");
+    return loadingStartedAt;
+  }
+
+  async function finishLoadingWithResult({ requestId, loadingStartedAt, updateDraft }) {
+    const timings = transitionTimings();
+    const remainingLoadingMs = defaultMinimumLoadingMs - (Date.now() - loadingStartedAt);
+    if (remainingLoadingMs > 0) {
+      await wait(remainingLoadingMs);
+    }
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    setTransitionPhase("loadingExiting");
+    if (timings.loadingExit > 0) {
+      await wait(timings.loadingExit);
+    }
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    App.store.update((draft) => {
+      updateDraft(draft);
+      draft.search.status = "loaded";
+      draft.search.message = "";
+      draft.search.error = "";
+      draft.search.clarifyOpen = false;
+      draft.activePathId = "all";
+      draft.transitionPhase = "feedEntering";
+      return draft;
+    });
+
+    if (timings.feedEnter > 0) {
+      await wait(timings.feedEnter);
+    }
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    setTransitionPhase("feed");
+  }
+
+  async function fallbackToMockSearch(query, requestId, answers = {}, options = {}) {
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    const pageBeforeSubmit = options.pageBeforeSubmit || App.store.getState().page;
+    const shouldAskClarify = !options.skipClarify && Object.keys(answers || {}).length === 0;
+    if (shouldAskClarify) {
+      const preparation = await App.MockApi.prepareSearch({ query, answers });
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+      if (preparation.status === "needs_clarification") {
+        await showClarifyQuestions({
+          questions: preparation.questions,
+          requestId,
+          pageBeforeSubmit
+        });
+        return;
+      }
+    }
+
+    await loadResults(query, requestId, answers);
+  }
+
   async function submitSearch(query, options = {}) {
     const cleanQuery = String(query || "").trim();
     if (!cleanQuery) {
       return;
     }
+    cancelPolling();
 
     const state = App.store.getState();
     if (!state.auth.loggedIn) {
@@ -147,6 +419,7 @@
       draft.pendingQuery = cleanQuery;
       draft.activePathId = "all";
       draft.modal = { type: null, pathId: null, personId: null };
+      draft.result = null;
       draft.search = {
         status: "preparing",
         message: "正在从真实经历里找相似的人",
@@ -156,8 +429,19 @@
         clarifyOpen: false,
         error: ""
       };
+      draft.transitionPhase = pageBeforeSubmit === "entry" ? "entry" : draft.transitionPhase;
+      draft.task = emptyTaskState();
       return draft;
     });
+
+    if (!App.Api.isMockMode()) {
+      await startBackendTask(cleanQuery, requestId, {
+        pageBeforeSubmit,
+        answers: clarifyAnswers,
+        metadata: options.metadata || {}
+      });
+      return;
+    }
 
     const preparation = await App.Api.prepareSearch({
       query: cleanQuery,
@@ -169,19 +453,215 @@
     }
 
     if (preparation.status === "needs_clarification") {
-      App.store.update((draft) => {
-        draft.page = pageBeforeSubmit === "entry" ? "entry" : "feed";
-        draft.search.status = "clarify";
-        draft.search.message = "";
-        draft.search.clarifyQuestions = preparation.questions;
-        draft.search.clarifyAnswers = {};
-        draft.search.clarifyOpen = true;
-        return draft;
+      await showClarifyQuestions({
+        questions: preparation.questions,
+        requestId,
+        pageBeforeSubmit
       });
       return;
     }
 
     await loadResults(cleanQuery, requestId, clarifyAnswers);
+  }
+
+  async function startBackendTask(query, requestId, options = {}) {
+    try {
+      const started = await App.Api.createAgentTask({
+        query,
+        metadata: buildTaskMetadata(options.metadata || {})
+      });
+
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      await handleTaskUpdate(started, requestId, {
+        pageBeforeSubmit: options.pageBeforeSubmit,
+        query,
+        answers: options.answers || {},
+        skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput),
+        start: started
+      });
+    } catch (error) {
+      if (shouldUseMockFallback(error)) {
+        await fallbackToMockSearch(query, requestId, options.answers || {}, {
+          pageBeforeSubmit: options.pageBeforeSubmit,
+          skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput)
+        });
+        return;
+      }
+      setTaskError(requestId, error);
+    }
+  }
+
+  async function handleTaskUpdate(taskData, requestId, context = {}) {
+    const normalizedNeedInput = App.adapters.normalizeNeedInput(taskData.needInput);
+    const taskStatus = {
+      ...taskData,
+      needInput: normalizedNeedInput || taskData.needInput
+    };
+
+    if (taskData.status === "need_input") {
+      await showClarifyQuestions({
+        questions: normalizedNeedInput?.questions || [],
+        requestId,
+        pageBeforeSubmit: context.pageBeforeSubmit,
+        taskStatus
+      });
+      return;
+    }
+
+    if (taskData.status === "failed") {
+      setTaskError(requestId, taskData.error || {
+        code: "AGENT_TASK_FAILED",
+        message: "任务失败，请稍后再试。"
+      });
+      return;
+    }
+
+    if (taskData.status === "succeeded") {
+      await completeBackendTask(taskData.taskId, taskStatus, requestId, context);
+      return;
+    }
+
+    if (!context.loadingStartedAt) {
+      context.loadingStartedAt = await startLoadingView(
+        requestId,
+        taskData.frontendStatus || "正在从真实经历里找相似的人",
+        taskStatus,
+        {
+          polling: true,
+          cacheHit: Boolean(taskData.cacheHit || context.start?.cacheHit),
+          reused: Boolean(taskData.reused || context.start?.reused)
+        }
+      );
+      if (!context.loadingStartedAt) {
+        return;
+      }
+    } else {
+      App.store.update((draft) => {
+        draft.search.status = "loading";
+        draft.search.message = taskData.frontendStatus || "正在从真实经历里找相似的人";
+        draft.search.error = "";
+        draft.search.clarifyOpen = false;
+        applyTaskState(draft, taskStatus, {
+          polling: true,
+          cacheHit: Boolean(taskData.cacheHit || context.start?.cacheHit),
+          reused: Boolean(taskData.reused || context.start?.reused)
+        });
+        draft.transitionPhase = draft.transitionPhase === "feedEntering"
+          ? draft.transitionPhase
+          : "loading";
+        return draft;
+      });
+    }
+
+    schedulePoll(taskData.taskId, requestId, taskData.pollAfterMs, context);
+  }
+
+  function schedulePoll(taskId, requestId, pollAfterMs, context = {}) {
+    cancelPolling();
+    const waitMs = Number.isFinite(pollAfterMs) && pollAfterMs > 0
+      ? Math.min(Math.max(pollAfterMs, 500), 4000)
+      : defaultPollMs;
+
+    pollTimer = window.setTimeout(() => {
+      pollTimer = null;
+      pollBackendTask(taskId, requestId, context);
+    }, waitMs);
+  }
+
+  async function pollBackendTask(taskId, requestId, context = {}) {
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    pollController = new AbortController();
+    try {
+      const status = await App.Api.getAgentTaskStatus(taskId, {
+        signal: pollController.signal
+      });
+      pollController = null;
+
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      await handleTaskUpdate(status, requestId, context);
+    } catch (error) {
+      pollController = null;
+      if (error?.name === "AbortError") {
+        return;
+      }
+      if (shouldUseMockFallback(error)) {
+        await fallbackToMockSearch(context.query || App.store.getState().query, requestId, context.answers || {}, {
+          pageBeforeSubmit: context.pageBeforeSubmit,
+          skipClarify: true
+        });
+        return;
+      }
+      setTaskError(requestId, error);
+    }
+  }
+
+  async function completeBackendTask(taskId, taskStatus, requestId, context = {}) {
+    cancelPolling();
+    try {
+      if (!context.loadingStartedAt) {
+        context.loadingStartedAt = await startLoadingView(
+          requestId,
+          taskStatus.frontendStatus || "正在从真实经历里找相似的人",
+          taskStatus,
+          {
+            polling: false,
+            cacheHit: Boolean(taskStatus.cacheHit || context.start?.cacheHit),
+            reused: Boolean(taskStatus.reused || context.start?.reused)
+          }
+        );
+        if (!context.loadingStartedAt) {
+          return;
+        }
+      }
+
+      const result = await App.Api.readAgentResult(taskId, {
+        ...taskStatus,
+        cacheHit: Boolean(taskStatus.cacheHit || context.start?.cacheHit),
+        reused: Boolean(taskStatus.reused || context.start?.reused)
+      });
+
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      await finishLoadingWithResult({
+        requestId,
+        loadingStartedAt: context.loadingStartedAt,
+        updateDraft: (draft) => {
+          draft.page = "feed";
+          draft.result = result;
+          applyTaskState(draft, taskStatus, {
+            polling: false,
+            degraded: Boolean(result.degraded || result.meta?.degraded || taskStatus.degraded),
+            degradedReason: result.degradedReason || result.meta?.degradedReason || taskStatus.degradedReason || null,
+            cacheHit: Boolean(result.meta?.cacheHit || taskStatus.cacheHit || context.start?.cacheHit),
+            reused: Boolean(result.meta?.reused || taskStatus.reused || context.start?.reused)
+          });
+        }
+      });
+    } catch (error) {
+      if (error?.code === "RESULT_NOT_READY") {
+        schedulePoll(taskId, requestId, defaultPollMs, context);
+        return;
+      }
+      if (shouldUseMockFallback(error)) {
+        await fallbackToMockSearch(context.query || App.store.getState().query, requestId, context.answers || {}, {
+          pageBeforeSubmit: context.pageBeforeSubmit,
+          skipClarify: true
+        });
+        return;
+      }
+      setTaskError(requestId, error);
+    }
   }
 
   async function loadResults(query, requestId, answers) {
@@ -190,7 +670,6 @@
     if (currentState.page === "entry") {
       App.store.update((draft) => {
         draft.search.requestId = requestId;
-        draft.search.clarifyOpen = false;
         draft.transitionPhase = "entryExiting";
         return draft;
       });
@@ -276,10 +755,81 @@
 
   async function continueAfterClarify(options = {}) {
     const state = App.store.getState();
-    const questions = state.search.clarifyQuestions || [];
     const answers = state.search.clarifyAnswers || {};
     const nextAnswers = options.skip ? {} : answers;
     const requestId = currentRequestId();
+
+    App.store.update((draft) => {
+      draft.search.requestId = requestId;
+      draft.search.error = "";
+      if (draft.page !== "entry") {
+        draft.search.status = "loading";
+        draft.search.message = "正在根据补充信息重新匹配";
+        draft.search.clarifyOpen = false;
+      }
+      return draft;
+    });
+
+    if (!App.Api.isMockMode() && state.task?.status === "need_input" && state.task.taskId) {
+      if (options.skip) {
+        await startBackendTask(state.query || state.pendingQuery, requestId, {
+          pageBeforeSubmit: state.page,
+          answers: nextAnswers,
+          skipClarify: true,
+          metadata: {
+            skipNeedInput: true,
+            skippedNeedInputTaskId: state.task.taskId
+          }
+        });
+        return;
+      }
+
+      try {
+        const refined = await App.Api.refineAgentTask(state.task.taskId, {
+          answers: nextAnswers,
+          refineQuery: "",
+          metadata: buildTaskMetadata({
+            source: "frontend_agent_refine"
+          })
+        });
+
+        if (!isCurrentRequest(requestId)) {
+          return;
+        }
+
+        await handleTaskUpdate(refined, requestId, {
+          pageBeforeSubmit: state.page,
+          query: state.query || state.pendingQuery,
+          answers: nextAnswers,
+          skipClarify: true,
+          start: refined
+        });
+      } catch (error) {
+        if (shouldUseMockFallback(error)) {
+          await fallbackToMockSearch(state.query || state.pendingQuery, requestId, nextAnswers, {
+            pageBeforeSubmit: state.page,
+            skipClarify: true
+          });
+          return;
+        }
+        setTaskError(requestId, error);
+      }
+      return;
+    }
+
+    if (!App.Api.isMockMode()) {
+      await startBackendTask(state.query || state.pendingQuery, requestId, {
+        pageBeforeSubmit: state.page,
+        answers: nextAnswers,
+        skipClarify: true,
+        metadata: {
+          skipNeedInput: true,
+          clarifyAnswers: nextAnswers
+        }
+      });
+      return;
+    }
+
     await loadResults(state.query || state.pendingQuery, requestId, nextAnswers);
   }
 
@@ -310,6 +860,7 @@
   }
 
   function mockLogout() {
+    cancelPolling();
     App.store.update((draft) => {
       draft.page = "entry";
       draft.query = "";
@@ -321,6 +872,8 @@
       draft.search.status = "idle";
       draft.search.message = "";
       draft.search.clarifyOpen = false;
+      draft.search.error = "";
+      draft.task = emptyTaskState();
       draft.transitionPhase = "entry";
       draft.railExpanded = {
         recentlyViewed: false,
