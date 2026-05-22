@@ -7,10 +7,10 @@
   let pollTimer = null;
   let pollController = null;
   let loadingStageTimer = null;
-  const mockMinimumLoadingMs = 3000;
-  const defaultMinimumLoadingMs = 3000;
+  const mockMinimumLoadingMs = 5200;
+  const defaultMinimumLoadingMs = 5200;
   const defaultPollMs = 1500;
-  const loadingStageIntervalMs = 700;
+  const loadingStageIntervalMs = 900;
   const entryPlaceholderTypeMs = 90;
   const entryPlaceholderHoldTicks = 36;
   const entryPlaceholderExamples = [
