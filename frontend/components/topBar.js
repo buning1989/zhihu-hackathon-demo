@@ -9,28 +9,6 @@
     const profile = state.auth.profile || App.mockData.profile;
     const isBook = state.page === "book";
     const isCapsule = state.page === "capsule";
-    const result = state.result;
-    const pathCount = result ? result.paths.length : 0;
-    const peopleCount = result ? result.people.length : 0;
-    const statusText = state.search.status === "loading" ? state.search.message : "";
-    const loadedStatus = state.search.status === "loaded" && result ? `
-      <div class="status-bar">
-        <div class="status-inner">
-          <div class="status-content">
-            <span class="status-text">整理出 <strong>${pathCount} 条走法</strong> · <strong>${peopleCount} 个样本</strong></span>
-            <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点你的处境</button>
-          </div>
-        </div>
-      </div>
-    ` : statusText ? `
-      <div class="status-bar">
-        <div class="status-inner">
-          <div class="status-content">
-            <span class="status-text">${escapeHtml(statusText)}</span>
-          </div>
-        </div>
-      </div>
-    ` : "";
     const accountMenu = state.auth.loggedIn ? `
       <details class="account-menu">
         <summary class="account-trigger" aria-label="当前账号：${escapeAttribute(profile.name)}">
@@ -52,8 +30,10 @@
         </button>
         <form class="top-form" data-form="search">
           <label class="sr-only" for="top-query">输入处境</label>
-          <textarea class="top-input" id="top-query" name="query" autocomplete="off">${query}</textarea>
-          <button class="btn-text top-submit" type="submit">${icon("refresh-cw")}重新看看</button>
+          <div class="top-input-shell">
+            <textarea class="top-input" id="top-query" name="query" autocomplete="off">${query}</textarea>
+            <button class="btn-text top-submit" type="submit" aria-label="重新看看">${icon("refresh-cw")}</button>
+          </div>
         </form>
         <nav class="top-actions" aria-label="辅助入口">
           <button class="btn-text ${isBook ? "is-active" : ""}" type="button" data-action="open-book">${icon("bookmark")}留下的样本</button>
@@ -61,7 +41,6 @@
           ${accountMenu}
         </nav>
         </div>
-        ${loadedStatus}
       </header>
     `;
   };

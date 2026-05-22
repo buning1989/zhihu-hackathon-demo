@@ -43,6 +43,16 @@
     `;
   }
 
+  function renderFeedSummary(result) {
+    const { escapeHtml } = App.utils;
+    return `
+      <div class="feed-summary">
+        <p>${escapeHtml(`先整理出 ${result.paths.length} 种走法，下面是几段最接近的经历。`)}</p>
+        <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点你的处境</button>
+      </div>
+    `;
+  }
+
   function renderLoaded(state) {
     const result = state.result;
     const paths = state.activePathId === "all"
@@ -56,7 +66,10 @@
     return `
       <main class="layout">
           ${renderSideNav(state, result)}
-          <section class="main-feed">${modules}</section>
+          <section class="main-feed">
+            ${renderFeedSummary(result)}
+            ${modules}
+          </section>
           ${App.components.renderRightRail(state)}
       </main>
     `;
