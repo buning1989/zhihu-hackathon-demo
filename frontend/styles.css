@@ -16,6 +16,8 @@
   --main-col: 800px;
   --right-col: 300px;
   --grid-gap: 18px;
+  --top-main-col: 760px;
+  --top-gap: 24px;
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -369,8 +371,8 @@ img {
   margin: 0 auto;
   padding: 12px var(--shell-pad);
   display: grid;
-  grid-template-columns: minmax(180px, var(--left-col)) minmax(0, var(--main-col)) minmax(240px, var(--right-col));
-  gap: var(--grid-gap);
+  grid-template-columns: var(--left-col) minmax(480px, var(--top-main-col)) minmax(var(--right-col), 1fr);
+  gap: var(--top-gap);
   align-items: center;
 }
 
@@ -378,6 +380,7 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  justify-self: start;
   padding: 0;
   border: 0;
   background: transparent;
@@ -389,6 +392,7 @@ img {
 
 .top-form {
   min-width: 0;
+  justify-self: stretch;
 }
 
 .top-input-shell {
@@ -436,8 +440,10 @@ img {
 .top-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
+  justify-self: end;
   gap: 12px;
+  min-width: max-content;
 }
 
 .top-actions .btn-text {
