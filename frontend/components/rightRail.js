@@ -25,8 +25,8 @@
         <div class="connected-item">
           <div class="connected-name">${escapeHtml(person.name)}</div>
           <div class="connected-snippet">${escapeHtml(item.reply || item.content)}</div>
-          <div class="connected-meta">${escapeHtml(item.type === "chat" ? "AI 分身对话" : "写给 TA 的话")} · ${escapeHtml(item.createdAt)}</div>
-          <button class="btn-text" type="button" data-action="continue-interaction" data-person-id="${escapeAttribute(person.id)}">继续互动 →</button>
+          <div class="connected-meta">${escapeHtml(item.type === "chat" ? "刚才问过" : "写给 TA 的话")} · ${escapeHtml(item.createdAt)}</div>
+          <button class="btn-text" type="button" data-action="continue-interaction" data-person-id="${escapeAttribute(person.id)}">继续听听 →</button>
         </div>
       `;
     }).join("");
@@ -34,12 +34,12 @@
     return `
       <aside class="right-rail">
         <section class="rail-card">
-          <h3 class="rail-title">我的路书</h3>
-          <div class="saved-list">${bookItems || `<p class="rail-text">加入路书的人会出现在这里。</p>`}</div>
-          ${bookItems ? `<button class="btn-p rail-book-btn" type="button" data-action="open-book">生成路书</button>` : ""}
+          <h3 class="rail-title">我想留下的样本</h3>
+          <div class="saved-list">${bookItems || `<p class="rail-text">留意过的人会出现在这里。</p>`}</div>
+          ${bookItems ? `<button class="btn-s rail-book-btn" type="button" data-action="open-book">整理成一页</button>` : ""}
         </section>
         <section class="rail-card">
-          <h3 class="rail-title">互动记录</h3>
+          <h3 class="rail-title">刚才聊过的</h3>
           <div class="connected-list">${interactions || `<p class="rail-text">聊过或写过的话会保存在这里。</p>`}</div>
         </section>
       </aside>

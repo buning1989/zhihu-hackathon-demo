@@ -33,12 +33,12 @@
       <section class="clarify-wrap">
         <div class="clarify-card">
           <div class="clarify-panel">
-            <h2 class="clarify-title">再补充一点，匹配会更准</h2>
-            <p class="clarify-desc">最多 3 个问题，直接点选即可。</p>
+            <h2 class="clarify-title">再说一点你的处境</h2>
+            <p class="clarify-desc">不用解释太多，点选几个更接近现在的感受就好。</p>
             ${questionHtml}
             <div class="clarify-actions">
-              <button class="btn-s" type="button" data-action="skip-clarify">先看结果</button>
-              <button class="btn-p" type="button" data-action="continue-after-clarify">用这些信息重新匹配</button>
+              <button class="btn-s" type="button" data-action="skip-clarify">先看这些经历</button>
+              <button class="btn-s" type="button" data-action="continue-after-clarify">用这些信息重新看看</button>
             </div>
           </div>
         </div>

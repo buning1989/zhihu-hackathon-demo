@@ -9,7 +9,12 @@
     const quote = person.article?.paragraphs?.[0] || person.experienceSummary;
     const preview = person.experienceSummary;
     const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
-    const similar = person.source?.evidence || "公开内容与你的问题存在相似处境";
+    const similarLabels = {
+      "path-reset": "也经历过长期消耗",
+      "path-city": "也试着换个环境",
+      "path-skill": "也在慢慢攒底气"
+    };
+    const similar = similarLabels[person.pathId] || "相似处境";
     const timelineItems = person.timeline || [
       { date: "开始", event: person.article?.paragraphs?.[0] || person.experienceSummary },
       { date: "中段", event: person.article?.paragraphs?.[1] || person.source?.evidence || person.experienceSummary },
@@ -38,15 +43,15 @@
             <h3 class="name">${escapeHtml(person.name)}</h3>
             <p class="brief">${escapeHtml(brief)}</p>
           </div>
-          <span class="similar">和你像：${escapeHtml(similar)}</span>
+          <span class="similar">${escapeHtml(similar)}</span>
         </header>
         <div class="person-quote">${escapeHtml(quote)}</div>
         <p class="person-preview">${escapeHtml(preview)}</p>
         ${timeline}
         <footer class="person-actions">
           <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}">${expanded ? "收起" : "TA 的经历"}</button>
-          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${saved ? "已加入路书" : "加入路书"}</button>
-          <button class="btn-s ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">读原文 →</button>
+          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${saved ? "已留下" : "留下样本"}</button>
+          <button class="btn-text read-link ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">读原文 →</button>
         </footer>
       </article>
     `;

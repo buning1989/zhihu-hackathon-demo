@@ -61,7 +61,7 @@
       draft.modal = { type: null, pathId: null, personId: null };
       draft.search = {
         status: "loading",
-        message: "正在整理公开经历里的路径",
+        message: "正在从真实经历里找相似的人",
         requestId,
         clarifyQuestions: [],
         clarifyAnswers,
@@ -98,7 +98,7 @@
   async function loadResults(query, requestId, answers) {
     App.store.update((draft) => {
       draft.search.status = "loading";
-      draft.search.message = "正在生成路径 Feed";
+      draft.search.message = "正在从真实经历里找相似的人";
       draft.search.requestId = requestId;
       draft.search.clarifyOpen = false;
       return draft;

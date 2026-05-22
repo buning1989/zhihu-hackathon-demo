@@ -7,7 +7,7 @@
     return `
       <section class="card loading-card">
         <h2 class="loading-title">${escapeHtml(state.search.message || "正在整理路径")}</h2>
-        <p class="loading-text">输入框已经回到顶部，稍后会进入路径话题 Feed。</p>
+        <p class="loading-text">先找到几条不同的走法，再展开具体的人。</p>
         <div class="loading-lines" aria-hidden="true">
           <span class="line"></span>
           <span class="line"></span>
@@ -32,7 +32,7 @@
 
     return `
       <nav class="left-rail">
-        <p class="rail-label">路径</p>
+        <p class="rail-label">相似经历</p>
         <button class="path-nav-item ${allActive ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="all">
           全部
         </button>

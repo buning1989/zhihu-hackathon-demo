@@ -21,13 +21,13 @@
     return `
       ${App.components.renderTopBar(state)}
       <main class="book-main">
-        <p class="book-kicker">我的路书</p>
+        <p class="book-kicker">我想留下的样本</p>
         <h1 class="book-title">你不是在寻找一个标准答案，而是在确认哪些代价是你愿意承担的。</h1>
-        <div class="quote" style="margin-bottom:24px;">${escapeHtml(state.query || state.pendingQuery || App.mockData.defaultQuery)}</div>
-        ${items || "<p class=\"book-text\">还没有样本，回到路径 Feed 加入一个。</p>"}
+        <div class="book-query quote">${escapeHtml(state.query || state.pendingQuery || App.mockData.defaultQuery)}</div>
+        ${items || "<p class=\"book-text\">还没有样本，回到相似经历里留下一位。</p>"}
         <div class="divider"></div>
         <div class="book-actions">
-          <button class="btn-p" type="button" data-action="open-capsule">写给三年后的自己</button>
+          <button class="btn-s" type="button" data-action="open-capsule">写给三年后的自己</button>
           <button class="btn-s" type="button" data-action="open-feed">继续找相似的人</button>
         </div>
       </main>

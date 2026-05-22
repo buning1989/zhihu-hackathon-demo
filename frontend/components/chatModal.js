@@ -22,7 +22,7 @@
       <div class="modal-overlay" role="presentation" data-action="close-modal"></div>
         <section class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chat-modal-title" data-stop-close>
           <header class="chat-header">
-            <span id="chat-modal-title">和 ${escapeHtml(person.name)} 的 AI 分身聊</span>
+            <span id="chat-modal-title">听听 ${escapeHtml(person.name)} 会怎么说</span>
             <button class="btn-text" type="button" data-action="close-modal">收起</button>
           </header>
           <div class="chat-intro">${escapeHtml(person.aiPersona.boundary)}</div>
@@ -30,8 +30,8 @@
           <footer>
             <form class="chat-row" data-form="chat" data-person-id="${escapeAttribute(person.id)}">
               <label class="sr-only" for="chat-message">输入想追问的问题</label>
-              <input class="chat-input" id="chat-message" name="message" placeholder="继续问 TA 一个问题……" />
-              <button class="btn-p" type="submit">发送</button>
+              <input class="chat-input" id="chat-message" name="message" placeholder="继续问这个选择背后的细节……" />
+              <button class="btn-text chat-send" type="submit">送出</button>
             </form>
           </footer>
         </section>

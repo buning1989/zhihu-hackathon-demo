@@ -15,8 +15,8 @@
     const statusText = state.search.status === "loading" ? state.search.message : "";
     const loadedStatus = state.search.status === "loaded" && result ? `
       <div class="status-bar">
-        <span class="status-text">找到 <strong>${pathCount} 条路径</strong> · <strong>${peopleCount} 个人</strong></span>
-        <button class="btn-text status-clarify" type="button" data-action="open-clarify">+ 补充关键信息，让匹配更准</button>
+        <span class="status-text">整理出 <strong>${pathCount} 条走法</strong> · <strong>${peopleCount} 个样本</strong></span>
+        <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点你的处境</button>
       </div>
     ` : statusText ? `
       <div class="status-bar">
@@ -33,11 +33,11 @@
         <form class="top-form" data-form="search">
           <label class="sr-only" for="top-query">输入处境</label>
           <textarea class="top-input" id="top-query" name="query" autocomplete="off">${query}</textarea>
-          <button class="btn-p" type="submit">重新匹配</button>
+          <button class="btn-text top-submit" type="submit">重新看看</button>
         </form>
         <nav class="top-actions" aria-label="主导航">
-          <button class="btn-text ${isFeed ? "is-active" : ""}" type="button" data-action="open-feed">路径</button>
-          <button class="btn-text ${isBook ? "is-active" : ""}" type="button" data-action="open-book">路书</button>
+          <button class="btn-text ${isFeed ? "is-active" : ""}" type="button" data-action="open-feed">相似经历</button>
+          <button class="btn-text ${isBook ? "is-active" : ""}" type="button" data-action="open-book">留下的样本</button>
           <button class="btn-text ${isCapsule ? "is-active" : ""}" type="button" data-action="open-capsule">时间胶囊</button>
           <span class="user-area">
             <span class="user-avatar">${escapeHtml(profile ? profile.name.slice(0, 1) : "我")}</span>
