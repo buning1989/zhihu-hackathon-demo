@@ -2,11 +2,12 @@
   const App = window.LifeSampleApp || (window.LifeSampleApp = {});
   App.components = App.components || {};
 
-  App.components.renderClarifyCard = function renderClarifyCard(state) {
+  App.components.renderClarifyCard = function renderClarifyCard(state, options = {}) {
     const { escapeHtml, escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
     const questions = state.search.clarifyQuestions || [];
     const answers = state.search.clarifyAnswers || {};
+    const variant = options.variant || "feed";
 
     const questionHtml = questions.map((question) => {
       const options = question.options.map((option) => {
@@ -31,7 +32,7 @@
     }).join("");
 
     return `
-      <section class="clarify-wrap">
+      <section class="clarify-wrap clarify-${escapeAttribute(variant)}">
         <div class="clarify-card">
           <div class="clarify-panel">
             <h2 class="clarify-title">再说一点你的处境</h2>

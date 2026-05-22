@@ -36,6 +36,7 @@
             </div>
           </div>
         </div>
+        <div class="loading-progress-track" aria-hidden="true"><span></span></div>
       </section>
     `;
   }

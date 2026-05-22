@@ -4,6 +4,8 @@
   let requestSeq = 0;
   let capsuleTypingTimer = null;
   let entryPlaceholderTimer = null;
+  const mockMinimumLoadingMs = 3000;
+  const defaultMinimumLoadingMs = 2000;
   const entryPlaceholderExamples = [
     "为了工作长期异地恋，真的值得吗？",
     "毕业后留在大城市，还是回老家？",
@@ -82,6 +84,12 @@
     return App.store.getState().search.requestId === requestId;
   }
 
+  function wait(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
   async function submitSearch(query, options = {}) {
     const cleanQuery = String(query || "").trim();
     if (!cleanQuery) {
@@ -148,6 +156,7 @@
   }
 
   async function loadResults(query, requestId, answers) {
+    const loadingStartedAt = Date.now();
     App.store.update((draft) => {
       draft.page = "feed";
       draft.search.status = "loading";
@@ -161,6 +170,16 @@
       query,
       answers
     });
+
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    const minimumLoadingMs = response.data?.dataMode === "mock" ? mockMinimumLoadingMs : defaultMinimumLoadingMs;
+    const remainingLoadingMs = minimumLoadingMs - (Date.now() - loadingStartedAt);
+    if (remainingLoadingMs > 0) {
+      await wait(remainingLoadingMs);
+    }
 
     if (!isCurrentRequest(requestId)) {
       return;

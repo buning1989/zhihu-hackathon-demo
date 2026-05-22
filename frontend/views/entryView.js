@@ -56,8 +56,9 @@
     const { escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
     const query = escapeAttribute(state.query || "");
-    const clarifyLayer = state.search.clarifyOpen || state.search.status === "clarify"
-      ? App.components.renderClarifyCard(state)
+    const isClarifying = state.search.clarifyOpen || state.search.status === "clarify";
+    const clarifyPanel = isClarifying
+      ? App.components.renderClarifyCard(state, { variant: "entry" })
       : "";
 
     return `
@@ -67,14 +68,14 @@
           <h1 class="entry-title">有什么让你纠结了很久的事？越具体越好</h1>
           <form data-form="search">
             <label class="sr-only" for="entry-query">输入你的处境</label>
-            <div class="entry-input-shell">
+            <div class="entry-input-shell ${isClarifying ? "is-expanded" : ""}">
               <textarea class="entry-input" id="entry-query" name="query">${query}</textarea>
-              <button class="btn-p entry-submit" type="submit" aria-label="开始看看">${icon("search")}</button>
+              ${isClarifying ? "" : `<button class="btn-p entry-submit" type="submit" aria-label="开始看看">${icon("search")}</button>`}
+              ${clarifyPanel}
             </div>
           </form>
         </section>
         ${renderLoginModal(state)}
-        ${clarifyLayer}
       </main>
     `;
   };
