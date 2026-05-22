@@ -1,5 +1,25 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 4 observability eval debug loop
+
+本轮目标：只执行 Phase 4 的观测、评估、debug 最小闭环；不做完整管理后台、图表页面、前端 UI 或 Phase 5 信息补充卡。
+
+已完成：
+
+- 新增 `GET /api/agent/tasks/:taskId/debug`，仅非 production 环境开放，返回 task、stages、events、artifacts summary、raw_sources/candidates/evidence/final_result summary、groundingReport、errorCode/errorMessage 和 failedStage。
+- debug 输出只保留短 preview/计数/ID/分数，不返回大段 source/evidence 原文；metadata/event payload 会过滤 anonymousId/IP/token/cookie/authorization/secret/actorHash 等字段。
+- task reuse 时写入 best-effort `task.reused` event；stage artifact cache hit 已可在 debug 的 cache summary 和 stage cacheHit 中定位。
+- 新增 `backend/scripts/eval-agent-production.mjs`，默认跑 30 个固定问题，覆盖职业、学业、亲密关系、城市生活、婚育家庭、自我低谷，并输出每题质量指标与最终 summary。
+- production smoke 增加 debug endpoint 结构和敏感 metadata 泄露检查。
+- `shared/openapi.yaml` 补充 Phase 4 debug endpoint 和 Phase 3 create response 的 `cacheHit/reused` 字段。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- `FRONTEND_PORT=3001 npm run smoke`
+- 有真实知乎 key 时执行 `npm run eval:agent-production -w backend`
+
 ## 2026-05-22 - Agent production Phase 3 cost cache and limits
 
 本轮目标：只执行 Phase 3 的成本、缓存、限流；不进入观测后台、信息补充卡或前端 UI。

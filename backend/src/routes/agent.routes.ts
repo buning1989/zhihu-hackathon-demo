@@ -17,6 +17,7 @@ import {
 } from "../agent/agentTaskApi.js";
 import { agentRepository } from "../agent/agentRepository.js";
 import type { PersistentAgentTask } from "../agent/agentModels.js";
+import { buildPersistentAgentTaskDebugData } from "../agent/agentTaskDebug.js";
 import { completeTask, createTask, failTask, getTask } from "../agent/agentTaskStore.js";
 import { buildPersistentAgentTaskView } from "../agent/agentTaskView.js";
 import { config } from "../config/env.js";
@@ -57,6 +58,7 @@ agentRoutes.post("/tasks", async (req, res, next) => {
       statuses: ["created", "queued", "running", "partial_ready", "waiting_retry"]
     });
     if (runningReusableTask) {
+      await recordTaskReuseEvent(runningReusableTask, "running_task");
       res.json({
         success: true,
         data: buildPersistentAgentTaskStartData(runningReusableTask, {
@@ -76,6 +78,7 @@ agentRoutes.post("/tasks", async (req, res, next) => {
       ttlHours: config.agent.cache.finalResultTtlHours
     });
     if (succeededReusableTask) {
+      await recordTaskReuseEvent(succeededReusableTask, "recent_succeeded_task");
       res.json({
         success: true,
         data: buildPersistentAgentTaskStartData(succeededReusableTask, {
@@ -312,6 +315,29 @@ agentRoutes.get("/tasks/:taskId/view", async (req, res, next) => {
   }
 });
 
+agentRoutes.get("/tasks/:taskId/debug", async (req, res, next) => {
+  try {
+    assertAgentDebugEnabled();
+    const taskId = req.params.taskId.trim();
+
+    if (!agentRepository.isConfigured()) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    const snapshot = await agentRepository.getTaskSnapshot(taskId);
+    if (!snapshot) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    res.json({
+      success: true,
+      data: buildPersistentAgentTaskDebugData(snapshot)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 function parseCreatePersistentAgentTaskRequest(body: unknown): {
   query: string;
   metadata: Record<string, unknown>;
@@ -421,6 +447,31 @@ async function assertAgentRateLimit(actor: {
       "RATE_LIMITED",
       `Too many Agent tasks in the current window; limit is ${createLimit}`
     );
+  }
+}
+
+async function recordTaskReuseEvent(
+  task: PersistentAgentTask,
+  reusedReason: "running_task" | "recent_succeeded_task"
+): Promise<void> {
+  try {
+    await agentRepository.createEvent({
+      taskId: task.id,
+      type: "task.reused",
+      payload: {
+        status: task.status,
+        reusedReason,
+        queryCacheKey: readString(task.metadata.queryCacheKey)
+      }
+    });
+  } catch {
+    // Debug events must not break the cost-saving reuse path.
+  }
+}
+
+function assertAgentDebugEnabled(): void {
+  if (config.nodeEnv === "production") {
+    throw new HttpError(404, "AGENT_DEBUG_DISABLED", "Agent debug endpoint is disabled");
   }
 }
 

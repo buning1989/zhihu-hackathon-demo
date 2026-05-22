@@ -772,6 +772,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/debug:
+    get:
+      tags:
+        - Agent
+      summary: Get internal Agent task debug summary
+      description: >
+        Phase 4 internal/local debug endpoint. Returns structured task,
+        stage, event and artifact summaries for bad-case diagnosis without
+        returning full source bodies or sensitive metadata. Disabled when
+        NODE_ENV/APP_ENV is production.
+      operationId: getPersistentAgentTaskDebug
+      x-implementation-status: implemented-phase4
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Internal debug summary for a persistent Agent task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistentAgentTaskDebugResponse"
+        "404":
+          description: Persistent task was not found or debug endpoint is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/personas/chat:
     post:
       tags:
@@ -1294,7 +1325,10 @@ components:
               type: string
             status:
               type: string
-              const: queued
+              enum:
+                - queued
+                - running
+                - succeeded
             frontendStatus:
               type: string
             pollAfterMs:
@@ -1304,10 +1338,22 @@ components:
               type: string
             queueStatus:
               type: string
-              const: enqueued
+              enum:
+                - enqueued
+                - reused_running
+                - reused_succeeded
             eventsUrl:
               type: string
               description: Reserved for future event APIs; no WebSocket/SSE is introduced in Phase 1.
+            cacheHit:
+              type: boolean
+            reused:
+              type: boolean
+            reusedReason:
+              type: string
+              enum:
+                - running_task
+                - recent_succeeded_task
     PersistentAgentTaskListResponse:
       type: object
       required:
@@ -1706,6 +1752,174 @@ components:
           type: array
           items:
             type: string
+    PersistentAgentTaskDebugResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PersistentAgentTaskDebugData"
+    PersistentAgentTaskDebugData:
+      type: object
+      description: >
+        Internal/local safe summary for debugging Agent bad cases. Text fields
+        are previews, artifact data is summarized, and sensitive metadata keys
+        are omitted.
+      required:
+        - task
+        - stages
+        - events
+        - artifacts
+        - summaries
+        - cache
+        - errorCode
+        - errorMessage
+        - failedStage
+        - totalDurationMs
+      properties:
+        task:
+          type: object
+          additionalProperties: true
+          required:
+            - id
+            - status
+            - currentStage
+            - progress
+            - queryPreview
+            - queryLength
+            - queryHash
+            - userIdPresent
+            - metadata
+            - createdAt
+            - updatedAt
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+            currentStage:
+              type:
+                - string
+                - "null"
+            progress:
+              type: integer
+            queryPreview:
+              type: string
+              description: Truncated query preview, not the full raw request body.
+            queryLength:
+              type: integer
+            queryHash:
+              type: string
+            userIdPresent:
+              type: boolean
+            metadata:
+              type: object
+              additionalProperties: true
+              description: Sanitized metadata; secret/token/cookie/authorization/IP-like keys are omitted.
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+            startedAt:
+              type:
+                - string
+                - "null"
+              format: date-time
+            completedAt:
+              type:
+                - string
+                - "null"
+              format: date-time
+        stages:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        events:
+          type: object
+          required:
+            - count
+            - items
+          properties:
+            count:
+              type: integer
+            items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+        artifacts:
+          type: object
+          required:
+            - count
+            - byType
+            - items
+          properties:
+            count:
+              type: integer
+            byType:
+              type: object
+              additionalProperties:
+                type: integer
+            items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+        summaries:
+          type: object
+          additionalProperties: true
+          properties:
+            rawSources:
+              type:
+                - object
+                - "null"
+              additionalProperties: true
+            candidates:
+              type:
+                - object
+                - "null"
+              additionalProperties: true
+            evidence:
+              type:
+                - object
+                - "null"
+              additionalProperties: true
+            productionFinalResult:
+              type:
+                - object
+                - "null"
+              additionalProperties: true
+        groundingReport:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        cache:
+          type: object
+          additionalProperties: true
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        failedStage:
+          type:
+            - string
+            - "null"
+        totalDurationMs:
+          type:
+            - integer
+            - "null"
     PersistentAgentTaskViewResponse:
       type: object
       required:

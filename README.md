@@ -84,6 +84,15 @@ npm run db:migrate -w backend
 npm run smoke:agent-view -w backend
 ```
 
+Phase 4 内部调试和评估工具：
+
+```bash
+curl -s "http://localhost:8000/api/agent/tasks/<taskId>/debug"
+npm run eval:agent-production -w backend
+```
+
+`/debug` 只在非 production 环境开放，返回 task/stage/event/artifact 的安全摘要，不返回大段原文或敏感 metadata。评估脚本会跑 30 个固定问题并输出 success rate、平均耗时、证据量、degraded rate、grounding passed rate、cache/reuse 计数和 failed task list。
+
 ## 前后端协作规则
 
 - `shared/openapi.yaml` 是前后端协作的最小契约。当前已实现接口 `GET /api/search` 继续保留；AI 分身产品层 P0 目标契约统一为 `POST /api/demo/search`。

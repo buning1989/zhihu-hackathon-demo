@@ -14,6 +14,7 @@
     "smoke:agent-worker": "node scripts/smoke-agent-worker.mjs",
     "smoke:agent-view": "node scripts/smoke-agent-view.mjs",
     "smoke:agent-production": "node scripts/smoke-agent-production.mjs",
+    "eval:agent-production": "node scripts/eval-agent-production.mjs",
     "smoke": "npm run build && node dist/tests/smoke.test.js"
   },
   "dependencies": {

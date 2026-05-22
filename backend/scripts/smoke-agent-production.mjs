@@ -43,6 +43,7 @@ try {
     assert(status.resultAvailable === true, `${query}: resultAvailable was not true`);
     const result = await readTaskResult(started.resultUrl || `/api/agent/tasks/${encodeURIComponent(started.taskId)}/result`);
     assertProductionFinalResult(result.final_result, query);
+    await assertTaskDebug(started.taskId, query);
     console.log(`agent production smoke ok: ${query} taskId=${started.taskId}`);
   }
 
@@ -112,6 +113,9 @@ async function assertSucceededTaskReuse(query, originalTask) {
   assert(reused.cacheHit === true, `${query}: succeeded cacheHit was not true`);
   assert(reused.reused === true, `${query}: succeeded reused was not true`);
   assert(reused.queueStatus === "reused_succeeded", `${query}: succeeded queueStatus invalid`);
+
+  const debug = await readTaskDebug(originalTask.taskId);
+  assert(debug.cache?.reusedEventCount >= 1, `${query}: reused event missing from debug`);
 }
 
 async function assertRunningTaskReuseAndRateLimit() {
@@ -196,6 +200,34 @@ async function readTaskResult(resultUrl) {
   }
 
   return body.data;
+}
+
+async function readTaskDebug(taskId) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/debug`);
+  const body = await readJsonResponse(response);
+  if (!response.ok || !body?.success) {
+    throw new Error(`GET /api/agent/tasks/${taskId}/debug failed: ${response.status} ${JSON.stringify(body)}`);
+  }
+
+  return body.data;
+}
+
+async function assertTaskDebug(taskId, label) {
+  const debug = await readTaskDebug(taskId);
+  assert(debug?.task?.id === taskId, `${label}: debug task id mismatch`);
+  assert(Array.isArray(debug.stages), `${label}: debug stages missing`);
+  assert(isRecord(debug.events), `${label}: debug events missing`);
+  assert(isRecord(debug.artifacts), `${label}: debug artifacts missing`);
+  assert(isRecord(debug.summaries), `${label}: debug summaries missing`);
+  assert(isRecord(debug.summaries.rawSources), `${label}: debug raw_sources summary missing`);
+  assert(isRecord(debug.summaries.candidates), `${label}: debug candidates summary missing`);
+  assert(isRecord(debug.summaries.evidence), `${label}: debug evidence summary missing`);
+  assert(isRecord(debug.summaries.productionFinalResult), `${label}: debug final summary missing`);
+  assert(isRecord(debug.groundingReport), `${label}: debug groundingReport missing`);
+  assert(Number.isFinite(debug.totalDurationMs), `${label}: debug totalDurationMs missing`);
+
+  const metadataText = JSON.stringify(debug.task.metadata ?? {});
+  assert(!/anonymousId|actorHash|authorization|cookie|secret|token/i.test(metadataText), `${label}: debug leaked sensitive metadata`);
 }
 
 function assertProductionFinalResult(finalResult, label) {
