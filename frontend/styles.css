@@ -15,7 +15,7 @@
   --left-col: 220px;
   --main-col: 800px;
   --right-col: 300px;
-  --grid-gap: 24px;
+  --grid-gap: 20px;
   color-scheme: light;
 }
 
@@ -302,7 +302,7 @@ img {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 12px;
 }
 
 .top-actions .btn-text {
@@ -312,6 +312,74 @@ img {
 .top-actions .btn-text:hover,
 .top-actions .btn-text.is-active {
   color: var(--text-secondary);
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-trigger {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.account-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.user-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.account-popover {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  width: 148px;
+  padding: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  z-index: 45;
+}
+
+.account-name {
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid #f1f2f5;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.account-menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+}
+
+.account-menu-item:hover {
+  color: var(--accent);
+  background: var(--bg-secondary);
 }
 
 .status-bar {
@@ -647,11 +715,15 @@ img {
   font-weight: 600;
 }
 
-.brief {
+.brief,
+.person-meta {
   margin: 2px 0 0;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .similar {
@@ -667,9 +739,14 @@ img {
 
 .person-quote {
   color: var(--text-primary);
-  font-size: 16px;
-  line-height: 1.78;
-  margin-bottom: 9px;
+  font-size: 17px;
+  line-height: 1.65;
+  max-height: 56px;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .person-quote::before {
@@ -684,10 +761,15 @@ img {
 
 .person-preview {
   margin: 0 0 14px;
-  color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1.7;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.68;
+  max-height: 48px;
   font-weight: 400;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .person-actions {
@@ -703,10 +785,14 @@ img {
 }
 
 .person-actions .btn-text:hover {
+  color: var(--text-secondary);
+}
+
+.person-actions .read-link {
   color: var(--accent);
 }
 
-.read-link {
+.person-actions .read-link:hover {
   color: var(--accent);
 }
 
@@ -773,15 +859,19 @@ img {
 }
 
 .rail-card {
-  padding: 16px 16px 14px;
+  padding: 14px 14px 12px;
   background: var(--bg);
   border-color: var(--border);
+}
+
+.right-rail .rail-title {
+  font-size: 15px;
 }
 
 .rail-text {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -793,22 +883,22 @@ img {
 
 .saved-item,
 .connected-item {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
   border-left: 0;
-  border-top: 1px solid var(--border);
-  padding: 11px 0;
+  border-top: 1px solid #f1f2f5;
+  padding: 10px 0;
 }
 
 .connected-name {
   color: var(--text-primary);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .connected-snippet {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   margin: 2px 0 4px;
   display: -webkit-box;
   overflow: hidden;
@@ -827,8 +917,13 @@ img {
   color: var(--text-muted);
 }
 
-.rail-book-btn:hover {
-  color: var(--accent);
+.right-rail .btn-text {
+  color: var(--text-muted);
+}
+
+.rail-book-btn:hover,
+.right-rail .btn-text:hover {
+  color: var(--text-secondary);
 }
 
 .reading-main,

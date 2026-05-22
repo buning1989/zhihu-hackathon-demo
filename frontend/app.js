@@ -156,6 +156,23 @@
     await submitSearch(state.pendingQuery || state.query || App.mockData.defaultQuery);
   }
 
+  function mockLogout() {
+    App.store.update((draft) => {
+      draft.page = "entry";
+      draft.query = "";
+      draft.pendingQuery = "";
+      draft.auth.loggedIn = false;
+      draft.auth.needsLogin = false;
+      draft.auth.isLoggingIn = false;
+      draft.auth.profile = null;
+      draft.search.status = "idle";
+      draft.search.message = "";
+      draft.search.clarifyOpen = false;
+      draft.modal = { type: null, pathId: null, personId: null };
+      return draft;
+    });
+  }
+
   function answerClarify(questionId, optionId) {
     App.store.update((draft) => {
       draft.search.clarifyAnswers[questionId] = optionId;
@@ -384,6 +401,8 @@
 
     if (action === "mock-login") {
       await mockLogin();
+    } else if (action === "mock-logout") {
+      mockLogout();
     } else if (action === "answer-clarify") {
       answerClarify(target.dataset.questionId, target.dataset.optionId);
     } else if (action === "continue-after-clarify") {

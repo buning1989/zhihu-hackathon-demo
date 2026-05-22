@@ -16,6 +16,7 @@
       "path-skill": "也在慢慢攒底气"
     };
     const similar = similarLabels[person.pathId] || "相似处境";
+    const meta = `${brief} · ${similar}`;
     const timelineItems = person.timeline || [
       { date: "开始", event: person.article?.paragraphs?.[0] || person.experienceSummary },
       { date: "中段", event: person.article?.paragraphs?.[1] || person.source?.evidence || person.experienceSummary },
@@ -42,9 +43,8 @@
           <span class="avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
           <div>
             <h3 class="name">${escapeHtml(person.name)}</h3>
-            <p class="brief">${escapeHtml(brief)}</p>
+            <p class="person-meta">${escapeHtml(meta)}</p>
           </div>
-          <span class="similar">${escapeHtml(similar)}</span>
         </header>
         <div class="person-quote">${escapeHtml(quote)}</div>
         <p class="person-preview">${escapeHtml(preview)}</p>

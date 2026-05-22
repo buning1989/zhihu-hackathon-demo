@@ -6,6 +6,7 @@
     const { escapeHtml, escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
     const query = escapeAttribute(state.query || state.pendingQuery || App.mockData.defaultQuery);
+    const profile = state.auth.profile || App.mockData.profile;
     const isBook = state.page === "book";
     const isCapsule = state.page === "capsule";
     const result = state.result;
@@ -30,6 +31,18 @@
         </div>
       </div>
     ` : "";
+    const accountMenu = state.auth.loggedIn ? `
+      <details class="account-menu">
+        <summary class="account-trigger" aria-label="当前账号：${escapeAttribute(profile.name)}">
+          <span class="user-avatar">${escapeHtml(profile.name.slice(0, 1))}</span>
+        </summary>
+        <div class="account-popover">
+          <div class="account-name">${escapeHtml(profile.name)}</div>
+          <button class="account-menu-item" type="button" data-action="open-book">我的样本</button>
+          <button class="account-menu-item" type="button" data-action="mock-logout">退出登录</button>
+        </div>
+      </details>
+    ` : "";
 
     return `
       <header class="top-bar">
@@ -45,6 +58,7 @@
         <nav class="top-actions" aria-label="辅助入口">
           <button class="btn-text ${isBook ? "is-active" : ""}" type="button" data-action="open-book">${icon("bookmark")}留下的样本</button>
           <button class="btn-text ${isCapsule ? "is-active" : ""}" type="button" data-action="open-capsule">${icon("clock")}时间胶囊</button>
+          ${accountMenu}
         </nav>
         </div>
         ${loadedStatus}
