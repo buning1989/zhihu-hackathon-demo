@@ -1578,6 +1578,30 @@
     }
   }
 
+  function handleKeyDown(event) {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) {
+      return;
+    }
+
+    const input = event.target.closest("textarea");
+    if (!input) {
+      return;
+    }
+
+    const form = input.closest('form[data-form="search"]');
+    if (!form) {
+      return;
+    }
+
+    event.preventDefault();
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return;
+    }
+
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  }
+
   async function handleClick(event) {
     const target = event.target.closest("[data-action]");
     if (!target || target.disabled) {
@@ -1666,6 +1690,7 @@
 
   App.store.subscribe(render);
   root.addEventListener("submit", handleSubmit);
+  root.addEventListener("keydown", handleKeyDown);
   root.addEventListener("click", handleClick);
   render();
 })();
