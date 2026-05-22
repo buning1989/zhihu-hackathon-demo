@@ -90,6 +90,12 @@
     emit();
   }
 
+  function updateSilent(updater) {
+    const draft = clone(state);
+    const next = updater(draft) || draft;
+    state = next;
+  }
+
   function subscribe(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -198,6 +204,7 @@
     findPerson,
     getPeopleForPath,
     isInBook,
+    updateSilent,
     addToBook,
     addInteraction,
     addRecentView,

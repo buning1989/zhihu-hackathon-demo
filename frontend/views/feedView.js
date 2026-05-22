@@ -10,7 +10,7 @@
       { label: "寻找经历", message: "正在寻找相似经历" },
       { label: "抽取证据", message: "正在抽取证据片段" },
       { label: "整理走法", message: "正在整理几种走法" },
-      { label: "生成结果", message: "正在挑出代表人物" }
+      { label: "生成结果", message: "正在生成结果" }
     ];
     const currentStageIndex = Math.min(
       Math.max(Number(state.search.loadingStageIndex) || 0, 0),
@@ -23,31 +23,37 @@
         ? "loading-exit"
         : "";
     const people = (result.people || App.mockData.people).slice(0, 6);
-    const flowingPeople = people.concat(people);
-    const lane = flowingPeople.map((person) => `
+    const marqueeItems = people.map((person) => `
       <span class="loading-person">
         <span class="loading-avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
         <span>${escapeHtml(person.name)}</span>
       </span>
     `).join("");
+    const marqueeGroup = `<div class="marquee-group">${marqueeItems}</div>`;
 
     return `
       <section class="card loading-card ${phaseClass}">
         <h2 class="loading-title">${escapeHtml(currentStage.message)}</h2>
         <div class="people-flow" aria-hidden="true">
-          <div class="marquee-track">${lane}</div>
-          <div class="marquee-track reverse">${lane}</div>
+          <div class="marquee-viewport">
+            <div class="marquee-track">${marqueeGroup}${marqueeGroup}</div>
+          </div>
+          <div class="marquee-viewport">
+            <div class="marquee-track is-reverse">${marqueeGroup}${marqueeGroup}</div>
+          </div>
         </div>
         <ol class="loading-flow" aria-label="匹配进度">
           ${loadingStages.map((stage, index) => {
             const nodeClass = index < currentStageIndex
-              ? "is-done"
+              ? "is-completed"
               : index === currentStageIndex
-                ? "is-current"
-                : "";
+                ? "is-active"
+                : "is-pending";
             return `
-              <li class="loading-node ${nodeClass}" ${index === currentStageIndex ? "aria-current=\"step\"" : ""}>
-                <span class="loading-node-dot" aria-hidden="true"></span>
+              <li class="loading-node ${nodeClass}" data-stage-index="${index}" ${index === currentStageIndex ? "aria-current=\"step\"" : ""}>
+                <span class="loading-node-dot" aria-hidden="true">
+                  <span class="loading-node-check">✓</span>
+                </span>
                 <span class="loading-node-label">${escapeHtml(stage.label)}</span>
               </li>
             `;

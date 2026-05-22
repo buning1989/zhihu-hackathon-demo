@@ -43,7 +43,7 @@
     {
       id: "people",
       label: "生成结果",
-      message: "正在挑出代表人物"
+      message: "正在生成结果"
     }
   ];
 
@@ -140,6 +140,45 @@
     const stageIndex = clampLoadingStageIndex(index);
     draft.search.loadingStageIndex = stageIndex;
     draft.search.message = loadingStageAt(stageIndex).message;
+  }
+
+  function syncLoadingStageDom(index) {
+    const stageIndex = clampLoadingStageIndex(index);
+    const stage = loadingStageAt(stageIndex);
+    const card = root.querySelector(".loading-card");
+    if (!card) {
+      return;
+    }
+
+    const title = card.querySelector(".loading-title");
+    if (title) {
+      title.textContent = stage.message;
+    }
+
+    card.querySelectorAll(".loading-node").forEach((node) => {
+      const nodeIndex = Number(node.getAttribute("data-stage-index"));
+      const isCompleted = nodeIndex < stageIndex;
+      const isActive = nodeIndex === stageIndex;
+      node.classList.toggle("is-completed", isCompleted);
+      node.classList.toggle("is-active", isActive);
+      node.classList.toggle("is-pending", nodeIndex > stageIndex);
+      if (isActive) {
+        node.setAttribute("aria-current", "step");
+      } else {
+        node.removeAttribute("aria-current");
+      }
+    });
+  }
+
+  function updateLoadingStageWithoutRender(index) {
+    const stageIndex = clampLoadingStageIndex(index);
+    App.store.updateSilent((draft) => {
+      if (draft.search.status === "loading") {
+        applyLoadingStage(draft, stageIndex);
+      }
+      return draft;
+    });
+    syncLoadingStageDom(stageIndex);
   }
 
   function normalizeLoadingStageIndex(value, fallback = 0) {
@@ -273,12 +312,7 @@
       return;
     }
 
-    App.store.update((draft) => {
-      if (draft.search.status === "loading") {
-        applyLoadingStage(draft, index);
-      }
-      return draft;
-    });
+    updateLoadingStageWithoutRender(index);
   }
 
   function startLoadingStageTicker(requestId) {
@@ -299,10 +333,7 @@
         return;
       }
 
-      App.store.update((draft) => {
-        applyLoadingStage(draft, currentIndex + 1);
-        return draft;
-      });
+      updateLoadingStageWithoutRender(currentIndex + 1);
     }, loadingStageIntervalMs);
   }
 
@@ -773,7 +804,7 @@
         return;
       }
     } else {
-      App.store.update((draft) => {
+      App.store.updateSilent((draft) => {
         const nextStageIndex = loadingStageIndexFromTaskStatus(taskStatus, draft.search.loadingStageIndex);
         draft.search.status = "loading";
         applyLoadingStage(draft, Math.max(clampLoadingStageIndex(draft.search.loadingStageIndex), nextStageIndex));
@@ -789,6 +820,7 @@
           : "loading";
         return draft;
       });
+      syncLoadingStageDom(App.store.getState().search.loadingStageIndex);
     }
 
     schedulePoll(taskData.taskId, requestId, taskData.pollAfterMs, context);

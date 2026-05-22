@@ -977,21 +977,31 @@ img {
   gap: 10px;
   width: 100%;
   padding: 2px 0;
+}
+
+.marquee-viewport {
   overflow: hidden;
 }
 
 .marquee-track {
   display: flex;
-  gap: 12px;
   width: max-content;
-  animation: marquee 22s linear infinite;
   will-change: transform;
+  animation: loading-marquee 28s linear infinite;
+  transform: translate3d(0, 0, 0);
 }
 
-.marquee-track.reverse {
+.marquee-track.is-reverse {
   animation-direction: reverse;
-  animation-duration: 26s;
+  animation-duration: 34s;
   opacity: 0.72;
+}
+
+.marquee-group {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding-right: 12px;
 }
 
 .loading-person {
@@ -1055,47 +1065,65 @@ img {
   background: #e8ebf0;
 }
 
-.loading-node.is-done:not(:last-child)::after {
+.loading-node.is-completed:not(:last-child)::after {
   background: rgba(23, 114, 246, 0.22);
 }
 
 .loading-node-dot {
   position: relative;
   z-index: 1;
+  display: grid;
+  place-items: center;
   width: 16px;
   height: 16px;
   border: 1px solid #dfe3eb;
   border-radius: 50%;
   background: var(--bg-secondary);
+  color: transparent;
+  font-size: 11px;
+  line-height: 1;
 }
 
-.loading-node.is-done .loading-node-dot {
-  border-color: rgba(23, 114, 246, 0.28);
+.loading-node-check {
+  display: none;
+}
+
+.loading-node.is-completed .loading-node-dot {
+  border-color: rgba(23, 114, 246, 0.42);
   background: #eaf2ff;
+  color: var(--accent);
 }
 
-.loading-node.is-current .loading-node-dot {
+.loading-node.is-completed .loading-node-check {
+  display: block;
+}
+
+.loading-node.is-active .loading-node-dot {
   border-color: var(--accent);
   background: var(--accent);
   box-shadow: 0 0 0 3px rgba(23, 114, 246, 0.1);
 }
 
-.loading-node.is-done .loading-node-label {
+.loading-node.is-completed .loading-node-label {
   color: var(--text-secondary);
 }
 
-.loading-node.is-current .loading-node-label {
+.loading-node.is-active .loading-node-label {
   color: var(--accent);
   font-weight: 500;
 }
 
-@keyframes marquee {
+.loading-node.is-pending .loading-node-label {
+  color: var(--text-muted);
+}
+
+@keyframes loading-marquee {
   from {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
 
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
