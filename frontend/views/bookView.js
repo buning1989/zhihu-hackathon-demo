@@ -4,6 +4,7 @@
 
   App.views.renderBookView = function renderBookView(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
+    const icon = App.components.renderIcon;
     const items = state.bookItems.map((item) => {
       const person = App.store.findPerson(item.personId);
       if (!person) {
@@ -13,7 +14,7 @@
         <article class="book-block">
           <h2 class="book-name">${escapeHtml(person.name)}</h2>
           <p class="book-text">${escapeHtml(person.article?.paragraphs?.[0] || person.experienceSummary)}</p>
-          <button class="btn-text" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">读原文 →</button>
+          <button class="btn-text" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}读原文 →</button>
         </article>
       `;
     }).join("");
@@ -27,8 +28,8 @@
         ${items || "<p class=\"book-text\">还没有样本，回到相似经历里留下一位。</p>"}
         <div class="divider"></div>
         <div class="book-actions">
-          <button class="btn-s" type="button" data-action="open-capsule">写给三年后的自己</button>
-          <button class="btn-s" type="button" data-action="open-feed">继续找相似的人</button>
+          <button class="btn-s" type="button" data-action="open-capsule">${icon("clock")}写给三年后的自己</button>
+          <button class="btn-s" type="button" data-action="open-feed">${icon("arrow-left")}继续找相似的人</button>
         </div>
       </main>
     `;

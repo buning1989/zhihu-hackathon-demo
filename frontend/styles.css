@@ -74,11 +74,30 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   font-size: 13px;
   line-height: 1.5;
   white-space: nowrap;
   text-decoration: none;
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn-text .icon,
+.path-count-btn .icon,
+.path-nav-item .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .btn-p,
@@ -230,6 +249,9 @@ img {
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding-top: 7px;
   border: 0;
   background: transparent;
@@ -409,7 +431,9 @@ img {
 }
 
 .path-nav-item {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   width: 100%;
   text-align: left;
   padding: 8px 10px;
@@ -420,6 +444,11 @@ img {
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: 2px;
+}
+
+.path-nav-copy {
+  display: grid;
+  gap: 1px;
 }
 
 .path-nav-item.is-active {
@@ -535,6 +564,9 @@ img {
   font-size: 13px;
   white-space: nowrap;
   padding: 2px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .quote {

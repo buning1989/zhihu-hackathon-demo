@@ -4,6 +4,7 @@
 
   App.components.renderClarifyCard = function renderClarifyCard(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
+    const icon = App.components.renderIcon;
     const questions = state.search.clarifyQuestions || [];
     const answers = state.search.clarifyAnswers || {};
 
@@ -37,8 +38,8 @@
             <p class="clarify-desc">不用解释太多，点选几个更接近现在的感受就好。</p>
             ${questionHtml}
             <div class="clarify-actions">
-              <button class="btn-s" type="button" data-action="skip-clarify">先看这些经历</button>
-              <button class="btn-s" type="button" data-action="continue-after-clarify">用这些信息重新看看</button>
+              <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}先看这些经历</button>
+              <button class="btn-s" type="button" data-action="continue-after-clarify">${icon("refresh-cw")}用这些信息重新看看</button>
             </div>
           </div>
         </div>

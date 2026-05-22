@@ -4,6 +4,7 @@
 
   App.components.renderPersonCard = function renderPersonCard(person, state) {
     const { escapeHtml, escapeAttribute } = App.utils;
+    const icon = App.components.renderIcon;
     const saved = App.store.isInBook(person.id);
     const expanded = state.expandedPersonId === person.id;
     const quote = person.article?.paragraphs?.[0] || person.experienceSummary;
@@ -49,9 +50,9 @@
         <p class="person-preview">${escapeHtml(preview)}</p>
         ${timeline}
         <footer class="person-actions">
-          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}">${expanded ? "收起" : "TA 的经历"}</button>
-          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${saved ? "已留下" : "留下样本"}</button>
-          <button class="btn-text read-link ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">读原文 →</button>
+          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}">${icon(expanded ? "chevron-up" : "chevron-down")}${expanded ? "收起" : "TA 的经历"}</button>
+          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
+          <button class="btn-text read-link ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}读原文 →</button>
         </footer>
       </article>
     `;

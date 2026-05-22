@@ -4,6 +4,7 @@
 
   App.views.renderCapsuleView = function renderCapsuleView(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
+    const icon = App.components.renderIcon;
     if (state.capsule.sealed) {
       return `
         <main class="capsule-view is-sealed">
@@ -15,7 +16,7 @@
               <div class="capsule-end ${state.capsule.typingDone ? "is-visible" : ""}">三年后再来看看。</div>
             </div>
             <div class="capsule-actions ${state.capsule.typingDone ? "is-visible" : ""}">
-              <button class="btn-s" type="button" data-action="open-feed">回到相似的人</button>
+              <button class="btn-s" type="button" data-action="open-feed">${icon("arrow-left")}回到相似的人</button>
             </div>
           </section>
         </main>
@@ -30,7 +31,7 @@
             <label class="sr-only" for="capsule-message">写给未来的自己</label>
             <textarea class="capsule-input" id="capsule-message" name="message" placeholder="${escapeAttribute(state.capsule.selectedPrompt)}"></textarea>
             <input type="hidden" name="openAt" value="2029-05-22" />
-            <button class="btn-p" type="submit">封存这封信</button>
+            <button class="btn-p" type="submit">${icon("archive")}封存这封信</button>
             </form>
         </section>
       </main>
