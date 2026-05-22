@@ -664,6 +664,10 @@ async function assertAgentRateLimit(actor: {
   actorHash: string;
   actorType: "anonymous" | "user";
 }): Promise<void> {
+  if (!config.agent.limits.rateLimitEnabled) {
+    return;
+  }
+
   const activeCount = await agentRepository.countActiveTasksByActor(actor.actorHash);
   const activeLimit =
     actor.actorType === "user"

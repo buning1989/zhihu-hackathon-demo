@@ -72,6 +72,7 @@ export const config = {
       finalResultTtlHours: parsePositiveInteger(process.env.AGENT_CACHE_FINAL_RESULT_TTL_HOURS, 7 * 24)
     },
     limits: {
+      rateLimitEnabled: parseBoolean(process.env.AGENT_RATE_LIMIT_ENABLED, false),
       anonymousHourly: parsePositiveInteger(process.env.AGENT_LIMIT_ANON_HOURLY, 3),
       anonymousRunning: parsePositiveInteger(process.env.AGENT_LIMIT_ANON_RUNNING, 1),
       userDaily: parsePositiveInteger(process.env.AGENT_LIMIT_USER_DAILY, 20),

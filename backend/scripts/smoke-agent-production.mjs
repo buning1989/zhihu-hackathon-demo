@@ -12,6 +12,10 @@ dotenv.config({ path: resolve(backendDir, ".env.local"), override: false });
 const apiBaseUrl = normalizeApiBaseUrl(process.env.AGENT_API_BASE_URL || process.env.BACKEND_URL || "http://127.0.0.1:8000");
 const timeoutMs = readPositiveInteger(process.env.SMOKE_AGENT_PRODUCTION_TIMEOUT_MS, 60000);
 const pollDelayMs = readPositiveInteger(process.env.SMOKE_AGENT_PRODUCTION_POLL_MS, 500);
+const expectRateLimit = readBoolean(
+  process.env.SMOKE_AGENT_EXPECT_RATE_LIMIT ?? process.env.AGENT_RATE_LIMIT_ENABLED,
+  false
+);
 const minCandidateQualityScore = 0.45;
 const minEvidenceConfidence = 0.35;
 const queries = [
@@ -214,7 +218,12 @@ async function assertRunningTaskReuseAndRateLimit() {
     "running task reuse queueStatus invalid"
   );
 
-  await assertRateLimited(`${query} different`, anonymousId);
+  if (expectRateLimit) {
+    await assertRateLimited(`${query} different`, anonymousId);
+  } else {
+    console.log("agent production rate limit smoke skipped: AGENT_RATE_LIMIT_ENABLED is not true");
+  }
+
   const status = await waitForTerminalStatus(started.taskId, query);
   assert(status.status === "succeeded", "running reuse seed task did not succeed");
 }
@@ -486,6 +495,23 @@ function readPositiveInteger(value, fallback) {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readBoolean(value, fallback) {
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function normalizeApiBaseUrl(value) {
