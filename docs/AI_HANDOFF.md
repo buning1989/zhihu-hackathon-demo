@@ -1,23 +1,24 @@
 # AI Handoff
 
-## 2026-05-23 - Agent production final_result quality pass
+## 2026-05-23 - Agent production final_result v2 schema slim
 
-本轮目标：提升 `/api/agent/tasks/:taskId/result` 的 production final_result 展示质量，不改前端视觉、不部署。
+本轮目标：基于前端实际消费字段瘦身 `/api/agent/tasks/:taskId/result` 的 production final_result，降低 LLM 结构化输出和 grounding guard schema failure 风险，不改前端视觉、不改召回主链路。
 
 已完成：
 
-- `normalize_candidates` 允许真实知乎 `Article` 与 `Answer` 一起进入候选质量评分，减少职业/AI 转行类问题因只保留回答而证据不足。
-- `evidence_extract_llm` prompt/schema 增加处境、选择、过程、结果、代价/风险、启发字段；规则 fallback 也会从真实片段生成这些 grounded facets，并放宽真实经历证据阈值以保留“我就是/我之前/后来”等明确经历样本。
-- `response_compose_llm` 要求 paths 输出 `coreChoice / suitableFor / prerequisites / benefits / costsOrRisks`；LLM disabled fallback 不再只产 1 条泛路径，而是从 evidence/source 生成 3 条左右可区分路径。
-- `production_final_result` 增加 `evidenceSamples[]`，从 `sources + evidenceMap` 生成可展示证据样本；path 保持旧字段同时补充结构化展示字段、`evidenceIds` 和 `sourceIds`。
-- grounding guard 的 deterministic overgeneralized 检查改为只拦截强建议/医疗类表达，避免把有证据支撑的“样本归纳”误删成安全废话。
+- `production_final_result` 主输出切到 `agent.production_final_result.v2`，稳定字段收敛为 `summary / paths / evidenceSamples / sources / evidenceMap / groundingReport / degraded / warnings`。
+- v2 `paths[]` 只保留 `title / summary / angle / sourceRefs / evidenceIds / sourceIds / confidence`；旧 `coreChoice / suitableFor / prerequisites / benefits / costsOrRisks / suitableContext / tradeoffs` 仅作为 v1 optional/deprecated 兼容字段。
+- v2 `evidenceSamples[]` 改为 `snippet / whyRelevant / sampleType`，由后端从 evidenceItems deterministic 构造，不要求 LLM 输出完整人生路径模型。
+- `response_compose_llm` prompt 改成 3 个左右轻路径角度，降低 maxTokens，并明确 summary 只做证据归纳、不做建议。
+- `grounding_guard_llm` 不再要求复杂路径字段，只校验引用存在、路径摘要边界和证据质量；people 局部问题不会让整体结果 degraded。
+- 前端 adapter 同时支持 v1/v2，v2 优先用 `evidenceSamples` 生成路径卡和证据样本卡，缺失时继续 fallback 到 `personas` 或 `sources + evidenceMap`。
 
 验证建议：
 
 - `git diff --check`
 - `npm run build -w backend`
 - `FRONTEND_PORT=3001 npm run smoke`
-- 用 3 个质量问题跑 production task，检查 path/source/evidenceSamples 数量和是否 degraded。
+- `EVAL_AGENT_PRODUCTION_FRESH=true AGENT_LLM_ENABLED=true AGENT_LLM_TEST_MODE=real EVAL_AGENT_PRODUCTION_QUERIES='["为了工作能追求自己想做的事，长期异地恋真的值得吗？","不工作了能去哪儿？","30 岁转行 AI 产品还来得及吗？"]' npm run eval:agent-production -w backend`
 
 ## 2026-05-22 - Agent production Phase 5 minimal clarify loop
 

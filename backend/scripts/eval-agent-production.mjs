@@ -50,7 +50,9 @@ const queryLimit = readPositiveInteger(process.env.EVAL_AGENT_PRODUCTION_LIMIT, 
 const failOnFailed = readBoolean(process.env.EVAL_AGENT_PRODUCTION_FAIL_ON_FAILED, false);
 const freshRun = readBoolean(process.env.EVAL_AGENT_PRODUCTION_FRESH, false);
 const evalRunId = process.env.EVAL_AGENT_PRODUCTION_RUN_ID || `eval_${Date.now().toString(36)}`;
-const evalQueries = EVAL_QUERIES.slice(0, Math.min(queryLimit, EVAL_QUERIES.length));
+const configuredQueries = readEvalQueries(process.env.EVAL_AGENT_PRODUCTION_QUERIES);
+const baseEvalQueries = configuredQueries.length > 0 ? configuredQueries : EVAL_QUERIES;
+const evalQueries = baseEvalQueries.slice(0, Math.min(queryLimit, baseEvalQueries.length));
 
 const rows = [];
 let exitCode = 0;
@@ -217,6 +219,7 @@ function buildEvalRow({ item, started, status, debug, requestDurationMs }) {
       : [],
     pathCount: readNumber(finalSummary.pathCount, 0),
     personaCount: readNumber(finalSummary.personaCount, 0),
+    evidenceSampleCount: readNumber(finalSummary.evidenceSampleCount, 0),
     degraded: readBooleanValue(finalSummary.degraded),
     degradedReason: readNullableString(finalSummary.degradedReason),
     deterministicValidator: readNullableString(finalSummary.deterministicValidatorStatus),
@@ -241,6 +244,7 @@ function buildEvalRow({ item, started, status, debug, requestDurationMs }) {
       0
     ),
     pathWithoutEvidenceIdsCount: readNumber(finalSummary.pathWithoutEvidenceCount, 0),
+    invalidEvidenceSampleIdsCount: readNumber(finalSummary.invalidEvidenceSampleCount, 0),
     cacheHit: Boolean(started.cacheHit),
     reused: Boolean(started.reused),
     stageCacheHitCount: readNumber(debug?.cache?.cacheHitEventCount, 0),
@@ -284,6 +288,7 @@ function buildFailedCreateRow(item, error, totalDurationMs) {
     evidenceChunkFailureReasons: [],
     pathCount: 0,
     personaCount: 0,
+    evidenceSampleCount: 0,
     degraded: false,
     degradedReason: null,
     deterministicValidator: null,
@@ -297,6 +302,7 @@ function buildFailedCreateRow(item, error, totalDurationMs) {
     lowConfidenceEvidenceIdsCount: 0,
     personaWithoutExperienceEvidenceIdsCount: 0,
     pathWithoutEvidenceIdsCount: 0,
+    invalidEvidenceSampleIdsCount: 0,
     cacheHit: false,
     reused: false,
     stageCacheHitCount: 0,
@@ -317,10 +323,11 @@ function buildSummary(resultRows) {
   const badRefsCount = resultRows.reduce(
     (sum, row) =>
       sum +
-      row.lowQualityCandidateIdsCount +
-      row.lowConfidenceEvidenceIdsCount +
-      row.personaWithoutExperienceEvidenceIdsCount +
-      row.pathWithoutEvidenceIdsCount,
+      readNumber(row.lowQualityCandidateIdsCount, 0) +
+      readNumber(row.lowConfidenceEvidenceIdsCount, 0) +
+      readNumber(row.personaWithoutExperienceEvidenceIdsCount, 0) +
+      readNumber(row.pathWithoutEvidenceIdsCount, 0) +
+      readNumber(row.invalidEvidenceSampleIdsCount, 0),
     0
   );
   const degradedReasonCounts = countReasons(resultRows.flatMap((row) => splitReasons(row.degradedReason)));
@@ -355,6 +362,7 @@ function buildSummary(resultRows) {
     evidenceRepairCount: resultRows.reduce((sum, row) => sum + row.evidenceRepairCount, 0),
     evidenceRetryCount: resultRows.reduce((sum, row) => sum + row.evidenceRetryCount, 0),
     avgPaths: average(resultRows.map((row) => row.pathCount)),
+    avgEvidenceSamples: average(resultRows.map((row) => row.evidenceSampleCount)),
     avgPersonas: average(resultRows.map((row) => row.personaCount)),
     degradedRate: ratio(resultRows.filter((row) => row.degraded).length, total),
     groundingPassedRate: ratio(
@@ -500,6 +508,44 @@ function readBoolean(value, fallback) {
   }
 
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function readEvalQueries(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item, index) => {
+          if (typeof item === "string") {
+            return { category: "custom", query: item };
+          }
+          if (isObject(item) && typeof item.query === "string") {
+            return {
+              category: typeof item.category === "string" ? item.category : "custom",
+              query: item.query
+            };
+          }
+          return { category: "custom", query: "" };
+        })
+        .filter((item) => item.query.trim())
+        .map((item, index) => ({ category: item.category || `custom_${index + 1}`, query: item.query.trim() }));
+    }
+  } catch {
+    // Fall through to newline / delimiter parsing.
+  }
+
+  return text
+    .split(/\n|;;/)
+    .map((query, index) => ({
+      category: `custom_${index + 1}`,
+      query: query.trim()
+    }))
+    .filter((item) => item.query);
 }
 
 function readPositiveInteger(value, fallback) {

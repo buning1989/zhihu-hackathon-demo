@@ -213,6 +213,7 @@ export function resolveProductionFinalResult(
 
   return buildProductionFinalResult({
     taskId: snapshot.task.id,
+    query: snapshot.task.query,
     finalResult,
     candidates,
     evidence,

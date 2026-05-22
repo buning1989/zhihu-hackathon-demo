@@ -170,6 +170,7 @@ export interface EvidenceArtifactData {
 export interface FinalResultPath {
   title: string;
   summary: string;
+  angle?: string;
   evidenceIds: string[];
   candidateIds: string[];
   coreChoice?: string;

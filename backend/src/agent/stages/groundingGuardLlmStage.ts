@@ -10,6 +10,8 @@ import {
   type EvidenceArtifactData,
   type EvidenceItem,
   type FinalResultArtifactData,
+  type FinalResultPath,
+  type FinalResultPerson,
   type GuardedFinalResultArtifactData,
   type GroundingGuardReport
 } from "./stageTypes.js";
@@ -36,7 +38,7 @@ export async function runGroundingGuardLlmStage(
     .slice(0, MAX_LLM_EVIDENCE_ITEMS)
     .map(toEvidenceInputItem);
 
-  const result = await llmGateway.runJson<GuardedFinalResultArtifactData>({
+  const result = await llmGateway.runJson<unknown>({
     stageName: AGENT_STAGE_GROUNDING_GUARD_LLM,
     provider: config.agent.llm.provider,
     model: config.agent.llm.model,
@@ -45,7 +47,7 @@ export async function runGroundingGuardLlmStage(
     retries: config.agent.llm.retries,
     schemaName: "agent.guarded_final_result.v1",
     responseFormat: { type: "json_object" },
-    validate: isGuardedFinalResultArtifactData,
+    validate: (value) => Boolean(normalizeGuardedFinalResultArtifactData(value, finalResult)),
     fallback: (context) =>
       buildGuardedFinalResultFallback(
         finalResult,
@@ -60,7 +62,7 @@ export async function runGroundingGuardLlmStage(
       candidates: limitedCandidates.map(toGatewayCandidateMetadata),
       evidenceItems: limitedEvidence.map(toGatewayEvidenceMetadata)
     },
-    maxTokens: 2600,
+    maxTokens: 1800,
     temperature: 0.1,
     onEvent: async (type, payload) => {
       await agentRepository.createEvent({
@@ -70,10 +72,18 @@ export async function runGroundingGuardLlmStage(
       });
     }
   });
+  const guardedResult =
+    normalizeGuardedFinalResultArtifactData(result.data, finalResult) ??
+    buildGuardedFinalResultFallback(
+      finalResult,
+      limitedCandidates,
+      limitedEvidence,
+      result.fallbackReason || "grounding_guard output could not be normalized"
+    );
 
   return {
     artifactType: AGENT_ARTIFACT_GUARDED_FINAL_RESULT,
-    data: applyDeterministicQualityReport(result.data, finalResult, limitedCandidates, limitedEvidence),
+    data: applyDeterministicQualityReport(guardedResult, finalResult, limitedCandidates, limitedEvidence),
     status: result.status === "success" ? "succeeded" : "fallback",
     fallbackUsed: result.fallbackUsed,
     fallbackReason: result.fallbackReason || null
@@ -89,12 +99,12 @@ function buildGroundingGuardMessages(
     {
       role: "system" as const,
       content:
-        "你是事实边界和证据支撑校验器。只输出 JSON，不要输出解释。只能基于输入 final_result、candidates、evidenceItems 校验或轻量修正，不要新增事实，不要构造 AI 分身。"
+        "你是事实边界和证据支撑校验器。只输出符合 agent.guarded_final_result.v1 的 JSON object，不要输出解释。只能基于输入 final_result、candidates、evidenceItems 校验或轻量修正，不要新增事实，不要构造 AI 分身。"
     },
     {
       role: "user" as const,
       content: JSON.stringify({
-        task: "校验 final_result 的路径、人物和追问是否有候选与证据支撑",
+        task: "校验 final_result 的轻路径、人物索引和追问是否有候选与证据支撑",
         outputShape: {
           schemaVersion: "agent.guarded_final_result.v1",
           result: finalResult,
@@ -109,13 +119,17 @@ function buildGroundingGuardMessages(
           llmUsed: true
         },
         constraints: [
+          "最外层必须直接是 schemaVersion/result/guard/strategy/llmUsed，不要包在 task、outputShape、finalResult、candidates 或 evidenceItems 里",
+          "不要回显本条 user JSON，不要复制 candidates/evidenceItems 到输出",
           "result.schemaVersion 必须保持 agent.final_result.v1",
-          "如果 paths/people 引用不存在的 evidenceIds 或 candidateIds，应删除引用或降级该条目，并写入 guard.warnings",
+          "result.paths 只需要保留 title、summary、angle、evidenceIds、candidateIds；不要新增或要求 coreChoice、suitableFor、prerequisites、benefits、costsOrRisks",
+          "后端会由 sources/evidenceMap 生成 production evidenceSamples；不要输出 evidenceSamples，也不要因为未看到 evidenceSamples 而删除 paths",
+          "如果 paths/people 引用不存在的 evidenceIds 或 candidateIds，应只修复对应局部引用或删除对应条目，并写入 guard.warnings",
           "qualityScore 低于阈值的 candidate 不能作为最终 paths/people 的支撑",
-          "persona 必须至少有一条 isExperienceEvidence=true 的 evidence",
+          "people 只是样本索引；缺少真实经历证据时可以删除该 people，不要影响其他 path",
           "低 confidence evidence 不能支撑强结论",
           "如果只是保守措辞、样本归纳表达或证据有限提示，但未删除/修改 paths/people/evidenceIds/candidateIds，则 guard.status 保持 passed，只写 warnings",
-          "只有删除 path/person、修复 evidenceIds/candidateIds 或移除不被证据支撑的强结论时，guard.status 才能是 repaired",
+          "只有删除 path、修复 path 的 evidenceIds/candidateIds 或移除不被证据支撑的强结论时，guard.status 才能是 repaired",
           "不要把“公开样本不能推出唯一答案”这类保守边界句当作 unsupported claim",
           "自我状态、低谷、焦虑、内耗相关内容不得保留心理治疗、诊断、药物、咨询师或医疗建议",
           "必须输出完整 JSON object，不要截断，不要输出 Markdown",
@@ -200,7 +214,7 @@ function applyDeterministicQualityReport(
   const hardRepairReasons = uniqueNonEmpty([
     ...classifyRemovedItems(data.guard.removedItems),
     ...repair.hardRepairReasons,
-    hasReferenceChange(originalFinalResult, data.result) ? "source_refs_repaired" : "",
+    hasPathReferenceChange(originalFinalResult, data.result) ? "source_refs_repaired" : "",
     data.guard.status === "fallback" ? "llm_guard_fallback" : ""
   ]);
   const softWarningReasons = uniqueNonEmpty([
@@ -301,15 +315,11 @@ function repairFinalResultWithDeterministicRules(
     if (isLowQualityCandidate(candidate) || validExperienceEvidenceIds.length === 0) {
       removedItems.push(`people[${index}]`);
       warnings.push(`people[${index}] removed by deterministic quality rules`);
-      hardRepairReasons.push(
-        validExperienceEvidenceIds.length === 0 ? "persona_evidence_insufficient" : "evidence_support_weak"
-      );
       return [];
     }
 
     if (validExperienceEvidenceIds.length !== person.evidenceIds.length) {
       warnings.push(`people[${index}] repaired by deterministic quality rules`);
-      hardRepairReasons.push("persona_evidence_insufficient");
     }
 
     return [
@@ -395,9 +405,9 @@ function buildRuleWarnings(
 }
 
 function classifyRemovedItems(items: string[]): string[] {
-  return items.map((item) => {
+  return items.flatMap((item) => {
     if (/people|persona/i.test(item)) {
-      return "persona_evidence_insufficient";
+      return [];
     }
     if (/path/i.test(item)) {
       return "evidence_support_weak";
@@ -429,21 +439,15 @@ function classifyGroundingWarning(value: string): string {
   return "llm_guard_overconservative";
 }
 
-function hasReferenceChange(before: FinalResultArtifactData, after: FinalResultArtifactData): boolean {
-  return JSON.stringify(toReferenceSignature(before)) !== JSON.stringify(toReferenceSignature(after));
+function hasPathReferenceChange(before: FinalResultArtifactData, after: FinalResultArtifactData): boolean {
+  return JSON.stringify(toPathReferenceSignature(before)) !== JSON.stringify(toPathReferenceSignature(after));
 }
 
-function toReferenceSignature(result: FinalResultArtifactData) {
-  return {
-    paths: result.paths.map((path) => ({
-      evidenceIds: [...path.evidenceIds].sort(),
-      candidateIds: [...path.candidateIds].sort()
-    })),
-    people: result.people.map((person) => ({
-      candidateId: person.candidateId,
-      evidenceIds: [...person.evidenceIds].sort()
-    }))
-  };
+function toPathReferenceSignature(result: FinalResultArtifactData) {
+  return result.paths.map((path) => ({
+    evidenceIds: [...path.evidenceIds].sort(),
+    candidateIds: [...path.candidateIds].sort()
+  }));
 }
 
 function isOvergeneralizedPathSummary(summary: string): boolean {
@@ -554,6 +558,312 @@ function isGuardedFinalResultArtifactData(value: unknown): boolean {
   );
 }
 
+function normalizeGuardedFinalResultArtifactData(
+  value: unknown,
+  originalFinalResult: FinalResultArtifactData
+): GuardedFinalResultArtifactData | null {
+  const unwrapped = unwrapGuardedFinalResultRecord(value);
+  if (!unwrapped.record) {
+    return null;
+  }
+
+  const result = normalizeFinalResultArtifactData(unwrapped.record.result, originalFinalResult);
+  const guard = normalizeGroundingGuardReport(unwrapped.record.guard, unwrapped.normalizedWarnings);
+  if (!result || !guard) {
+    return null;
+  }
+
+  return {
+    schemaVersion: "agent.guarded_final_result.v1",
+    result,
+    guard,
+    strategy:
+      unwrapped.record.strategy === "rule_fallback" || unwrapped.record.strategy === "llm_guarded"
+        ? unwrapped.record.strategy
+        : "llm_guarded",
+    llmUsed: readBoolean(unwrapped.record.llmUsed, true),
+    ...(readString(unwrapped.record.fallbackReason)
+      ? { fallbackReason: readString(unwrapped.record.fallbackReason) }
+      : {})
+  };
+}
+
+function unwrapGuardedFinalResultRecord(value: unknown): {
+  record: Record<string, unknown> | null;
+  normalizedWarnings: string[];
+} {
+  if (!isRecord(value)) {
+    return {
+      record: null,
+      normalizedWarnings: []
+    };
+  }
+
+  if (looksLikeGuardedFinalResult(value)) {
+    return {
+      record: value,
+      normalizedWarnings: []
+    };
+  }
+
+  for (const key of ["outputShape", "guardedFinalResult", "data"]) {
+    const nested = value[key];
+    if (isRecord(nested) && looksLikeGuardedFinalResult(nested)) {
+      return {
+        record: nested,
+        normalizedWarnings: [`grounding_guard normalized nested ${key} output`]
+      };
+    }
+  }
+
+  if (isRecord(value.result) || isRecord(value.guard)) {
+    return {
+      record: value,
+      normalizedWarnings: ["grounding_guard normalized partial guarded output"]
+    };
+  }
+
+  return {
+    record: null,
+    normalizedWarnings: []
+  };
+}
+
+function looksLikeGuardedFinalResult(value: Record<string, unknown>): boolean {
+  return (
+    value.schemaVersion === "agent.guarded_final_result.v1" ||
+    isRecord(value.result) ||
+    isRecord(value.guard) ||
+    value.strategy === "llm_guarded" ||
+    value.strategy === "rule_fallback"
+  );
+}
+
+function normalizeFinalResultArtifactData(
+  value: unknown,
+  originalFinalResult: FinalResultArtifactData
+): FinalResultArtifactData | null {
+  if (!isRecord(value)) {
+    return originalFinalResult;
+  }
+
+  const rawPaths = Array.isArray(value.paths) ? value.paths : originalFinalResult.paths;
+  const rawPeople = Array.isArray(value.people) ? value.people : originalFinalResult.people;
+  const paths = rawPaths
+    .map((path, index) => normalizeFinalResultPath(path, originalFinalResult.paths[index]))
+    .filter((path): path is FinalResultPath => Boolean(path));
+  const people = rawPeople
+    .map((person, index) => normalizeFinalResultPerson(person, originalFinalResult.people[index]))
+    .filter((person): person is FinalResultPerson => Boolean(person));
+
+  return {
+    schemaVersion: "agent.final_result.v1",
+    summary: readString(value.summary) || originalFinalResult.summary,
+    paths,
+    people,
+    suggestedQuestions: readStringArray(value.suggestedQuestions, originalFinalResult.suggestedQuestions),
+    strategy:
+      value.strategy === "rule_fallback" || value.strategy === "llm_composed"
+        ? value.strategy
+        : originalFinalResult.strategy,
+    llmUsed: readBoolean(value.llmUsed, originalFinalResult.llmUsed),
+    ...(readString(value.fallbackReason)
+      ? { fallbackReason: readString(value.fallbackReason) }
+      : originalFinalResult.fallbackReason
+        ? { fallbackReason: originalFinalResult.fallbackReason }
+        : {})
+  };
+}
+
+function normalizeFinalResultPath(value: unknown, fallback?: FinalResultPath): FinalResultPath | null {
+  const record = isRecord(value) ? value : {};
+  const title = readString(record.title) || fallback?.title || "";
+  const summary = readString(record.summary) || fallback?.summary || "";
+  const evidenceIds = readStringArray(record.evidenceIds, fallback?.evidenceIds ?? []);
+  const candidateIds = readStringArray(record.candidateIds, fallback?.candidateIds ?? []);
+
+  if (!title || !summary) {
+    return null;
+  }
+
+  return {
+    title,
+    summary,
+    ...(readString(record.angle) || fallback?.angle
+      ? { angle: readString(record.angle) || fallback?.angle || "" }
+      : {}),
+    evidenceIds,
+    candidateIds,
+    ...(readString(record.coreChoice) || fallback?.coreChoice
+      ? { coreChoice: readString(record.coreChoice) || fallback?.coreChoice || "" }
+      : {}),
+    ...(readStringArray(record.suitableFor, fallback?.suitableFor ?? []).length > 0
+      ? { suitableFor: readStringArray(record.suitableFor, fallback?.suitableFor ?? []) }
+      : {}),
+    ...(readStringArray(record.prerequisites, fallback?.prerequisites ?? []).length > 0
+      ? { prerequisites: readStringArray(record.prerequisites, fallback?.prerequisites ?? []) }
+      : {}),
+    ...(readStringArray(record.benefits, fallback?.benefits ?? []).length > 0
+      ? { benefits: readStringArray(record.benefits, fallback?.benefits ?? []) }
+      : {}),
+    ...(readStringArray(record.costsOrRisks, fallback?.costsOrRisks ?? []).length > 0
+      ? { costsOrRisks: readStringArray(record.costsOrRisks, fallback?.costsOrRisks ?? []) }
+      : {})
+  };
+}
+
+function normalizeFinalResultPerson(value: unknown, fallback?: FinalResultPerson): FinalResultPerson | null {
+  const record = isRecord(value) ? value : {};
+  const name = readString(record.name) || fallback?.name || "";
+  const reason = readString(record.reason) || fallback?.reason || "";
+  const candidateId = readString(record.candidateId) || fallback?.candidateId || "";
+  const evidenceIds = readStringArray(record.evidenceIds, fallback?.evidenceIds ?? []);
+
+  if (!name || !reason || !candidateId) {
+    return null;
+  }
+
+  return {
+    name,
+    reason,
+    candidateId,
+    evidenceIds
+  };
+}
+
+function normalizeGroundingGuardReport(
+  value: unknown,
+  normalizedWarnings: string[]
+): GroundingGuardReport | null {
+  const record = isRecord(value) ? value : {};
+  const status = normalizeGuardStatus(record.status);
+  const warnings = uniqueNonEmpty([
+    ...readStringArray(record.warnings, []),
+    ...normalizedWarnings
+  ]);
+  const hardRepairReasons = readStringArray(record.hardRepairReasons, []);
+  const softWarningReasons = readStringArray(record.softWarningReasons, []);
+  const repairReasonCounts = readNumberRecord(record.repairReasonCounts);
+  const deterministicQualityReport = normalizeDeterministicQualityReport(
+    record.deterministicQualityReport
+  );
+
+  return {
+    status,
+    unsupportedClaims: readStringArray(record.unsupportedClaims, []),
+    removedItems: readStringArray(record.removedItems, []),
+    warnings,
+    evidenceCoverage: normalizeEvidenceCoverage(record.evidenceCoverage),
+    ...(hardRepairReasons.length > 0 ? { hardRepairReasons } : {}),
+    ...(softWarningReasons.length > 0 ? { softWarningReasons } : {}),
+    ...(Object.keys(repairReasonCounts).length > 0 ? { repairReasonCounts } : {}),
+    ...(deterministicQualityReport ? { deterministicQualityReport } : {})
+  };
+}
+
+function normalizeGuardStatus(value: unknown): GroundingGuardReport["status"] {
+  const status = readString(value).toLowerCase();
+  if (status === "passed" || status === "repaired" || status === "partial" || status === "fallback") {
+    return status;
+  }
+  if (status === "pass" || status === "ok" || status === "success") {
+    return "passed";
+  }
+  if (status === "warning" || status === "warnings") {
+    return "partial";
+  }
+  return "passed";
+}
+
+function normalizeEvidenceCoverage(value: unknown): number | null {
+  const parsed = readNumber(value, Number.NaN);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  if (parsed > 1 && parsed <= 100) {
+    return clampScore(parsed / 100);
+  }
+  return parsed >= 0 && parsed <= 1 ? clampScore(parsed) : null;
+}
+
+function normalizeDeterministicQualityReport(
+  value: unknown
+): GroundingGuardReport["deterministicQualityReport"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    checked: readBoolean(value.checked, false),
+    lowQualityCandidateIds: readStringArray(value.lowQualityCandidateIds, []),
+    lowConfidenceEvidenceIds: readStringArray(value.lowConfidenceEvidenceIds, []),
+    personaWithoutExperienceEvidenceIds: readStringArray(
+      value.personaWithoutExperienceEvidenceIds,
+      []
+    )
+  };
+}
+
+function readString(value: unknown): string {
+  if (typeof value === "string") {
+    return value.replace(/\s+/g, " ").trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+function readStringArray(value: unknown, fallback: string[]): string[] {
+  if (Array.isArray(value)) {
+    return uniqueNonEmpty(value.map(readString));
+  }
+  const single = readString(value);
+  return single ? [single] : fallback;
+}
+
+function readBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const normalized = readString(value).toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function readNumber(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Number.parseFloat(readString(value));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readNumberRecord(value: unknown): Record<string, number> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const result: Record<string, number> = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const parsed = readNumber(rawValue, Number.NaN);
+    if (Number.isFinite(parsed)) {
+      result[key] = parsed;
+    }
+  }
+
+  return result;
+}
+
+function clampScore(value: number): number {
+  return Math.min(Math.max(Number(value.toFixed(3)), 0), 1);
+}
+
 function isGroundingGuardReport(value: unknown): value is GroundingGuardReport {
   if (!isRecord(value)) {
     return false;
@@ -619,6 +929,7 @@ function isFinalResultPath(value: unknown): boolean {
   return (
     typeof value.title === "string" &&
     typeof value.summary === "string" &&
+    (value.angle === undefined || typeof value.angle === "string") &&
     isStringArray(value.evidenceIds) &&
     isStringArray(value.candidateIds) &&
     (value.coreChoice === undefined || typeof value.coreChoice === "string") &&

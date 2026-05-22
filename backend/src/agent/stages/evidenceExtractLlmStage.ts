@@ -25,6 +25,7 @@ const MIN_EXPERIENCE_EVIDENCE_SCORE = 0.38;
 const MIN_EXPERIENCE_EVIDENCE_CONFIDENCE = 0.45;
 const MAX_STAGE_FAILURE_RATIO = 0.5;
 const MAX_EVIDENCE_FACET_LENGTH = 80;
+const MIN_BACKFILL_RELEVANCE_SCORE = 0.34;
 export const AGENT_EVIDENCE_EXTRACTION_VERSION = "agent.evidence_extract.v5.structured_grounded_samples";
 
 interface EvidenceChunkStats {
@@ -421,7 +422,7 @@ function shouldBackfillCandidateEvidence(candidate: CandidateItem): boolean {
   return (
     candidate.selectedForEvidence &&
     candidate.qualityScore >= 0.45 &&
-    candidate.relevanceScore >= 0.45 &&
+    candidate.relevanceScore >= MIN_BACKFILL_RELEVANCE_SCORE &&
     candidate.excerpt.trim().replace(/\s+/g, " ").length >= 60
   );
 }

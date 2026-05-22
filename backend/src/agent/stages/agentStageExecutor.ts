@@ -210,6 +210,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
     const guardedFinalResult = guardedFinalResultStage.output.data;
     const productionFinalResult = buildProductionFinalResult({
       taskId,
+      query: intent.originalQuery,
       finalResult: guardedFinalResult.result,
       candidates,
       evidence,

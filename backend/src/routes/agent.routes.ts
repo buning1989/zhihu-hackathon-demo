@@ -15,6 +15,7 @@ import {
   buildPersistentAgentTaskStatusData,
   resolveProductionFinalResult
 } from "../agent/agentTaskApi.js";
+import { AGENT_PRODUCTION_FINAL_RESULT_SCHEMA_VERSION } from "../agent/agentProductionResult.js";
 import { agentRepository } from "../agent/agentRepository.js";
 import type { PersistentAgentTask } from "../agent/agentModels.js";
 import { buildPersistentAgentTaskDebugData } from "../agent/agentTaskDebug.js";
@@ -145,7 +146,7 @@ agentRoutes.post("/tasks", async (req, res, next) => {
       statuses: ["succeeded", "completed"],
       ttlHours: config.agent.cache.finalResultTtlHours
     });
-    if (succeededReusableTask) {
+    if (succeededReusableTask && await hasReusableProductionFinalResult(succeededReusableTask.id)) {
       await recordTaskReuseEvent(succeededReusableTask, "recent_succeeded_task");
       res.json({
         success: true,
@@ -722,6 +723,19 @@ async function recordTaskReuseEvent(
 function assertAgentDebugEnabled(): void {
   if (config.nodeEnv === "production") {
     throw new HttpError(404, "AGENT_DEBUG_DISABLED", "Agent debug endpoint is disabled");
+  }
+}
+
+async function hasReusableProductionFinalResult(taskId: string): Promise<boolean> {
+  try {
+    const snapshot = await agentRepository.getTaskSnapshot(taskId);
+    if (!snapshot) {
+      return false;
+    }
+    const finalResult = resolveProductionFinalResult(snapshot);
+    return finalResult?.schemaVersion === AGENT_PRODUCTION_FINAL_RESULT_SCHEMA_VERSION;
+  } catch {
+    return false;
   }
 }
 

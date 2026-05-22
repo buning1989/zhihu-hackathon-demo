@@ -356,18 +356,22 @@ function summarizeEvidence(data: EvidenceArtifactData) {
 
 function summarizeProductionFinalResult(data: ProductionFinalResultData) {
   const qualityReport = data.groundingReport.deterministicValidator.qualityReport;
+  const personas = data.personas ?? [];
+  const evidenceSamples = data.evidenceSamples ?? [];
 
   return {
     schemaVersion: data.schemaVersion,
     taskId: data.taskId,
+    queryPreview: previewString(data.query ?? "", 100),
     summaryPreview: previewString(data.summary),
     pathCount: data.paths.length,
-    personaCount: data.personas.length,
+    personaCount: personas.length,
     sourceCount: data.sources.length,
     evidenceCount: Object.keys(data.evidenceMap).length,
-    evidenceSampleCount: data.evidenceSamples?.length ?? 0,
+    evidenceSampleCount: evidenceSamples.length,
     degraded: data.degraded,
     degradedReason: data.degradedReason,
+    warningCount: data.warnings?.length ?? 0,
     deterministicValidatorStatus: data.groundingReport.deterministicValidator.status,
     llmGuardStatus: data.groundingReport.llmGuard.status,
     groundingWarningCount: data.groundingReport.llmGuard.warnings.length,
@@ -381,15 +385,25 @@ function summarizeProductionFinalResult(data: ProductionFinalResultData) {
     lowConfidenceEvidenceCount: qualityReport.lowConfidenceEvidenceIds.length,
     personaWithoutExperienceEvidenceCount: qualityReport.personaWithoutExperienceEvidenceIds.length,
     pathWithoutEvidenceCount: qualityReport.pathWithoutEvidenceIds.length,
+    invalidEvidenceSampleCount: qualityReport.invalidEvidenceSampleIds?.length ?? 0,
     paths: data.paths.slice(0, 10).map((path) => ({
       id: path.id,
       titlePreview: previewString(path.title),
-      coreChoicePreview: previewString(path.coreChoice ?? "", 100),
+      anglePreview: previewString(path.angle ?? path.coreChoice ?? "", 100),
       confidence: path.confidence,
       sourceRefCount: path.sourceRefs.length,
       evidenceRefCount: path.sourceRefs.reduce((count, ref) => count + ref.evidenceItemIds.length, 0)
     })),
-    personas: data.personas.slice(0, 10).map((persona) => ({
+    evidenceSamples: evidenceSamples.slice(0, 10).map((sample) => ({
+      id: sample.id,
+      sampleType: sample.sampleType ?? "",
+      titlePreview: previewString(sample.title, 80),
+      snippetPreview: previewString(sample.snippet ?? sample.evidenceText ?? "", 100),
+      confidence: sample.confidence,
+      sourceCandidateId: sample.sourceCandidateId,
+      evidenceItemId: sample.evidenceItemId
+    })),
+    personas: personas.slice(0, 10).map((persona) => ({
       id: persona.id,
       displayLabelPreview: previewString(persona.displayLabel, 80),
       chatEnabled: persona.chatEnabled,

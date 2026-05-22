@@ -14,6 +14,18 @@ import type {
 const MIN_FINAL_CANDIDATE_QUALITY_SCORE = 0.45;
 const MIN_FINAL_EVIDENCE_CONFIDENCE = 0.35;
 const MIN_PERSONA_EVIDENCE_CONFIDENCE = 0.45;
+const MIN_DISPLAY_EVIDENCE_SAMPLE_COUNT = 4;
+export const AGENT_PRODUCTION_FINAL_RESULT_SCHEMA_VERSION = "agent.production_final_result.v2";
+
+export type ProductionFinalResultSchemaVersion =
+  | "agent.production_final_result.v1"
+  | "agent.production_final_result.v2";
+
+export type ProductionEvidenceSampleType =
+  | "experience"
+  | "decision"
+  | "opinion"
+  | "context";
 
 export interface ProductionSourceRef {
   sourceCandidateId: string;
@@ -24,17 +36,25 @@ export interface ProductionFinalResultPath {
   id: string;
   title: string;
   summary: string;
-  coreChoice: string;
-  suitableFor: string[];
-  prerequisites: string[];
-  benefits: string[];
-  costsOrRisks: string[];
+  angle: string;
   evidenceIds: string[];
   sourceIds: string[];
-  suitableContext: string;
-  tradeoffs: string;
   sourceRefs: ProductionSourceRef[];
   confidence: number;
+  /** @deprecated v1 compatibility only. New v2 consumers should use title/summary/angle/sourceRefs. */
+  coreChoice?: string;
+  /** @deprecated v1 compatibility only. */
+  suitableFor?: string[];
+  /** @deprecated v1 compatibility only. */
+  prerequisites?: string[];
+  /** @deprecated v1 compatibility only. */
+  benefits?: string[];
+  /** @deprecated v1 compatibility only. */
+  costsOrRisks?: string[];
+  /** @deprecated v1 compatibility only. */
+  suitableContext?: string;
+  /** @deprecated v1 compatibility only. */
+  tradeoffs?: string;
 }
 
 export interface ProductionFinalResultPersona {
@@ -80,12 +100,18 @@ export interface ProductionEvidenceItem {
   supportType: EvidenceSupportType;
   isExperienceEvidence: boolean;
   confidence: number;
-  situation: string;
-  choice: string;
-  process: string;
-  outcome: string;
-  costOrRisk: string;
-  takeaway: string;
+  /** @deprecated v1 compatibility only. */
+  situation?: string;
+  /** @deprecated v1 compatibility only. */
+  choice?: string;
+  /** @deprecated v1 compatibility only. */
+  process?: string;
+  /** @deprecated v1 compatibility only. */
+  outcome?: string;
+  /** @deprecated v1 compatibility only. */
+  costOrRisk?: string;
+  /** @deprecated v1 compatibility only. */
+  takeaway?: string;
 }
 
 export interface ProductionEvidenceSample {
@@ -95,16 +121,28 @@ export interface ProductionEvidenceSample {
   title: string;
   author: string;
   sourceUrl: string;
-  situation: string;
-  choice: string;
-  keyExperience: string;
-  judgment: string;
-  referenceValue: string;
-  limit: string;
-  evidenceText: string;
-  supportType: EvidenceSupportType;
-  isExperienceEvidence: boolean;
+  snippet: string;
+  whyRelevant: string;
+  sampleType: ProductionEvidenceSampleType;
   confidence: number;
+  /** @deprecated v1 compatibility only. */
+  situation?: string;
+  /** @deprecated v1 compatibility only. */
+  choice?: string;
+  /** @deprecated v1 compatibility only. */
+  keyExperience?: string;
+  /** @deprecated v1 compatibility only. */
+  judgment?: string;
+  /** @deprecated v1 compatibility only. */
+  referenceValue?: string;
+  /** @deprecated v1 compatibility only. */
+  limit?: string;
+  /** @deprecated v1 compatibility only. */
+  evidenceText?: string;
+  /** @deprecated v1 compatibility only. */
+  supportType?: EvidenceSupportType;
+  /** @deprecated v1 compatibility only. */
+  isExperienceEvidence?: boolean;
 }
 
 export interface DeterministicGroundingReport {
@@ -117,22 +155,26 @@ export interface DeterministicGroundingReport {
     minCandidateQualityScore: number;
     minEvidenceConfidence: number;
     minPersonaEvidenceConfidence: number;
+    minDisplayEvidenceSampleCount: number;
     lowQualityCandidateIds: string[];
     lowConfidenceEvidenceIds: string[];
     personaWithoutExperienceEvidenceIds: string[];
     pathWithoutEvidenceIds: string[];
+    invalidEvidenceSampleIds: string[];
   };
 }
 
 export interface ProductionFinalResultData {
-  schemaVersion: "agent.production_final_result.v1";
+  schemaVersion: ProductionFinalResultSchemaVersion;
   taskId: string;
+  query?: string;
   summary: string;
   paths: ProductionFinalResultPath[];
-  personas: ProductionFinalResultPersona[];
+  /** @deprecated v1 compatibility only. Prefer evidenceSamples for display cards in v2. */
+  personas?: ProductionFinalResultPersona[];
   sources: ProductionFinalResultSource[];
   evidenceMap: Record<string, ProductionEvidenceItem>;
-  evidenceSamples: ProductionEvidenceSample[];
+  evidenceSamples?: ProductionEvidenceSample[];
   groundingReport: {
     llmGuard: GroundingGuardReport;
     deterministicValidator: DeterministicGroundingReport;
@@ -140,6 +182,7 @@ export interface ProductionFinalResultData {
   degraded: boolean;
   degradedReason: string | null;
   suggestedQuestions: string[];
+  warnings?: string[];
   meta: {
     generatedAt: string;
     sourcePolicy: string;
@@ -149,6 +192,7 @@ export interface ProductionFinalResultData {
 
 interface BuildProductionFinalResultInput {
   taskId: string;
+  query?: string;
   finalResult: FinalResultArtifactData;
   candidates: CandidatesArtifactData;
   evidence: EvidenceArtifactData;
@@ -192,6 +236,7 @@ export function buildProductionFinalResult(
   const validation = validateProductionItems({
     paths: builtPaths,
     personas: builtPersonas,
+    evidenceSamples,
     sourceIds: new Set(sources.map((source) => source.sourceCandidateId)),
     candidateById,
     evidenceMap
@@ -200,12 +245,15 @@ export function buildProductionFinalResult(
     ...(input.degradedReasons ?? []),
     input.finalResult.fallbackReason ?? "",
     getGroundingGuardDegradedReason(input.guard),
-    validation.status === "passed" ? "" : `deterministic_validator_${validation.status}`
+    validation.status === "passed" ? "" : `deterministic_validator_${validation.status}`,
+    validation.paths.length === 0 ? "deterministic_validator_no_paths" : "",
+    evidenceSamples.length < MIN_DISPLAY_EVIDENCE_SAMPLE_COUNT ? "evidence_samples_insufficient" : ""
   ]);
 
   return {
-    schemaVersion: "agent.production_final_result.v1",
+    schemaVersion: AGENT_PRODUCTION_FINAL_RESULT_SCHEMA_VERSION,
     taskId: input.taskId,
+    query: input.query ?? "",
     summary: buildProductionSummary(input.finalResult.summary, validation.paths, evidenceSamples),
     paths: validation.paths,
     personas: validation.personas,
@@ -225,6 +273,10 @@ export function buildProductionFinalResult(
     degraded: degradedReasons.length > 0,
     degradedReason: degradedReasons.join("; ") || null,
     suggestedQuestions: input.finalResult.suggestedQuestions,
+    warnings: uniqueNonEmpty([
+      ...input.guard.warnings,
+      ...validation.warnings
+    ]),
     meta: {
       generatedAt: new Date().toISOString(),
       sourcePolicy: "AI organizes public content and evidence; it is not a factual source.",
@@ -252,23 +304,32 @@ export function isProductionFinalResultData(value: unknown): value is Production
     return false;
   }
 
+  const schemaVersion = value.schemaVersion;
+  const isSupportedSchema =
+    schemaVersion === "agent.production_final_result.v1" ||
+    schemaVersion === "agent.production_final_result.v2";
+
   return (
-    value.schemaVersion === "agent.production_final_result.v1" &&
+    isSupportedSchema &&
     typeof value.taskId === "string" &&
+    (value.query === undefined || typeof value.query === "string") &&
     typeof value.summary === "string" &&
     Array.isArray(value.paths) &&
     value.paths.every(isProductionPath) &&
-    Array.isArray(value.personas) &&
-    value.personas.every(isProductionPersona) &&
+    (value.personas === undefined ||
+      (Array.isArray(value.personas) && value.personas.every(isProductionPersona))) &&
     Array.isArray(value.sources) &&
     value.sources.every(isProductionSource) &&
     isRecord(value.evidenceMap) &&
     Object.values(value.evidenceMap).every(isProductionEvidenceItem) &&
-    (value.evidenceSamples === undefined ||
-      (Array.isArray(value.evidenceSamples) && value.evidenceSamples.every(isProductionEvidenceSample))) &&
+    (value.evidenceSamples === undefined
+      ? schemaVersion === "agent.production_final_result.v1"
+      : Array.isArray(value.evidenceSamples) &&
+        value.evidenceSamples.every(isProductionEvidenceSample)) &&
     isRecord(value.groundingReport) &&
     typeof value.degraded === "boolean" &&
-    (value.degradedReason === null || typeof value.degradedReason === "string")
+    (value.degradedReason === null || typeof value.degradedReason === "string") &&
+    (value.warnings === undefined || isStringArray(value.warnings))
   );
 }
 
@@ -291,25 +352,9 @@ function toProductionPath(
     id: stableId("path", `${path.title}:${index}`),
     title: path.title,
     summary: path.summary,
-    coreChoice: readPathString(path.coreChoice) || inferCoreChoice(path, sourceRefs, evidenceById),
-    suitableFor: readPathStringArray(path.suitableFor, [
-      "和来源样本有相似约束的人"
-    ]),
-    prerequisites: readPathStringArray(path.prerequisites, [
-      "需要先确认自己的现实约束和来源样本是否相近"
-    ]),
-    benefits: readPathStringArray(path.benefits, [
-      "提供一个有公开来源支撑的对照角度"
-    ]),
-    costsOrRisks: readPathStringArray(path.costsOrRisks, [
-      inferTradeoff(sourceRefs, evidenceById)
-    ]),
+    angle: readPathString(path.angle) || inferPathAngle(path, sourceRefs, evidenceById),
     evidenceIds: uniqueNonEmpty(sourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds)),
     sourceIds: uniqueNonEmpty(sourceRefs.map((sourceRef) => sourceRef.sourceCandidateId)),
-    suitableContext: readPathStringArray(path.suitableFor, [path.summary]).join("；"),
-    tradeoffs: readPathStringArray(path.costsOrRisks, [
-      inferTradeoff(sourceRefs, evidenceById)
-    ]).join("；"),
     sourceRefs,
     confidence: calculateConfidence(sourceRefs, candidateById, evidenceById)
   };
@@ -390,22 +435,7 @@ function buildSupplementalFinalPath(
   return {
     title,
     summary: `这条路径来自「${truncateText(candidate.title, 32)}」的证据片段：${claim}。它只提供一个公开样本中的选择线索，不能推断完整人生。`,
-    coreChoice: inferEvidenceChoice(item) || "把来源片段中的选择作为一个对照方向。",
-    suitableFor: [
-      "和该来源片段有相似问题变量的人",
-      "需要先看真实来源再比较选项的人"
-    ],
-    prerequisites: [
-      "确认自己的约束是否接近来源片段",
-      "回到原文核对上下文"
-    ],
-    benefits: [
-      "提供一个有来源的现实参照",
-      "帮助拆出选择背后的收益和代价"
-    ],
-    costsOrRisks: [
-      inferEvidenceCostOrRisk(item)
-    ],
+    angle: inferEvidenceChoice(item) || "把来源片段中的选择作为一个对照方向。",
     evidenceIds: [item.id],
     candidateIds: [candidate.id]
   };
@@ -439,10 +469,8 @@ function buildEvidenceSamples(
     .slice(0, 6)
     .map((item) => {
       const candidate = candidateById.get(item.candidateId);
-      const situation = item.situation || item.excerpt || item.evidenceText;
-      const choice = item.choice || inferEvidenceChoice(item);
-      const keyExperience = item.process || item.outcome || item.normalizedClaim || item.evidenceText;
-      const costOrRisk = item.costOrRisk || inferEvidenceCostOrRisk(item);
+      const snippet = item.excerpt || item.evidenceText;
+      const whyRelevant = item.normalizedClaim || item.reason || item.evidenceText;
 
       return {
         id: `sample_${item.id}`,
@@ -451,18 +479,9 @@ function buildEvidenceSamples(
         title: candidate?.title || item.title,
         author: candidate?.author || item.author || "知乎用户",
         sourceUrl: candidate?.url || item.sourceUrl,
-        situation: truncateText(situation, 120),
-        choice: truncateText(choice, 120),
-        keyExperience: truncateText(keyExperience, 140),
-        judgment: truncateText(item.normalizedClaim || item.reason || item.evidenceText, 120),
-        referenceValue: truncateText(
-          item.takeaway || "这条样本提供了一个有来源的处境、选择或代价片段，适合与当前问题做对照。",
-          140
-        ),
-        limit: "只基于该知乎公开内容片段整理，不代表作者完整人生，也不代表作者本人回应。",
-        evidenceText: item.evidenceText,
-        supportType: item.supportType,
-        isExperienceEvidence: item.isExperienceEvidence,
+        snippet: truncateText(snippet, 180),
+        whyRelevant: truncateText(whyRelevant, 160),
+        sampleType: mapEvidenceSampleType(item.supportType),
         confidence: item.confidence
       };
     });
@@ -507,6 +526,19 @@ function buildSourceRefs(
   });
 }
 
+function mapEvidenceSampleType(supportType: EvidenceSupportType): ProductionEvidenceSampleType {
+  if (supportType === "experience_fact") {
+    return "experience";
+  }
+  if (supportType === "decision_point" || supportType === "tradeoff" || supportType === "outcome") {
+    return "decision";
+  }
+  if (supportType === "opinion") {
+    return "opinion";
+  }
+  return "context";
+}
+
 function buildProductionSummary(
   originalSummary: string,
   paths: ProductionFinalResultPath[],
@@ -517,7 +549,7 @@ function buildProductionSummary(
   }
 
   const pathChoices = paths
-    .map((path) => path.coreChoice || path.title)
+    .map((path) => path.angle || path.title)
     .map(stripTrailingPunctuation)
     .filter(Boolean)
     .filter((value, index, array) => array.indexOf(value) === index)
@@ -525,10 +557,10 @@ function buildProductionSummary(
     .join("；");
   const sampleCount = evidenceSamples.length;
 
-  return `这些知乎公开样本呈现了 ${paths.length} 类可能性：${pathChoices}。共整理 ${sampleCount} 条可追溯证据样本；它们能帮助比较选择、收益和代价，但不能替代当前用户自己的判断。`;
+  return `这些知乎公开样本呈现了 ${paths.length} 类角度：${pathChoices}。共整理 ${sampleCount} 条可追溯证据样本；这里只做来源归纳，不把样本改写成个人建议或完整人生报告。`;
 }
 
-function inferCoreChoice(
+function inferPathAngle(
   path: FinalResultPath,
   sourceRefs: ProductionSourceRef[],
   evidenceById: Map<string, EvidenceInputItem>
@@ -616,6 +648,7 @@ function stripTrailingPunctuation(value: string): string {
 function validateProductionItems(input: {
   paths: ProductionFinalResultPath[];
   personas: ProductionFinalResultPersona[];
+  evidenceSamples: ProductionEvidenceSample[];
   sourceIds: Set<string>;
   candidateById: Map<string, CandidateItem>;
   evidenceMap: Record<string, ProductionEvidenceItem>;
@@ -628,7 +661,9 @@ function validateProductionItems(input: {
   warnings: string[];
   qualityReport: DeterministicGroundingReport["qualityReport"];
 } {
-  const warnings: string[] = [];
+  const pathWarnings: string[] = [];
+  const personaWarnings: string[] = [];
+  const sampleWarnings: string[] = [];
   const removedPathIds: string[] = [];
   const removedPersonaIds: string[] = [];
   const paths = input.paths.filter((path) => {
@@ -637,7 +672,7 @@ function validateProductionItems(input: {
       sourceIds: input.sourceIds,
       candidateById: input.candidateById,
       evidenceMap: input.evidenceMap,
-      warnings,
+      warnings: pathWarnings,
       itemLabel: path.id,
       requireExperienceEvidence: false
     });
@@ -652,7 +687,7 @@ function validateProductionItems(input: {
       sourceIds: input.sourceIds,
       candidateById: input.candidateById,
       evidenceMap: input.evidenceMap,
-      warnings,
+      warnings: personaWarnings,
       itemLabel: persona.id,
       requireExperienceEvidence: true
     });
@@ -661,17 +696,26 @@ function validateProductionItems(input: {
     }
     return valid;
   });
+  const invalidEvidenceSampleIds = findInvalidEvidenceSampleIds({
+    evidenceSamples: input.evidenceSamples,
+    sourceIds: input.sourceIds,
+    evidenceMap: input.evidenceMap,
+    warnings: sampleWarnings
+  });
   const qualityReport = buildQualityReport({
     paths,
     personas,
+    evidenceSamples: input.evidenceSamples,
+    invalidEvidenceSampleIds,
     candidateById: input.candidateById,
     evidenceMap: input.evidenceMap
   });
 
+  const blockingIssueCount = pathWarnings.length + removedPathIds.length + invalidEvidenceSampleIds.length;
   const status =
-    warnings.length === 0 && removedPathIds.length === 0 && removedPersonaIds.length === 0
+    blockingIssueCount === 0
       ? "passed"
-      : paths.length > 0 || personas.length > 0
+      : paths.length > 0 || input.evidenceSamples.length > invalidEvidenceSampleIds.length
         ? "repaired"
         : "failed";
 
@@ -681,9 +725,39 @@ function validateProductionItems(input: {
     personas,
     removedPathIds,
     removedPersonaIds,
-    warnings,
+    warnings: uniqueNonEmpty([...pathWarnings, ...personaWarnings, ...sampleWarnings]),
     qualityReport
   };
+}
+
+function findInvalidEvidenceSampleIds(input: {
+  evidenceSamples: ProductionEvidenceSample[];
+  sourceIds: Set<string>;
+  evidenceMap: Record<string, ProductionEvidenceItem>;
+  warnings: string[];
+}): string[] {
+  const invalidIds: string[] = [];
+  for (const sample of input.evidenceSamples) {
+    const evidenceItem = input.evidenceMap[sample.evidenceItemId];
+    if (!input.sourceIds.has(sample.sourceCandidateId)) {
+      input.warnings.push(`${sample.id}: evidence sample sourceCandidateId missing: ${sample.sourceCandidateId}`);
+      invalidIds.push(sample.id);
+      continue;
+    }
+    if (!evidenceItem) {
+      input.warnings.push(`${sample.id}: evidence sample evidenceItemId missing: ${sample.evidenceItemId}`);
+      invalidIds.push(sample.id);
+      continue;
+    }
+    if (evidenceItem.sourceCandidateId !== sample.sourceCandidateId) {
+      input.warnings.push(
+        `${sample.id}: evidence sample ${sample.evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}, not ${sample.sourceCandidateId}`
+      );
+      invalidIds.push(sample.id);
+    }
+  }
+
+  return uniqueNonEmpty(invalidIds);
 }
 
 function validateSourceRefs(input: {
@@ -799,13 +873,7 @@ function toProductionEvidenceItem(item: EvidenceInputItem): ProductionEvidenceIt
     normalizedClaim: item.normalizedClaim,
     supportType: item.supportType,
     isExperienceEvidence: item.isExperienceEvidence,
-    confidence: item.confidence,
-    situation: item.situation || item.excerpt || item.evidenceText,
-    choice: item.choice || inferEvidenceChoice(item),
-    process: item.process || "",
-    outcome: item.outcome || "",
-    costOrRisk: item.costOrRisk || inferEvidenceCostOrRisk(item),
-    takeaway: item.takeaway || "作为公开来源中的一个对照样本，不代表完整经历。"
+    confidence: item.confidence
   };
 }
 
@@ -852,13 +920,18 @@ function calculateConfidence(
 function buildQualityReport(input: {
   paths: ProductionFinalResultPath[];
   personas: ProductionFinalResultPersona[];
+  evidenceSamples: ProductionEvidenceSample[];
+  invalidEvidenceSampleIds: string[];
   candidateById: Map<string, CandidateItem>;
   evidenceMap: Record<string, ProductionEvidenceItem>;
 }): DeterministicGroundingReport["qualityReport"] {
   const referencedSourceRefs = [...input.paths, ...input.personas].flatMap((item) => item.sourceRefs);
   const referencedCandidateIds = uniqueNonEmpty(referencedSourceRefs.map((sourceRef) => sourceRef.sourceCandidateId));
   const referencedEvidenceIds = uniqueNonEmpty(
-    referencedSourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds)
+    [
+      ...referencedSourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds),
+      ...input.evidenceSamples.map((sample) => sample.evidenceItemId)
+    ]
   );
   const lowQualityCandidateIds = referencedCandidateIds.filter(
     (candidateId) => !isCandidateAllowedInFinal(input.candidateById.get(candidateId))
@@ -879,10 +952,12 @@ function buildQualityReport(input: {
     minCandidateQualityScore: MIN_FINAL_CANDIDATE_QUALITY_SCORE,
     minEvidenceConfidence: MIN_FINAL_EVIDENCE_CONFIDENCE,
     minPersonaEvidenceConfidence: MIN_PERSONA_EVIDENCE_CONFIDENCE,
+    minDisplayEvidenceSampleCount: MIN_DISPLAY_EVIDENCE_SAMPLE_COUNT,
     lowQualityCandidateIds,
     lowConfidenceEvidenceIds,
     personaWithoutExperienceEvidenceIds,
-    pathWithoutEvidenceIds
+    pathWithoutEvidenceIds,
+    invalidEvidenceSampleIds: input.invalidEvidenceSampleIds
   };
 }
 
@@ -958,6 +1033,7 @@ function isProductionPath(value: unknown): value is ProductionFinalResultPath {
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     typeof value.summary === "string" &&
+    (value.angle === undefined || typeof value.angle === "string") &&
     (value.coreChoice === undefined || typeof value.coreChoice === "string") &&
     (value.suitableFor === undefined || isStringArray(value.suitableFor)) &&
     (value.prerequisites === undefined || isStringArray(value.prerequisites)) &&
@@ -965,8 +1041,8 @@ function isProductionPath(value: unknown): value is ProductionFinalResultPath {
     (value.costsOrRisks === undefined || isStringArray(value.costsOrRisks)) &&
     (value.evidenceIds === undefined || isStringArray(value.evidenceIds)) &&
     (value.sourceIds === undefined || isStringArray(value.sourceIds)) &&
-    typeof value.suitableContext === "string" &&
-    typeof value.tradeoffs === "string" &&
+    (value.suitableContext === undefined || typeof value.suitableContext === "string") &&
+    (value.tradeoffs === undefined || typeof value.tradeoffs === "string") &&
     Array.isArray(value.sourceRefs) &&
     value.sourceRefs.every(isProductionSourceRef) &&
     typeof value.confidence === "number"
@@ -1056,6 +1132,19 @@ function isProductionEvidenceSample(value: unknown): value is ProductionEvidence
     return false;
   }
 
+  const hasV2Text =
+    typeof value.snippet === "string" &&
+    typeof value.whyRelevant === "string" &&
+    isProductionEvidenceSampleType(value.sampleType);
+  const hasDeprecatedV1Text =
+    typeof value.situation === "string" &&
+    typeof value.choice === "string" &&
+    typeof value.keyExperience === "string" &&
+    typeof value.judgment === "string" &&
+    typeof value.referenceValue === "string" &&
+    typeof value.limit === "string" &&
+    typeof value.evidenceText === "string";
+
   return (
     typeof value.id === "string" &&
     typeof value.sourceCandidateId === "string" &&
@@ -1063,17 +1152,15 @@ function isProductionEvidenceSample(value: unknown): value is ProductionEvidence
     typeof value.title === "string" &&
     typeof value.author === "string" &&
     typeof value.sourceUrl === "string" &&
-    typeof value.situation === "string" &&
-    typeof value.choice === "string" &&
-    typeof value.keyExperience === "string" &&
-    typeof value.judgment === "string" &&
-    typeof value.referenceValue === "string" &&
-    typeof value.limit === "string" &&
-    typeof value.evidenceText === "string" &&
-    isEvidenceSupportType(value.supportType) &&
-    typeof value.isExperienceEvidence === "boolean" &&
+    (hasV2Text || hasDeprecatedV1Text) &&
+    (value.supportType === undefined || isEvidenceSupportType(value.supportType)) &&
+    (value.isExperienceEvidence === undefined || typeof value.isExperienceEvidence === "boolean") &&
     typeof value.confidence === "number"
   );
+}
+
+function isProductionEvidenceSampleType(value: unknown): value is ProductionEvidenceSampleType {
+  return value === "experience" || value === "decision" || value === "opinion" || value === "context";
 }
 
 function isEvidenceSupportType(value: unknown): value is EvidenceSupportType {

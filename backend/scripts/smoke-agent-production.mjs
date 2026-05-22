@@ -323,17 +323,23 @@ async function assertTaskDebug(taskId, label) {
 }
 
 function assertProductionFinalResult(finalResult, label) {
-  assert(finalResult?.schemaVersion === "agent.production_final_result.v1", `${label}: final_result schemaVersion invalid`);
+  assert(finalResult?.schemaVersion === "agent.production_final_result.v2", `${label}: final_result schemaVersion invalid`);
   assert(typeof finalResult.summary === "string", `${label}: summary missing`);
   assert(Array.isArray(finalResult.paths), `${label}: paths missing`);
-  assert(Array.isArray(finalResult.personas), `${label}: personas missing`);
   assert(Array.isArray(finalResult.sources), `${label}: sources missing`);
   assert(isRecord(finalResult.evidenceMap), `${label}: evidenceMap missing`);
   assert(Array.isArray(finalResult.evidenceSamples), `${label}: evidenceSamples missing`);
   assert(isRecord(finalResult.groundingReport), `${label}: groundingReport missing`);
   assert(typeof finalResult.degraded === "boolean", `${label}: degraded missing`);
+  assert(finalResult.degradedReason === null || typeof finalResult.degradedReason === "string", `${label}: degradedReason invalid`);
   assert(finalResult.paths.length > 0 || finalResult.degraded === true, `${label}: no paths should be degraded`);
-  assert(finalResult.personas.length > 0 || finalResult.degraded === true, `${label}: no personas should be degraded`);
+  assert(
+    finalResult.evidenceSamples.length >= 4 || finalResult.degraded === true,
+    `${label}: evidenceSamples below display floor should be degraded`
+  );
+  if (finalResult.degraded === true) {
+    assert(typeof finalResult.degradedReason === "string" && finalResult.degradedReason, `${label}: degraded reason missing`);
+  }
 
   assertDeterministicQualityReport(finalResult.groundingReport, label);
   const sourceById = new Map(finalResult.sources.map((source) => [source.sourceCandidateId, source]));
@@ -346,26 +352,26 @@ function assertProductionFinalResult(finalResult, label) {
   }
 
   for (const [index, path] of finalResult.paths.entries()) {
-    assert(typeof path.coreChoice === "string" && path.coreChoice, `${label}: paths[${index}].coreChoice missing`);
-    assert(Array.isArray(path.suitableFor), `${label}: paths[${index}].suitableFor missing`);
-    assert(Array.isArray(path.prerequisites), `${label}: paths[${index}].prerequisites missing`);
-    assert(Array.isArray(path.benefits), `${label}: paths[${index}].benefits missing`);
-    assert(Array.isArray(path.costsOrRisks), `${label}: paths[${index}].costsOrRisks missing`);
+    assert(typeof path.title === "string" && path.title, `${label}: paths[${index}].title missing`);
+    assert(typeof path.summary === "string" && path.summary, `${label}: paths[${index}].summary missing`);
+    assert(typeof path.angle === "string" && path.angle, `${label}: paths[${index}].angle missing`);
     assertSourceRefs(path.sourceRefs, sourceById, finalResult.evidenceMap, `${label}: paths[${index}]`, {
       requireExperienceEvidence: false
     });
   }
 
-  for (const [index, persona] of finalResult.personas.entries()) {
-    assertSourceRefs(persona.sourceRefs, sourceById, finalResult.evidenceMap, `${label}: personas[${index}]`, {
-      requireExperienceEvidence: true
-    });
+  for (const [index, sample] of finalResult.evidenceSamples.entries()) {
+    assertProductionEvidenceSample(sample, sourceById, finalResult.evidenceMap, `${label}: evidenceSamples[${index}]`);
   }
 
   const badSourceRefCount =
     finalResult.groundingReport.deterministicValidator?.qualityReport?.lowQualityCandidateIds?.length ??
     0;
   assert(badSourceRefCount === 0, `${label}: bad source refs or low quality candidates detected`);
+  const invalidEvidenceSampleCount =
+    finalResult.groundingReport.deterministicValidator?.qualityReport?.invalidEvidenceSampleIds?.length ??
+    0;
+  assert(invalidEvidenceSampleCount === 0, `${label}: invalid evidence samples detected`);
 }
 
 function assertProductionSource(source, label) {
@@ -393,6 +399,24 @@ function assertProductionEvidenceItem(id, evidenceItem, sourceById, label) {
   assert(typeof evidenceItem.excerpt === "string" && evidenceItem.excerpt, `${label}: excerpt missing`);
   assert(typeof evidenceItem.reason === "string" && evidenceItem.reason, `${label}: reason missing`);
   assert(typeof evidenceItem.normalizedClaim === "string" && evidenceItem.normalizedClaim, `${label}: normalizedClaim missing`);
+}
+
+function assertProductionEvidenceSample(sample, sourceById, evidenceMap, label) {
+  assert(typeof sample.id === "string" && sample.id, `${label}: id missing`);
+  assert(sourceById.has(sample.sourceCandidateId), `${label}: sourceCandidateId missing`);
+  const evidenceItem = evidenceMap[sample.evidenceItemId];
+  assert(evidenceItem, `${label}: evidenceItemId missing`);
+  assert(
+    evidenceItem.sourceCandidateId === sample.sourceCandidateId,
+    `${label}: evidenceItemId belongs to ${evidenceItem.sourceCandidateId}`
+  );
+  assert(typeof sample.snippet === "string" && sample.snippet, `${label}: snippet missing`);
+  assert(typeof sample.whyRelevant === "string" && sample.whyRelevant, `${label}: whyRelevant missing`);
+  assert(
+    ["experience", "decision", "opinion", "context"].includes(sample.sampleType),
+    `${label}: sampleType invalid`
+  );
+  assert(Number.isFinite(sample.confidence), `${label}: confidence missing`);
 }
 
 function assertSourceRefs(sourceRefs, sourceById, evidenceMap, label, options) {
@@ -426,7 +450,10 @@ function assertSourceRefs(sourceRefs, sourceById, evidenceMap, label, options) {
 
 function assertDeterministicQualityReport(groundingReport, label) {
   const validator = groundingReport.deterministicValidator;
-  assert(validator?.status === "passed" || validator?.status === "repaired", `${label}: validator status invalid`);
+  assert(
+    validator?.status === "passed" || validator?.status === "repaired" || validator?.status === "failed",
+    `${label}: validator status invalid`
+  );
   assert(Array.isArray(validator.removedPathIds), `${label}: removedPathIds missing`);
   assert(Array.isArray(validator.removedPersonaIds), `${label}: removedPersonaIds missing`);
   assert(Array.isArray(validator.warnings), `${label}: validator warnings missing`);
@@ -435,8 +462,10 @@ function assertDeterministicQualityReport(groundingReport, label) {
   assert(Array.isArray(qualityReport.lowQualityCandidateIds), `${label}: lowQualityCandidateIds missing`);
   assert(Array.isArray(qualityReport.lowConfidenceEvidenceIds), `${label}: lowConfidenceEvidenceIds missing`);
   assert(Array.isArray(qualityReport.personaWithoutExperienceEvidenceIds), `${label}: personaWithoutExperienceEvidenceIds missing`);
+  assert(Array.isArray(qualityReport.invalidEvidenceSampleIds), `${label}: invalidEvidenceSampleIds missing`);
   assert(qualityReport.lowQualityCandidateIds.length === 0, `${label}: final result contains low quality candidate`);
   assert(qualityReport.lowConfidenceEvidenceIds.length === 0, `${label}: final result contains low confidence evidence`);
+  assert(qualityReport.invalidEvidenceSampleIds.length === 0, `${label}: final result contains invalid evidence sample`);
   assert(
     qualityReport.personaWithoutExperienceEvidenceIds.length === 0,
     `${label}: final result contains persona without experience evidence`

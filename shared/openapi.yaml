@@ -1694,18 +1694,24 @@ components:
       required:
         - schemaVersion
         - taskId
+        - query
         - summary
         - paths
-        - personas
         - sources
         - evidenceMap
+        - evidenceSamples
         - groundingReport
         - degraded
+        - warnings
       properties:
         schemaVersion:
           type: string
-          const: agent.production_final_result.v1
+          enum:
+            - agent.production_final_result.v1
+            - agent.production_final_result.v2
         taskId:
+          type: string
+        query:
           type: string
         summary:
           type: string
@@ -1715,6 +1721,8 @@ components:
             $ref: "#/components/schemas/ProductionAgentPath"
         personas:
           type: array
+          deprecated: true
+          description: Deprecated v1 compatibility field. v2 display cards should be generated from evidenceSamples.
           items:
             $ref: "#/components/schemas/ProductionAgentPersona"
         sources:
@@ -1751,6 +1759,10 @@ components:
           type: array
           items:
             type: string
+        warnings:
+          type: array
+          items:
+            type: string
         meta:
           type: object
           additionalProperties: true
@@ -1760,8 +1772,7 @@ components:
         - id
         - title
         - summary
-        - suitableContext
-        - tradeoffs
+        - angle
         - sourceRefs
         - confidence
       properties:
@@ -1771,22 +1782,29 @@ components:
           type: string
         summary:
           type: string
+        angle:
+          type: string
         coreChoice:
           type: string
+          deprecated: true
         suitableFor:
           type: array
+          deprecated: true
           items:
             type: string
         prerequisites:
           type: array
+          deprecated: true
           items:
             type: string
         benefits:
           type: array
+          deprecated: true
           items:
             type: string
         costsOrRisks:
           type: array
+          deprecated: true
           items:
             type: string
         evidenceIds:
@@ -1799,8 +1817,10 @@ components:
             type: string
         suitableContext:
           type: string
+          deprecated: true
         tradeoffs:
           type: string
+          deprecated: true
         sourceRefs:
           type: array
           items:
@@ -1828,13 +1848,10 @@ components:
         - title
         - author
         - sourceUrl
-        - situation
-        - choice
-        - keyExperience
-        - judgment
-        - referenceValue
-        - limit
-        - evidenceText
+        - snippet
+        - whyRelevant
+        - sampleType
+        - confidence
       properties:
         id:
           type: string
@@ -1848,24 +1865,44 @@ components:
           type: string
         sourceUrl:
           type: string
+        snippet:
+          type: string
+        whyRelevant:
+          type: string
+        sampleType:
+          type: string
+          enum:
+            - experience
+            - decision
+            - opinion
+            - context
         situation:
           type: string
+          deprecated: true
         choice:
           type: string
+          deprecated: true
         keyExperience:
           type: string
+          deprecated: true
         judgment:
           type: string
+          deprecated: true
         referenceValue:
           type: string
+          deprecated: true
         limit:
           type: string
+          deprecated: true
         evidenceText:
           type: string
+          deprecated: true
         supportType:
           type: string
+          deprecated: true
         isExperienceEvidence:
           type: boolean
+          deprecated: true
         confidence:
           type: number
           minimum: 0
@@ -1945,7 +1982,16 @@ components:
       required:
         - id
         - sourceCandidateId
+        - title
+        - author
+        - sourceUrl
         - evidenceText
+        - excerpt
+        - normalizedClaim
+        - reason
+        - supportType
+        - isExperienceEvidence
+        - confidence
       properties:
         id:
           type: string
@@ -1959,10 +2005,36 @@ components:
           type: string
         evidenceText:
           type: string
+        excerpt:
+          type: string
         reason:
           type: string
+        normalizedClaim:
+          type: string
+        supportType:
+          type: string
+        isExperienceEvidence:
+          type: boolean
         confidence:
           type: number
+        situation:
+          type: string
+          deprecated: true
+        choice:
+          type: string
+          deprecated: true
+        process:
+          type: string
+          deprecated: true
+        outcome:
+          type: string
+          deprecated: true
+        costOrRisk:
+          type: string
+          deprecated: true
+        takeaway:
+          type: string
+          deprecated: true
     ProductionAgentDeterministicValidator:
       type: object
       required:
@@ -1989,6 +2061,9 @@ components:
           type: array
           items:
             type: string
+        qualityReport:
+          type: object
+          additionalProperties: true
     PersistentAgentTaskDebugResponse:
       type: object
       required:

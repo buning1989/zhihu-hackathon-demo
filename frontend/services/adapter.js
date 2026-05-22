@@ -2,7 +2,10 @@
   const App = window.LifeSampleApp || (window.LifeSampleApp = {});
   App.adapters = App.adapters || {};
 
-  const productionSchemaVersion = "agent.production_final_result.v1";
+  const productionSchemaVersions = new Set([
+    "agent.production_final_result.v1",
+    "agent.production_final_result.v2"
+  ]);
 
   function normalizeNeedInput(needInput) {
     if (!needInput || !Array.isArray(needInput.questions)) {
@@ -98,6 +101,7 @@
   function normalizeProductionResult(finalResult, context = {}) {
     const sources = Array.isArray(finalResult.sources) ? finalResult.sources : [];
     const evidenceMap = isRecord(finalResult.evidenceMap) ? finalResult.evidenceMap : {};
+    const evidenceSamples = Array.isArray(finalResult.evidenceSamples) ? finalResult.evidenceSamples : [];
     const personas = Array.isArray(finalResult.personas) ? finalResult.personas : [];
     const rawPaths = Array.isArray(finalResult.paths) ? finalResult.paths : [];
     const sourceByCandidateId = new Map(sources.map((source) => [sourceCandidateIdOf(source), source]));
@@ -106,16 +110,28 @@
       .filter((path) => hasSourceRefs(path.sourceRefs))
       .map((path, index) => normalizeProductionPath(path, index, evidenceMap));
 
-    let people = personas.length
-      ? personas.map((persona, index) => normalizeProductionPersona({
-        persona,
+    let people = evidenceSamples.length
+      ? evidenceSamples.map((sample, index) => normalizeProductionEvidenceSample({
+        sample,
         index,
         rawPaths,
-        sources,
         sourceByCandidateId,
         evidenceMap
       })).filter(Boolean)
       : [];
+
+    if (people.length === 0) {
+      people = personas.length
+        ? personas.map((persona, index) => normalizeProductionPersona({
+          persona,
+          index,
+          rawPaths,
+          sources,
+          sourceByCandidateId,
+          evidenceMap
+        })).filter(Boolean)
+        : [];
+    }
 
     if (people.length === 0) {
       people = sources
@@ -157,7 +173,7 @@
     return {
       schemaVersion: "frontend-agent-production-v1",
       queryId: stringOf(finalResult.taskId || context.task?.taskId || `query-${Date.now()}`),
-      query: stringOf(context.query || ""),
+      query: stringOf(finalResult.query || context.query || ""),
       dataMode: "agent",
       contextUsed: {},
       features: {
@@ -177,10 +193,12 @@
         resultShape: "production_final_result",
         groundingReport: finalResult.groundingReport || null,
         suggestedQuestions: Array.isArray(finalResult.suggestedQuestions) ? finalResult.suggestedQuestions : [],
+        warnings: Array.isArray(finalResult.warnings) ? finalResult.warnings : [],
         evidenceSampleCount: people.length,
+        backendEvidenceSampleCount: evidenceSamples.length,
         sourceCount: sources.length,
         evidenceCount: Object.keys(evidenceMap).length,
-        hasEvidenceSamples: people.length > 0,
+        hasEvidenceSamples: evidenceSamples.length > 0 || people.length > 0,
         evidenceOnly: rawPaths.length === 0 && people.length > 0
       },
       sourceRefs: sources,
@@ -196,7 +214,7 @@
     const quote = firstEvidenceText(sourceRefs, evidenceMap);
     const title = stringOf(path.title || `证据路径 ${index + 1}`);
     const summary = stringOf(path.summary || "");
-    const whyRelevant = stringOf(path.suitableContext || path.tradeoffs || summary);
+    const whyRelevant = stringOf(path.angle || path.suitableContext || path.tradeoffs || summary);
 
     return {
       ...path,
@@ -213,6 +231,80 @@
       peopleIds: [],
       isProductionPath: true,
       isWeaklyGrounded: sourceRefs.length === 0
+    };
+  }
+
+  function normalizeProductionEvidenceSample(input) {
+    const sample = isRecord(input.sample) ? input.sample : {};
+    const candidateId = stringOf(sample.sourceCandidateId);
+    const evidenceItemId = stringOf(sample.evidenceItemId);
+    const evidenceItem = isRecord(input.evidenceMap[evidenceItemId]) ? input.evidenceMap[evidenceItemId] : {};
+    const source = input.sourceByCandidateId.get(candidateId) || {};
+    const sourceUrl = stringOf(sample.sourceUrl || source.url || evidenceItem.sourceUrl);
+    const title = stringOf(sample.title || source.title || evidenceItem.title || "知乎公开内容");
+    const author = stringOf(sample.author || source.author || evidenceItem.author || "知乎公开样本");
+    const quote = stringOf(sample.snippet || evidenceDisplayText(evidenceItem) || source.excerpt || "");
+    const summary = stringOf(sample.whyRelevant || evidenceClaimText(evidenceItem) || quote);
+    const evidenceIds = evidenceItemId ? [evidenceItemId] : [];
+    const sourceRefs = candidateId && evidenceIds.length
+      ? [{ sourceCandidateId: candidateId, evidenceItemIds: evidenceIds }]
+      : [];
+    const articleEvidence = {
+      id: evidenceItemId || stringOf(sample.id),
+      label: stringOf(sample.sampleType || evidenceItem.supportType || "证据片段"),
+      text: quote,
+      sourceUrl
+    };
+    const paragraphs = normalizeParagraphs([quote, summary].filter(Boolean));
+
+    if (!quote && !summary) {
+      return null;
+    }
+
+    return {
+      id: stringOf(sample.id || `sample_${candidateId || input.index + 1}`),
+      name: author,
+      displayName: author,
+      sampleType: stringOf(sample.sampleType || "evidence"),
+      isProductionSample: true,
+      pathId: findPathIdForCandidate(input.rawPaths, candidateId),
+      avatar: "",
+      role: "知乎公开样本",
+      badge: title,
+      displayTier: input.index < 3 ? "core" : "supplement",
+      evidenceStatus: "llm_extracted",
+      evidenceIds,
+      sourceRefs,
+      confidence: numberOr(sample.confidence, numberOr(evidenceItem.confidence, numberOr(source.qualityScore, 0))),
+      representativeQuote: quote,
+      experienceSummary: summary || quote,
+      oneLine: summary || quote,
+      source: {
+        title,
+        evidence: quote || summary,
+        url: sourceUrl
+      },
+      article: {
+        id: `article_${candidateId || stringOf(sample.id || input.index + 1)}`,
+        title,
+        author,
+        sourceName: "知乎公开内容",
+        sourceUrl,
+        lead: quote || summary,
+        summary: summary || quote,
+        paragraphs,
+        evidence: [articleEvidence]
+      },
+      timeline: [],
+      aiPersona: {
+        enabled: false,
+        canChat: false,
+        personaId: "",
+        boundary: "基于知乎公开内容整理，不代表作者本人。",
+        suggestions: []
+      },
+      displayCanChat: false,
+      chatDisabledReason: "当前证据不足，暂不开放追问。"
     };
   }
 
@@ -505,11 +597,11 @@
   }
 
   function readProductionFinalResult(source) {
-    if (source?.final_result?.schemaVersion === productionSchemaVersion) {
+    if (productionSchemaVersions.has(source?.final_result?.schemaVersion)) {
       return source.final_result;
     }
 
-    if (source?.schemaVersion === productionSchemaVersion) {
+    if (productionSchemaVersions.has(source?.schemaVersion)) {
       return source;
     }
 

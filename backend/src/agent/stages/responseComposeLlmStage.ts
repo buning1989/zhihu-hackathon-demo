@@ -56,7 +56,7 @@ export async function runResponseComposeLlmStage(
       candidates: limitedCandidates.map(toGatewayCandidateMetadata),
       evidenceItems: limitedEvidence.map(toGatewayEvidenceMetadata)
     },
-    maxTokens: 1800,
+    maxTokens: 1200,
     temperature: 0.2,
     onEvent: async (type, payload) => {
       await agentRepository.createEvent({
@@ -66,13 +66,78 @@ export async function runResponseComposeLlmStage(
       });
     }
   });
+  const finalResult = repairFinalResultReferences(result.data, limitedCandidates, limitedEvidence);
 
   return {
     artifactType: AGENT_ARTIFACT_FINAL_RESULT,
-    data: result.data,
+    data: finalResult,
     status: result.status === "success" ? "succeeded" : "fallback",
     fallbackUsed: result.fallbackUsed,
     fallbackReason: result.fallbackReason || null
+  };
+}
+
+function repairFinalResultReferences(
+  finalResult: FinalResultArtifactData,
+  candidates: CandidateItem[],
+  evidenceItems: EvidenceInputItem[]
+): FinalResultArtifactData {
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+  const evidenceById = new Map(evidenceItems.map((item) => [item.id, item]));
+  const evidenceByCandidateId = new Map<string, EvidenceInputItem[]>();
+  for (const item of evidenceItems) {
+    const group = evidenceByCandidateId.get(item.candidateId) ?? [];
+    group.push(item);
+    evidenceByCandidateId.set(item.candidateId, group);
+  }
+
+  const paths = finalResult.paths.flatMap((path) => {
+    const validEvidenceIds = path.evidenceIds.filter((id) => evidenceById.has(id));
+    const validCandidateIds = uniqueNonEmpty([
+      ...path.candidateIds.filter((id) => candidateIds.has(id)),
+      ...validEvidenceIds
+        .map((id) => evidenceById.get(id)?.candidateId ?? "")
+        .filter((id) => candidateIds.has(id))
+    ]);
+    const repairedEvidenceIds = uniqueNonEmpty([
+      ...validEvidenceIds,
+      ...validCandidateIds.flatMap((candidateId) =>
+        (evidenceByCandidateId.get(candidateId) ?? []).slice(0, 1).map((item) => item.id)
+      )
+    ]);
+
+    if (validCandidateIds.length === 0 || repairedEvidenceIds.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        ...path,
+        evidenceIds: repairedEvidenceIds,
+        candidateIds: validCandidateIds
+      }
+    ];
+  });
+  const people = finalResult.people.flatMap((person) => {
+    if (!candidateIds.has(person.candidateId)) {
+      return [];
+    }
+    const evidenceIds = person.evidenceIds.filter((id) => evidenceById.get(id)?.candidateId === person.candidateId);
+    if (evidenceIds.length === 0) {
+      return [];
+    }
+    return [
+      {
+        ...person,
+        evidenceIds
+      }
+    ];
+  });
+
+  return {
+    ...finalResult,
+    paths,
+    people
   };
 }
 
@@ -99,11 +164,7 @@ function buildResponseComposeMessages(
             {
               title: "string",
               summary: "string",
-              coreChoice: "string",
-              suitableFor: ["string"],
-              prerequisites: ["string"],
-              benefits: ["string"],
-              costsOrRisks: ["string"],
+              angle: "string",
               evidenceIds: ["string"],
               candidateIds: ["string"]
             }
@@ -122,16 +183,17 @@ function buildResponseComposeMessages(
         },
         constraints: [
           "summary 必须基于输入 evidence/candidates",
-          "summary 必须概括这些真实样本呈现了哪些不同可能性，而不是泛泛总结",
-          "每条 path 必须是路径模型，至少写清 coreChoice、适合人群、前提条件、收益、代价/风险",
-          "summary 和 paths[].summary 只能写样本归纳：有人选择了什么、当时约束是什么、后来代价或结果是什么、这类样本不能推出什么",
+          "summary 只做证据归纳：这些公开样本呈现了哪些差异，不要写建议或行动指南",
+          "paths 只生成 3 条左右轻路径角度，每条只需要 title / summary / angle / evidenceIds / candidateIds",
+          "paths[].summary 必须能被对应 evidenceIds 的短证据直接支撑，只写来源里出现的处境、选择、观点或结果",
+          "angle 是这条路径的归纳角度，不是适合人群、前提、收益或风险清单",
+          "不要输出 coreChoice、suitableFor、prerequisites、benefits、costsOrRisks",
           "不要生成泛泛建议式 path summary，不要写成行动指南",
-          "禁止使用强建议语气和方法论词：你应该、应该、最好、一定、只要、必须、建议你、方法、策略、重要性、意志力",
-          "path title 不要写成方法标题；优先写成“样本：某类人如何选择/承受什么结果”",
-          "paths 要尽量形成 3 条左右明显不同的路径；证据不足时可以更少，但不要把同一证据拆成重复路径",
+          "禁止使用强建议语气和方法论词：你应该、最好、一定、只要、建议你、方法、策略、重要性、意志力",
+          "path title 不要写成方法标题；优先写成“样本：某类选择/处境/观点”",
+          "证据不足时可以少于 3 条 path，但不要把同一证据拆成重复路径",
           "自我状态、低谷、焦虑、内耗相关问题不得输出心理治疗、诊断、药物、咨询师或医疗建议；只整理公开内容里的真实经历样本",
           "证据弱或 experience evidence 少时，减少 paths/people 数量，可以返回空数组，不要为了凑数量泛化总结",
-          "paths[].summary 必须能被对应 evidenceIds 的短证据直接支撑",
           "paths[].evidenceIds 只能引用输入 evidenceItems[].id",
           "paths[].candidateIds 只能引用输入 candidates[].id",
           "people[].candidateId 只能引用输入 candidates[].id",
@@ -253,7 +315,7 @@ function buildFallbackSummary(
   }
 
   const pathChoices = paths
-    .map((path) => path.coreChoice || path.title)
+    .map((path) => path.angle || path.coreChoice || path.title)
     .map(stripTrailingPunctuation)
     .filter(Boolean)
     .filter((value, index, array) => array.indexOf(value) === index)
@@ -352,16 +414,7 @@ function buildPathFromEvidenceGroup(
   return {
     title: descriptor.title,
     summary: `${descriptor.summaryPrefix}${evidencePreview}${titleSeed}。这只是公开来源中的对照样本，不代表完整人生或唯一结论。`,
-    coreChoice: descriptor.coreChoice,
-    suitableFor: descriptor.suitableFor,
-    prerequisites: descriptor.prerequisites,
-    benefits: descriptor.benefits,
-    costsOrRisks: uniqueNonEmpty([
-      ...descriptor.costsOrRisks,
-      ...evidenceItems
-        .map((item) => item.costOrRisk ? truncateText(item.costOrRisk, 80) : "")
-        .filter(Boolean)
-    ]).slice(0, 3),
+    angle: descriptor.coreChoice,
     evidenceIds: evidenceItems.map((item) => item.id),
     candidateIds: uniqueNonEmpty(evidenceItems.map((item) => item.candidateId))
   };
@@ -626,6 +679,7 @@ function isFinalResultPath(value: unknown): boolean {
   return (
     typeof value.title === "string" &&
     typeof value.summary === "string" &&
+    (value.angle === undefined || typeof value.angle === "string") &&
     isStringArray(value.evidenceIds) &&
     isStringArray(value.candidateIds) &&
     (value.coreChoice === undefined || typeof value.coreChoice === "string") &&
