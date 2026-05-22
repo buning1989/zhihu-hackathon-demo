@@ -9,9 +9,14 @@ import {
 } from "./stageTypes.js";
 
 const ACCEPTED_SOURCE_TYPES = ["answer", "mock_answer"] as const;
-const MIN_CANDIDATE_SCORE_EXCLUSIVE = 0.5;
-const MIN_SELECTED_QUALITY_SCORE = 0.45;
-const MIN_SELECTED_RELEVANCE_SCORE = 0.25;
+const MAX_SELECTED_FOR_EVIDENCE = 6;
+const MIN_SELECTED_QUALITY_SCORE = 0.42;
+const MIN_SELECTED_RELEVANCE_SCORE = 0.28;
+const MIN_SELECTED_EXPERIENCE_SCORE = 0.22;
+const MIN_RANK_FALLBACK_RELEVANCE_SCORE = 0.34;
+const MIN_RANK_FALLBACK_EXPERIENCE_SCORE = 0.18;
+const MIN_RANK_FALLBACK_SEARCH_SCORE = 0.82;
+const MIN_MEANINGFUL_CONTENT_LENGTH = 30;
 
 const TOPIC_KEYWORDS = [
   "裸辞",
@@ -23,9 +28,14 @@ const TOPIC_KEYWORDS = [
   "不结婚",
   "结婚",
   "工作",
+  "工资",
+  "痛苦",
   "离职",
   "失业",
   "职业",
+  "大厂",
+  "创业公司",
+  "北上广",
   "伴侣",
   "恋爱",
   "家庭",
@@ -94,16 +104,21 @@ const LOW_QUALITY_SIGNAL_GROUPS = [
 export function runNormalizeCandidatesStage(
   rawSources: RawSourcesArtifactData
 ): AgentStageOutput<CandidatesArtifactData> {
-  const eligibleSources = rawSources.sources.filter(isEligibleSource);
-  const dedupedSources = dedupeSources(eligibleSources);
+  const eligibleSources = rawSources.sources.filter(isAcceptedSourceType);
+  const dedupeResult = dedupeSources(eligibleSources);
+  const dedupedSources = dedupeResult.sources;
   const queryTerms = buildQueryTerms([rawSources.query, ...rawSources.expandedQueries]);
-  const candidates = dedupedSources
-    .map((source, index) => mapRawSourceToCandidate(source, index, queryTerms))
+  const scoredCandidates = dedupedSources
+    .map((source, index) =>
+      mapRawSourceToCandidate(source, index, dedupedSources.length, queryTerms)
+    )
     .sort(compareCandidates);
+  const candidates = applyEvidenceSelectionBudget(scoredCandidates);
   const selectedForEvidenceCount = candidates.filter((candidate) => candidate.selectedForEvidence).length;
   const lowQualityCandidateIds = candidates
     .filter((candidate) => !candidate.selectedForEvidence)
     .map((candidate) => candidate.id);
+  const rejectReasonCounts = countRejectReasons(candidates, dedupeResult.duplicateCount);
 
   return {
     artifactType: AGENT_ARTIFACT_CANDIDATES,
@@ -112,25 +127,22 @@ export function runNormalizeCandidatesStage(
       candidateCount: candidates.length,
       sourceCount: rawSources.sources.length,
       filteredOutCount: rawSources.sources.length - eligibleSources.length,
-      dedupedSourceCount: eligibleSources.length - dedupedSources.length,
+      dedupedSourceCount: dedupeResult.duplicateCount,
       filters: {
         acceptedTypes: [...ACCEPTED_SOURCE_TYPES],
-        minScoreExclusive: MIN_CANDIDATE_SCORE_EXCLUSIVE,
-        minSelectedQualityScore: MIN_SELECTED_QUALITY_SCORE
+        minSelectedQualityScore: MIN_SELECTED_QUALITY_SCORE,
+        maxSelectedForEvidence: MAX_SELECTED_FOR_EVIDENCE
       },
       qualityReport: {
         selectedForEvidenceCount,
         rejectedCount: lowQualityCandidateIds.length,
         minSelectedQualityScore: MIN_SELECTED_QUALITY_SCORE,
-        lowQualityCandidateIds
+        lowQualityCandidateIds,
+        rejectReasonCounts
       },
       strategy: "rule_based"
     }
   };
-}
-
-function isEligibleSource(source: RawSourceItem): boolean {
-  return isAcceptedSourceType(source) && source.score > MIN_CANDIDATE_SCORE_EXCLUSIVE;
 }
 
 function isAcceptedSourceType(source: RawSourceItem): boolean {
@@ -142,13 +154,18 @@ function isAcceptedSourceType(source: RawSourceItem): boolean {
   return source.provider === "mock" && normalizedType === "mock_answer";
 }
 
-function dedupeSources(sources: RawSourceItem[]): RawSourceItem[] {
+function dedupeSources(sources: RawSourceItem[]): {
+  sources: RawSourceItem[];
+  duplicateCount: number;
+} {
   const seen = new Set<string>();
   const result: RawSourceItem[] = [];
+  let duplicateCount = 0;
 
   for (const source of sources) {
     const key = buildDedupeKey(source);
     if (seen.has(key)) {
+      duplicateCount += 1;
       continue;
     }
 
@@ -156,15 +173,20 @@ function dedupeSources(sources: RawSourceItem[]): RawSourceItem[] {
     result.push(source);
   }
 
-  return result;
+  return {
+    sources: result,
+    duplicateCount
+  };
 }
 
 function mapRawSourceToCandidate(
   source: RawSourceItem,
   index: number,
+  totalCount: number,
   queryTerms: string[]
 ): CandidateItem {
   const score = normalizeScore(source.score, index);
+  const normalizedSearchScore = normalizeRankScore(index, totalCount);
   const title = source.title || "未命名内容";
   const author = source.author || "未知作者";
   const excerpt = truncateText(source.excerpt, 500);
@@ -174,6 +196,7 @@ function mapRawSourceToCandidate(
     author,
     excerpt,
     score,
+    normalizedSearchScore,
     queryTerms
   });
 
@@ -187,12 +210,13 @@ function mapRawSourceToCandidate(
     url: source.url,
     score,
     provider: source.provider,
+    normalizedSearchScore,
     relevanceScore: quality.relevanceScore,
     experienceScore: quality.experienceScore,
     qualityScore: quality.qualityScore,
     qualitySignals: quality.qualitySignals,
     rejectReason: quality.rejectReason,
-    selectedForEvidence: quality.selectedForEvidence
+    selectedForEvidence: quality.eligibleForEvidence
   };
 }
 
@@ -216,12 +240,22 @@ function normalizeScore(score: number, index: number): number {
   return clampScore(0.76 - index * 0.03);
 }
 
+function normalizeRankScore(index: number, totalCount: number): number {
+  if (totalCount <= 1) {
+    return 0.95;
+  }
+
+  const rankPosition = index / Math.max(totalCount - 1, 1);
+  return clampScore(0.95 - rankPosition * 0.35);
+}
+
 function scoreCandidateQuality(input: {
   source: RawSourceItem;
   title: string;
   author: string;
   excerpt: string;
   score: number;
+  normalizedSearchScore: number;
   queryTerms: string[];
 }): {
   relevanceScore: number;
@@ -229,29 +263,49 @@ function scoreCandidateQuality(input: {
   qualityScore: number;
   qualitySignals: string[];
   rejectReason: string | null;
-  selectedForEvidence: boolean;
+  eligibleForEvidence: boolean;
 } {
   const text = normalizeText(`${input.title} ${input.author} ${input.excerpt}`);
-  const relevance = scoreRelevance(text, input.queryTerms, input.score);
+  const titleText = normalizeText(input.title);
+  const excerptText = normalizeText(input.excerpt);
+  const relevance = scoreRelevance({
+    titleText,
+    excerptText,
+    queryTerms: input.queryTerms,
+    rawScore: input.score,
+    normalizedSearchScore: input.normalizedSearchScore
+  });
   const experience = scoreExperience(text);
   const lowQuality = scoreLowQuality(text, input.excerpt);
   const sourceCompletenessScore = scoreSourceCompleteness(input.source, input.excerpt);
+  const contentLengthScore = scoreContentLength(input.excerpt);
   const qualityScore = clampScore(
-    relevance.score * 0.45 +
-      experience.score * 0.35 +
-      sourceCompletenessScore * 0.2 -
+    relevance.score * 0.34 +
+      experience.score * 0.34 +
+      contentLengthScore * 0.14 +
+      input.normalizedSearchScore * 0.12 +
+      sourceCompletenessScore * 0.06 -
       lowQuality.penalty
   );
-  const selectedForEvidence =
-    qualityScore >= MIN_SELECTED_QUALITY_SCORE &&
-    relevance.score >= MIN_SELECTED_RELEVANCE_SCORE &&
+  const rankFallbackEligible =
+    input.normalizedSearchScore >= MIN_RANK_FALLBACK_SEARCH_SCORE &&
+    relevance.score >= MIN_RANK_FALLBACK_RELEVANCE_SCORE &&
+    experience.score >= MIN_RANK_FALLBACK_EXPERIENCE_SCORE;
+  const eligibleForEvidence =
+    !lowQuality.critical &&
     sourceCompletenessScore >= 0.6 &&
-    !lowQuality.critical;
-  const rejectReason = selectedForEvidence
+    normalizeText(input.excerpt).length >= MIN_MEANINGFUL_CONTENT_LENGTH &&
+    ((qualityScore >= MIN_SELECTED_QUALITY_SCORE &&
+      relevance.score >= MIN_SELECTED_RELEVANCE_SCORE &&
+      experience.score >= MIN_SELECTED_EXPERIENCE_SCORE) ||
+      rankFallbackEligible);
+  const rejectReason = eligibleForEvidence
     ? null
     : buildRejectReason({
-        qualityScore,
-        relevanceScore: relevance.score,
+      qualityScore,
+      relevanceScore: relevance.score,
+        experienceScore: experience.score,
+        contentLength: normalizeText(input.excerpt).length,
         sourceCompletenessScore,
         lowQuality
       });
@@ -259,6 +313,8 @@ function scoreCandidateQuality(input: {
     ...relevance.signals,
     ...experience.signals,
     ...lowQuality.signals,
+    `rank_normalized:${input.normalizedSearchScore.toFixed(2)}`,
+    `content_length:${normalizeText(input.excerpt).length}`,
     `source_completeness:${sourceCompletenessScore.toFixed(2)}`
   ]);
 
@@ -268,29 +324,42 @@ function scoreCandidateQuality(input: {
     qualityScore,
     qualitySignals,
     rejectReason,
-    selectedForEvidence
+    eligibleForEvidence
   };
 }
 
-function scoreRelevance(
-  text: string,
-  queryTerms: string[],
-  sourceScore: number
-): { score: number; signals: string[] } {
-  if (queryTerms.length === 0) {
+function scoreRelevance(input: {
+  titleText: string;
+  excerptText: string;
+  queryTerms: string[];
+  rawScore: number;
+  normalizedSearchScore: number;
+}): { score: number; signals: string[] } {
+  const text = `${input.titleText} ${input.excerptText}`;
+  if (input.queryTerms.length === 0) {
     return {
-      score: clampScore(sourceScore),
-      signals: [`relevance:source_score:${sourceScore.toFixed(2)}`]
+      score: clampScore(input.normalizedSearchScore),
+      signals: [`relevance:rank:${input.normalizedSearchScore.toFixed(2)}`]
     };
   }
 
-  const hits = queryTerms.filter((term) => text.includes(term));
-  const coverage = hits.length / Math.min(Math.max(queryTerms.length, 1), 6);
-  const score = clampScore(sourceScore * 0.45 + Math.min(coverage, 1) * 0.55);
+  const titleHits = input.queryTerms.filter((term) => input.titleText.includes(term));
+  const excerptHits = input.queryTerms.filter((term) => input.excerptText.includes(term));
+  const uniqueHits = uniqueNonEmpty([...titleHits, ...excerptHits]);
+  const weightedHits = titleHits.length * 1.2 + excerptHits.length;
+  const coverage = weightedHits / Math.min(Math.max(input.queryTerms.length, 1), 6);
+  const score = clampScore(
+    Math.min(coverage, 1) * 0.65 +
+      input.normalizedSearchScore * 0.3 +
+      input.rawScore * 0.05
+  );
 
   return {
     score,
-    signals: hits.slice(0, 5).map((term) => `relevance:${term}`)
+    signals: [
+      ...uniqueHits.slice(0, 5).map((term) => `relevance:${term}`),
+      `relevance:rank:${input.normalizedSearchScore.toFixed(2)}`
+    ]
   };
 }
 
@@ -326,7 +395,7 @@ function scoreLowQuality(
   let critical = false;
   const normalizedExcerpt = normalizeText(excerpt);
 
-  if (normalizedExcerpt.length < 30) {
+  if (normalizedExcerpt.length < MIN_MEANINGFUL_CONTENT_LENGTH) {
     signals.push("low_quality:too_short");
     penalty += 0.18;
   }
@@ -360,6 +429,19 @@ function scoreLowQuality(
   };
 }
 
+function scoreContentLength(excerpt: string): number {
+  const length = normalizeText(excerpt).length;
+  if (length < MIN_MEANINGFUL_CONTENT_LENGTH) {
+    return 0;
+  }
+
+  if (length >= 240) {
+    return 1;
+  }
+
+  return clampScore((length - MIN_MEANINGFUL_CONTENT_LENGTH) / 210);
+}
+
 function scoreSourceCompleteness(source: RawSourceItem, excerpt: string): number {
   const parts = [
     Boolean(source.sourceId),
@@ -375,30 +457,34 @@ function scoreSourceCompleteness(source: RawSourceItem, excerpt: string): number
 function buildRejectReason(input: {
   qualityScore: number;
   relevanceScore: number;
+  experienceScore: number;
+  contentLength: number;
   sourceCompletenessScore: number;
   lowQuality: { critical: boolean; signals: string[] };
 }): string {
   if (input.lowQuality.critical) {
-    return "MARKETING_OR_LEAD_GEN";
+    return "marketing_or_spam";
   }
 
-  if (input.sourceCompletenessScore < 0.6) {
-    return "SOURCE_BINDING_INCOMPLETE";
-  }
-
-  if (input.relevanceScore < MIN_SELECTED_RELEVANCE_SCORE) {
-    return "LOW_RELEVANCE";
+  if (input.contentLength < MIN_MEANINGFUL_CONTENT_LENGTH) {
+    return "too_short";
   }
 
   if (input.lowQuality.signals.includes("low_quality:too_short")) {
-    return "CONTENT_TOO_SHORT";
+    return "too_short";
   }
 
-  if (input.qualityScore < MIN_SELECTED_QUALITY_SCORE) {
-    return "LOW_QUALITY_SCORE";
+  if (input.sourceCompletenessScore < 0.6 || input.relevanceScore < MIN_SELECTED_RELEVANCE_SCORE) {
+    return "low_relevance";
   }
 
-  return "NOT_SELECTED_FOR_EVIDENCE";
+  if (input.experienceScore < MIN_SELECTED_EXPERIENCE_SCORE) {
+    return "low_experience_signal";
+  }
+
+  return input.qualityScore < MIN_SELECTED_QUALITY_SCORE
+    ? "low_experience_signal"
+    : "not_selected_budget_limit";
 }
 
 function buildQueryTerms(values: string[]): string[] {
@@ -437,8 +523,48 @@ function compareCandidates(left: CandidateItem, right: CandidateItem): number {
     right.qualityScore - left.qualityScore ||
     right.experienceScore - left.experienceScore ||
     right.relevanceScore - left.relevanceScore ||
-    right.score - left.score
+    right.normalizedSearchScore - left.normalizedSearchScore
   );
+}
+
+function applyEvidenceSelectionBudget(candidates: CandidateItem[]): CandidateItem[] {
+  let selectedCount = 0;
+  return candidates.map((candidate) => {
+    if (!candidate.selectedForEvidence) {
+      return candidate;
+    }
+
+    selectedCount += 1;
+    if (selectedCount <= MAX_SELECTED_FOR_EVIDENCE) {
+      return candidate;
+    }
+
+    return {
+      ...candidate,
+      selectedForEvidence: false,
+      rejectReason: "not_selected_budget_limit"
+    };
+  });
+}
+
+function countRejectReasons(
+  candidates: CandidateItem[],
+  duplicateCount: number
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (duplicateCount > 0) {
+    result.duplicate = duplicateCount;
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate.rejectReason) {
+      continue;
+    }
+
+    result[candidate.rejectReason] = (result[candidate.rejectReason] ?? 0) + 1;
+  }
+
+  return result;
 }
 
 function hashStableId(value: string): string {

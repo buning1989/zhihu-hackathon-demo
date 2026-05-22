@@ -1,5 +1,25 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 2.1 real score normalization
+
+本轮目标：修正真实知乎搜索返回 `score` 量级过低导致 `selectedForEvidence=0` 的问题；不进入 Phase 3，不做缓存限流、后台或前端 UI。
+
+已完成：
+
+- `normalize_candidates` 不再用 raw `source.score > 0.5` 作为前置硬门槛；真实 `Answer` 会先进入质量评分。
+- candidate 增加 `normalizedSearchScore`，同一批候选按 rank 归一化，raw score 只作为 relevance 的弱辅助信号。
+- `relevanceScore` 改为主要看 query 关键词在 title/excerpt 的命中和 rank-based score。
+- `qualityScore` 综合 `relevanceScore / experienceScore / 内容长度 / normalizedSearchScore / 来源完整度 / 低质量惩罚`。
+- `selectedForEvidence` 加入 evidence 预算上限，超出 Top N 的候选标记 `not_selected_budget_limit`，不扩大 evidence 抽取成本。
+- 新增 `backend/scripts/spotcheck-agent-production-real.mjs`，用于真实搜索配置下创建 8 个 Agent task 并汇总 sources、selected、score、evidence、paths/personas、grounding 指标。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- `FRONTEND_PORT=3001 npm run smoke`
+- 在 compose 已读取真实 `ZH_ACCESS_SECRET` 时执行 `node backend/scripts/spotcheck-agent-production-real.mjs`
+
 ## 2026-05-22 - Agent production Phase 2 quality grounding
 
 本轮目标：只执行 Phase 2 的质量和证据增强；不做缓存限流、观测后台、信息补充卡、前端 UI，也不新增数据库表。

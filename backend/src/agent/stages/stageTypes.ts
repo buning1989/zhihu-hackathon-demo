@@ -83,6 +83,7 @@ export interface CandidateItem {
   url: string;
   score: number;
   provider: string;
+  normalizedSearchScore: number;
   relevanceScore: number;
   experienceScore: number;
   qualityScore: number;
@@ -99,14 +100,16 @@ export interface CandidatesArtifactData {
   dedupedSourceCount?: number;
   filters?: {
     acceptedTypes: string[];
-    minScoreExclusive: number;
+    minScoreExclusive?: number;
     minSelectedQualityScore?: number;
+    maxSelectedForEvidence?: number;
   };
   qualityReport?: {
     selectedForEvidenceCount: number;
     rejectedCount: number;
     minSelectedQualityScore: number;
     lowQualityCandidateIds: string[];
+    rejectReasonCounts?: Record<string, number>;
   };
   strategy: "rule_based";
 }

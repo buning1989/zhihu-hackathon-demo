@@ -181,6 +181,7 @@ function assertProductionFinalResult(finalResult, label) {
 
 function assertProductionSource(source, label) {
   assert(typeof source.sourceCandidateId === "string" && source.sourceCandidateId, `${label}: sourceCandidateId missing`);
+  assert(Number.isFinite(source.normalizedSearchScore), `${label}: normalizedSearchScore missing`);
   assert(Number.isFinite(source.relevanceScore), `${label}: relevanceScore missing`);
   assert(Number.isFinite(source.experienceScore), `${label}: experienceScore missing`);
   assert(Number.isFinite(source.qualityScore), `${label}: qualityScore missing`);

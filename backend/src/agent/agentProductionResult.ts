@@ -51,6 +51,7 @@ export interface ProductionFinalResultSource {
   url: string;
   excerpt: string;
   score: number;
+  normalizedSearchScore: number;
   relevanceScore: number;
   experienceScore: number;
   qualityScore: number;
@@ -470,6 +471,7 @@ function toProductionSource(candidate: CandidateItem): ProductionFinalResultSour
     url: candidate.url,
     excerpt: candidate.excerpt,
     score: candidate.score,
+    normalizedSearchScore: candidate.normalizedSearchScore,
     relevanceScore: candidate.relevanceScore,
     experienceScore: candidate.experienceScore,
     qualityScore: candidate.qualityScore,
@@ -685,6 +687,7 @@ function isProductionSource(value: unknown): value is ProductionFinalResultSourc
     typeof value.url === "string" &&
     typeof value.excerpt === "string" &&
     typeof value.score === "number" &&
+    typeof value.normalizedSearchScore === "number" &&
     typeof value.relevanceScore === "number" &&
     typeof value.experienceScore === "number" &&
     typeof value.qualityScore === "number" &&
