@@ -35,11 +35,11 @@
         <div class="clarify-card">
           <div class="clarify-panel">
             <h2 class="clarify-title">再说一点你的处境</h2>
-            <p class="clarify-desc">不用解释太多，点选几个更接近现在的感受就好。</p>
+            <p class="clarify-desc">选几项就好，不用写很完整。</p>
             ${questionHtml}
             <div class="clarify-actions">
-              <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}先看这些经历</button>
-              <button class="btn-s" type="button" data-action="continue-after-clarify">${icon("refresh-cw")}用这些信息重新看看</button>
+              <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}先直接看</button>
+              <button class="btn-p" type="button" data-action="continue-after-clarify">${icon("search")}开始看看</button>
             </div>
           </div>
         </div>

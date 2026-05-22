@@ -3,15 +3,38 @@
   App.views = App.views || {};
 
   function renderLoading(state) {
-    const { escapeHtml } = App.utils;
+    const { escapeHtml, escapeAttribute } = App.utils;
+    const result = state.result || App.store.getResult();
+    const people = (result.people || App.mockData.people).slice(0, 6);
+    const flowingPeople = people.concat(people);
+    const lane = flowingPeople.map((person) => `
+      <span class="loading-person">
+        <span class="loading-avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
+        <span>${escapeHtml(person.name)}</span>
+      </span>
+    `).join("");
+    const steps = [
+      "正在理解你的处境",
+      "正在寻找相似经历",
+      "正在整理几种走法",
+      "正在挑出最接近的人"
+    ];
+
     return `
       <section class="card loading-card">
         <h2 class="loading-title">${escapeHtml(state.search.message || "正在整理路径")}</h2>
-        <p class="loading-text">先找到几条不同的走法，再展开具体的人。</p>
-        <div class="loading-lines" aria-hidden="true">
-          <span class="line"></span>
-          <span class="line"></span>
-          <span class="line"></span>
+        <div class="people-flow" aria-hidden="true">
+          <div class="flow-lane">${lane}</div>
+          <div class="flow-lane is-reverse">${lane}</div>
+        </div>
+        <div class="loading-progress">
+          <span class="loading-dot"></span>
+          <div class="loading-step-window">
+            <div class="loading-step-strip">
+              ${steps.map((step) => `<span>${escapeHtml(step)}</span>`).join("")}
+              <span>${escapeHtml(steps[0])}</span>
+            </div>
+          </div>
         </div>
       </section>
     `;

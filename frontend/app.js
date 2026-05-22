@@ -3,6 +3,13 @@
   const root = document.getElementById("app");
   let requestSeq = 0;
   let capsuleTypingTimer = null;
+  let entryPlaceholderTimer = null;
+  const entryPlaceholderExamples = [
+    "为了工作长期异地恋，真的值得吗？",
+    "毕业后留在大城市，还是回老家？",
+    "一份稳定但消耗人的工作，要不要离开？",
+    "关系里一直是我让步，还要继续吗？"
+  ];
 
   function render() {
     const state = App.store.getState();
@@ -21,6 +28,49 @@
       App.components.renderPeopleModal(state),
       App.components.renderChatModal(state)
     ].join("");
+
+    syncEntryPlaceholder(state);
+  }
+
+  function syncEntryPlaceholder(state) {
+    if (entryPlaceholderTimer) {
+      window.clearInterval(entryPlaceholderTimer);
+      entryPlaceholderTimer = null;
+    }
+
+    if (state.page !== "entry") {
+      return;
+    }
+
+    const input = document.getElementById("entry-query");
+    if (!input) {
+      return;
+    }
+
+    let exampleIndex = 0;
+    let charIndex = 0;
+    let restingTicks = 0;
+    input.placeholder = "";
+
+    entryPlaceholderTimer = window.setInterval(() => {
+      const example = entryPlaceholderExamples[exampleIndex];
+
+      if (charIndex < example.length) {
+        charIndex += 1;
+        input.placeholder = example.slice(0, charIndex);
+        return;
+      }
+
+      restingTicks += 1;
+      if (restingTicks < 14) {
+        return;
+      }
+
+      exampleIndex = (exampleIndex + 1) % entryPlaceholderExamples.length;
+      charIndex = 0;
+      restingTicks = 0;
+      input.placeholder = "";
+    }, 80);
   }
 
   function currentRequestId() {
@@ -50,17 +100,18 @@
       return;
     }
 
+    const pageBeforeSubmit = state.page;
     const requestId = currentRequestId();
     const clarifyAnswers = options.keepClarify ? state.search.clarifyAnswers : {};
 
     App.store.update((draft) => {
-      draft.page = "feed";
+      draft.page = pageBeforeSubmit === "entry" ? "entry" : "feed";
       draft.query = cleanQuery;
       draft.pendingQuery = cleanQuery;
       draft.activePathId = "all";
       draft.modal = { type: null, pathId: null, personId: null };
       draft.search = {
-        status: "loading",
+        status: "preparing",
         message: "正在从真实经历里找相似的人",
         requestId,
         clarifyQuestions: [],
@@ -82,6 +133,7 @@
 
     if (preparation.status === "needs_clarification") {
       App.store.update((draft) => {
+        draft.page = pageBeforeSubmit === "entry" ? "entry" : "feed";
         draft.search.status = "clarify";
         draft.search.message = "";
         draft.search.clarifyQuestions = preparation.questions;
@@ -97,6 +149,7 @@
 
   async function loadResults(query, requestId, answers) {
     App.store.update((draft) => {
+      draft.page = "feed";
       draft.search.status = "loading";
       draft.search.message = "正在从真实经历里找相似的人";
       draft.search.requestId = requestId;
@@ -153,7 +206,10 @@
       return draft;
     });
 
-    await submitSearch(state.pendingQuery || state.query || App.mockData.defaultQuery);
+    const nextQuery = state.pendingQuery || state.query;
+    if (nextQuery) {
+      await submitSearch(nextQuery);
+    }
   }
 
   function mockLogout() {
@@ -190,7 +246,6 @@
 
   function openClarify() {
     App.store.update((draft) => {
-      draft.page = "feed";
       draft.search.clarifyQuestions = draft.search.clarifyQuestions.length
         ? draft.search.clarifyQuestions
         : App.mockData.clarifyQuestions.slice(0, 3);
@@ -401,7 +456,12 @@
       return;
     }
 
-    if (action === "mock-login") {
+    if (action === "open-login") {
+      App.store.update((draft) => {
+        draft.auth.needsLogin = true;
+        return draft;
+      });
+    } else if (action === "mock-login") {
       await mockLogin();
     } else if (action === "mock-logout") {
       mockLogout();
