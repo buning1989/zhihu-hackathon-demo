@@ -281,6 +281,11 @@ function createMockFinalResultCompletion<TData>(input: LlmGatewayInput<TData>): 
             {
               title: "先暂停，重建生活秩序",
               summary: "候选内容显示，先把生活节奏、预算和下一步选择拆开看，会比直接做最终决定更稳妥。",
+              coreChoice: "先暂停并重建生活秩序，再比较下一步选择。",
+              suitableFor: ["问题还很模糊、但已有公开样本可对照的人"],
+              prerequisites: ["能从来源片段中确认相似约束", "有基本现金流或时间缓冲"],
+              benefits: ["先获得可比较样本", "减少直接做终局决定的压力"],
+              costsOrRisks: ["公开片段有限，不能推出唯一答案"],
               evidenceIds,
               candidateIds
             }
@@ -364,6 +369,11 @@ function createDefaultMockFinalResult<TData>(
             {
               title: "先看有证据支撑的相似经历",
               summary: "这些条目都有候选或证据支撑，适合作为下一步比较样本。",
+              coreChoice: "先围绕有证据支撑的公开样本做比较。",
+              suitableFor: ["需要先看真实来源片段的人"],
+              prerequisites: ["候选和证据能互相绑定"],
+              benefits: ["获得可追溯的参考样本"],
+              costsOrRisks: ["证据片段不能代表完整经历"],
               evidenceIds,
               candidateIds
             }

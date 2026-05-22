@@ -21,10 +21,11 @@ const MAX_EXCERPT_LENGTH = 180;
 const MAX_EVIDENCE_TEXT_LENGTH = 320;
 const MAX_LLM_EVIDENCE_TEXT_LENGTH = 96;
 const MAX_REASON_LENGTH = 60;
-const MIN_EXPERIENCE_EVIDENCE_SCORE = 0.5;
+const MIN_EXPERIENCE_EVIDENCE_SCORE = 0.38;
 const MIN_EXPERIENCE_EVIDENCE_CONFIDENCE = 0.45;
 const MAX_STAGE_FAILURE_RATIO = 0.5;
-export const AGENT_EVIDENCE_EXTRACTION_VERSION = "agent.evidence_extract.v4.chunked_claims_backfill";
+const MAX_EVIDENCE_FACET_LENGTH = 80;
+export const AGENT_EVIDENCE_EXTRACTION_VERSION = "agent.evidence_extract.v5.structured_grounded_samples";
 
 interface EvidenceChunkStats {
   chunkCount: number;
@@ -286,7 +287,13 @@ function buildEvidenceExtractMessages(
               normalizedClaim: "不超过40字",
               supportType: "experience_fact",
               isExperienceEvidence: true,
-              confidence: 0.78
+              confidence: 0.78,
+              situation: "片段中出现的处境",
+              choice: "片段中出现的选择",
+              process: "片段中出现的过程",
+              outcome: "片段中出现的结果",
+              costOrRisk: "片段中出现的代价或风险",
+              takeaway: "对当前问题的参考价值"
             }
           ],
           strategy: "llm_extracted",
@@ -300,6 +307,8 @@ function buildEvidenceExtractMessages(
           "evidenceText 和 excerpt 都不超过 60 个中文字符",
           "normalizedClaim 用 8 到 40 个中文字符概括这条证据支持的具体点",
           "不要输出 title、author、sourceUrl、reason；后端会补齐",
+          "situation/choice/process/outcome/costOrRisk/takeaway 只能基于 evidenceText 或 candidate.excerpt 里的明确信息，缺失就用空字符串",
+          "不要为了补齐字段而编造人物故事；不能把观点作者包装成亲历者",
           "supportType 只能是 experience_fact、decision_point、constraint、emotion_change、outcome、tradeoff、opinion、context 之一",
           "只有候选确实包含亲历、时间线、决策、约束、情绪变化、结果反馈或代价描述时，isExperienceEvidence 才能为 true",
           "纯观点、鸡汤、营销导流、套话或过短信号不能作为 isExperienceEvidence=true",
@@ -370,6 +379,7 @@ function toFallbackEvidenceItem(candidate: CandidateItem, index: number): Eviden
   const supportType = inferSupportType(evidenceText, candidate);
   const confidence = calculateEvidenceConfidence(candidate, 0.5);
   const isExperienceEvidence = inferIsExperienceEvidence(candidate, supportType, confidence);
+  const facets = buildEvidenceFacets(evidenceText, candidate, supportType);
 
   return {
     id: buildEvidenceId(candidate.id, candidate.url, candidate.title, index),
@@ -384,7 +394,8 @@ function toFallbackEvidenceItem(candidate: CandidateItem, index: number): Eviden
     normalizedClaim: truncateText(evidenceText, MAX_REASON_LENGTH),
     supportType,
     isExperienceEvidence,
-    confidence
+    confidence,
+    ...facets
   };
 }
 
@@ -454,6 +465,7 @@ function normalizeEvidenceItem(
       ? item.isExperienceEvidence &&
         inferIsExperienceEvidence(candidate, supportType, confidence)
       : inferIsExperienceEvidence(candidate, supportType, confidence);
+  const fallbackFacets = buildEvidenceFacets(evidenceText, candidate, supportType);
 
   return {
     id: buildEvidenceId(candidate.id, item.sourceUrl || candidate.url, item.title || candidate.title, index),
@@ -468,7 +480,13 @@ function normalizeEvidenceItem(
     normalizedClaim: truncateText(item.normalizedClaim || item.reason || evidenceText, MAX_REASON_LENGTH),
     supportType,
     isExperienceEvidence,
-    confidence
+    confidence,
+    situation: truncateText(item.situation || fallbackFacets.situation || "", MAX_EVIDENCE_FACET_LENGTH),
+    choice: truncateText(item.choice || fallbackFacets.choice || "", MAX_EVIDENCE_FACET_LENGTH),
+    process: truncateText(item.process || fallbackFacets.process || "", MAX_EVIDENCE_FACET_LENGTH),
+    outcome: truncateText(item.outcome || fallbackFacets.outcome || "", MAX_EVIDENCE_FACET_LENGTH),
+    costOrRisk: truncateText(item.costOrRisk || fallbackFacets.costOrRisk || "", MAX_EVIDENCE_FACET_LENGTH),
+    takeaway: truncateText(item.takeaway || fallbackFacets.takeaway || "", MAX_EVIDENCE_FACET_LENGTH)
   };
 }
 
@@ -503,7 +521,13 @@ function repairEvidenceChunkFromRawText(
       normalizedClaim: readString(item.normalizedClaim),
       supportType: isEvidenceSupportType(item.supportType) ? item.supportType : "context",
       isExperienceEvidence: readBoolean(item.isExperienceEvidence),
-      confidence: readNumber(item.confidence, 0.5)
+      confidence: readNumber(item.confidence, 0.5),
+      situation: readString(item.situation),
+      choice: readString(item.choice),
+      process: readString(item.process),
+      outcome: readString(item.outcome),
+      costOrRisk: readString(item.costOrRisk),
+      takeaway: readString(item.takeaway)
     }))
     .filter(isEvidenceItem) as EvidenceItem[];
 
@@ -697,6 +721,27 @@ function calculateEvidenceConfidence(candidate: CandidateItem, rawConfidence: nu
   return clampScore(Math.min(blended, candidateBound));
 }
 
+function buildEvidenceFacets(
+  evidenceText: string,
+  candidate: CandidateItem,
+  supportType: EvidenceSupportType
+): Pick<EvidenceItem, "situation" | "choice" | "process" | "outcome" | "costOrRisk" | "takeaway"> {
+  const text = truncateText(evidenceText || candidate.excerpt || candidate.title, MAX_EVIDENCE_FACET_LENGTH);
+  const title = truncateText(candidate.title, 48);
+  const hasDecisionSignal = /决定|选择|放弃|坚持|犹豫|权衡|要不要|是否|转行|异地|不工作|裸辞|失业/.test(evidenceText);
+  const hasCostSignal = /代价|风险|损失|预算|安全垫|现金流|成本|压力|现实|收入|工资|见面|年龄/.test(evidenceText);
+  const hasOutcomeSignal = /结果|最后|后来|发现|影响|换来|变成|失败|成功|满意|不担心|着急/.test(evidenceText);
+
+  return {
+    situation: text,
+    choice: hasDecisionSignal ? text : "",
+    process: supportType === "constraint" || supportType === "context" ? text : "",
+    outcome: hasOutcomeSignal || supportType === "outcome" ? text : "",
+    costOrRisk: hasCostSignal || supportType === "tradeoff" ? text : "",
+    takeaway: title ? `可作为「${title}」中的公开内容样本对照。` : "可作为公开内容样本对照。"
+  };
+}
+
 function toGatewayCandidateMetadata(candidate: CandidateItem): Record<string, unknown> {
   return {
     id: candidate.id,
@@ -750,7 +795,13 @@ function isEvidenceItem(value: unknown): boolean {
     typeof value.confidence === "number" &&
     Number.isFinite(value.confidence) &&
     value.confidence >= 0 &&
-    value.confidence <= 1
+    value.confidence <= 1 &&
+    (value.situation === undefined || typeof value.situation === "string") &&
+    (value.choice === undefined || typeof value.choice === "string") &&
+    (value.process === undefined || typeof value.process === "string") &&
+    (value.outcome === undefined || typeof value.outcome === "string") &&
+    (value.costOrRisk === undefined || typeof value.costOrRisk === "string") &&
+    (value.takeaway === undefined || typeof value.takeaway === "string")
   );
 }
 

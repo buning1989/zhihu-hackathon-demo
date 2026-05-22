@@ -133,6 +133,7 @@ npm run smoke
 - 前端首页 `/` 可访问。
 - `POST /api/agent/tasks` 可创建持久化 Agent task，5 个固定问题能轮询到 `succeeded`，并通过 `/api/agent/tasks/:taskId/result` 读取带 `sourceRefs` 的 `final_result`。
 - Agent production smoke 还会校验候选质量分、evidence 质量字段、persona 真实经历证据、deterministic quality report 和 bad refs。
+- Agent production final_result 会在兼容原 `summary / paths / personas / sources / evidenceMap / groundingReport / degraded` 字段的基础上，补充结构化路径字段和 `evidenceSamples`，用于展示真实来源支撑的处境、选择、代价和参考价值。
 - Agent production smoke 还会校验相同 query 的 succeeded/running task 复用、`cacheHit/reused` 标识；任务数量/并发限流默认关闭，只有设置 `AGENT_RATE_LIMIT_ENABLED=true` 时才校验 `RATE_LIMITED`。
 - Agent production smoke 还会校验模糊问题进入 `need_input`、`POST /api/agent/tasks/:taskId/refine` 创建新 task、refined task 成功以及 refined cache key 不复用原始模糊 query。
 

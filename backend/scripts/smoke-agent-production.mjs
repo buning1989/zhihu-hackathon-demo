@@ -329,6 +329,7 @@ function assertProductionFinalResult(finalResult, label) {
   assert(Array.isArray(finalResult.personas), `${label}: personas missing`);
   assert(Array.isArray(finalResult.sources), `${label}: sources missing`);
   assert(isRecord(finalResult.evidenceMap), `${label}: evidenceMap missing`);
+  assert(Array.isArray(finalResult.evidenceSamples), `${label}: evidenceSamples missing`);
   assert(isRecord(finalResult.groundingReport), `${label}: groundingReport missing`);
   assert(typeof finalResult.degraded === "boolean", `${label}: degraded missing`);
   assert(finalResult.paths.length > 0 || finalResult.degraded === true, `${label}: no paths should be degraded`);
@@ -345,6 +346,11 @@ function assertProductionFinalResult(finalResult, label) {
   }
 
   for (const [index, path] of finalResult.paths.entries()) {
+    assert(typeof path.coreChoice === "string" && path.coreChoice, `${label}: paths[${index}].coreChoice missing`);
+    assert(Array.isArray(path.suitableFor), `${label}: paths[${index}].suitableFor missing`);
+    assert(Array.isArray(path.prerequisites), `${label}: paths[${index}].prerequisites missing`);
+    assert(Array.isArray(path.benefits), `${label}: paths[${index}].benefits missing`);
+    assert(Array.isArray(path.costsOrRisks), `${label}: paths[${index}].costsOrRisks missing`);
     assertSourceRefs(path.sourceRefs, sourceById, finalResult.evidenceMap, `${label}: paths[${index}]`, {
       requireExperienceEvidence: false
     });

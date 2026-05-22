@@ -365,6 +365,7 @@ function summarizeProductionFinalResult(data: ProductionFinalResultData) {
     personaCount: data.personas.length,
     sourceCount: data.sources.length,
     evidenceCount: Object.keys(data.evidenceMap).length,
+    evidenceSampleCount: data.evidenceSamples?.length ?? 0,
     degraded: data.degraded,
     degradedReason: data.degradedReason,
     deterministicValidatorStatus: data.groundingReport.deterministicValidator.status,
@@ -383,6 +384,7 @@ function summarizeProductionFinalResult(data: ProductionFinalResultData) {
     paths: data.paths.slice(0, 10).map((path) => ({
       id: path.id,
       titlePreview: previewString(path.title),
+      coreChoicePreview: previewString(path.coreChoice ?? "", 100),
       confidence: path.confidence,
       sourceRefCount: path.sourceRefs.length,
       evidenceRefCount: path.sourceRefs.reduce((count, ref) => count + ref.evidenceItemIds.length, 0)

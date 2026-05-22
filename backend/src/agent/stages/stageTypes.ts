@@ -140,6 +140,12 @@ export interface EvidenceItem {
   supportType: EvidenceSupportType;
   isExperienceEvidence: boolean;
   confidence: number;
+  situation?: string;
+  choice?: string;
+  process?: string;
+  outcome?: string;
+  costOrRisk?: string;
+  takeaway?: string;
 }
 
 export interface EvidenceArtifactData {
@@ -166,6 +172,11 @@ export interface FinalResultPath {
   summary: string;
   evidenceIds: string[];
   candidateIds: string[];
+  coreChoice?: string;
+  suitableFor?: string[];
+  prerequisites?: string[];
+  benefits?: string[];
+  costsOrRisks?: string[];
 }
 
 export interface FinalResultPerson {

@@ -447,7 +447,7 @@ function toReferenceSignature(result: FinalResultArtifactData) {
 }
 
 function isOvergeneralizedPathSummary(summary: string): boolean {
-  return /你应该|应该|建议你|最好|一定要|你一定|只要.+就|方法|策略|重要性|意志力|心理治疗|心理咨询|咨询师|药物|看医生|诊断|抑郁症|焦虑症/.test(
+  return /你应该|建议你|你最好|一定要|你一定|只要.+就|心理治疗|心理咨询|咨询师|药物|看医生|诊断|抑郁症|焦虑症/.test(
     summary
   );
 }
@@ -620,7 +620,12 @@ function isFinalResultPath(value: unknown): boolean {
     typeof value.title === "string" &&
     typeof value.summary === "string" &&
     isStringArray(value.evidenceIds) &&
-    isStringArray(value.candidateIds)
+    isStringArray(value.candidateIds) &&
+    (value.coreChoice === undefined || typeof value.coreChoice === "string") &&
+    (value.suitableFor === undefined || isStringArray(value.suitableFor)) &&
+    (value.prerequisites === undefined || isStringArray(value.prerequisites)) &&
+    (value.benefits === undefined || isStringArray(value.benefits)) &&
+    (value.costsOrRisks === undefined || isStringArray(value.costsOrRisks))
   );
 }
 

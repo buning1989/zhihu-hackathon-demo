@@ -1725,6 +1725,11 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/ProductionAgentEvidenceItem"
+        evidenceSamples:
+          type: array
+          description: Grounded display-ready evidence samples derived from sources and evidenceMap.
+          items:
+            $ref: "#/components/schemas/ProductionAgentEvidenceSample"
         groundingReport:
           type: object
           required:
@@ -1766,6 +1771,32 @@ components:
           type: string
         summary:
           type: string
+        coreChoice:
+          type: string
+        suitableFor:
+          type: array
+          items:
+            type: string
+        prerequisites:
+          type: array
+          items:
+            type: string
+        benefits:
+          type: array
+          items:
+            type: string
+        costsOrRisks:
+          type: array
+          items:
+            type: string
+        evidenceIds:
+          type: array
+          items:
+            type: string
+        sourceIds:
+          type: array
+          items:
+            type: string
         suitableContext:
           type: string
         tradeoffs:
@@ -1774,6 +1805,67 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProductionAgentSourceRef"
+        confidence:
+          type: number
+        situation:
+          type: string
+        choice:
+          type: string
+        process:
+          type: string
+        outcome:
+          type: string
+        costOrRisk:
+          type: string
+        takeaway:
+          type: string
+    ProductionAgentEvidenceSample:
+      type: object
+      required:
+        - id
+        - sourceCandidateId
+        - evidenceItemId
+        - title
+        - author
+        - sourceUrl
+        - situation
+        - choice
+        - keyExperience
+        - judgment
+        - referenceValue
+        - limit
+        - evidenceText
+      properties:
+        id:
+          type: string
+        sourceCandidateId:
+          type: string
+        evidenceItemId:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        sourceUrl:
+          type: string
+        situation:
+          type: string
+        choice:
+          type: string
+        keyExperience:
+          type: string
+        judgment:
+          type: string
+        referenceValue:
+          type: string
+        limit:
+          type: string
+        evidenceText:
+          type: string
+        supportType:
+          type: string
+        isExperienceEvidence:
+          type: boolean
         confidence:
           type: number
           minimum: 0

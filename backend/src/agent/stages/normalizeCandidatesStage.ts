@@ -9,7 +9,7 @@ import {
   type RawSourcesArtifactData
 } from "./stageTypes.js";
 
-const ACCEPTED_SOURCE_TYPES = ["answer", "mock_answer"] as const;
+const ACCEPTED_SOURCE_TYPES = ["answer", "article", "mock_answer"] as const;
 const MIN_SELECTED_QUALITY_SCORE = 0.42;
 const MIN_SELECTED_RELEVANCE_SCORE = 0.28;
 const MIN_SELECTED_EXPERIENCE_SCORE = 0.22;
@@ -147,7 +147,7 @@ export function runNormalizeCandidatesStage(
 
 function isAcceptedSourceType(source: RawSourceItem): boolean {
   const normalizedType = source.type.trim().toLowerCase();
-  if (normalizedType === "answer") {
+  if (normalizedType === "answer" || normalizedType === "article") {
     return true;
   }
 

@@ -1,5 +1,24 @@
 # AI Handoff
 
+## 2026-05-23 - Agent production final_result quality pass
+
+本轮目标：提升 `/api/agent/tasks/:taskId/result` 的 production final_result 展示质量，不改前端视觉、不部署。
+
+已完成：
+
+- `normalize_candidates` 允许真实知乎 `Article` 与 `Answer` 一起进入候选质量评分，减少职业/AI 转行类问题因只保留回答而证据不足。
+- `evidence_extract_llm` prompt/schema 增加处境、选择、过程、结果、代价/风险、启发字段；规则 fallback 也会从真实片段生成这些 grounded facets，并放宽真实经历证据阈值以保留“我就是/我之前/后来”等明确经历样本。
+- `response_compose_llm` 要求 paths 输出 `coreChoice / suitableFor / prerequisites / benefits / costsOrRisks`；LLM disabled fallback 不再只产 1 条泛路径，而是从 evidence/source 生成 3 条左右可区分路径。
+- `production_final_result` 增加 `evidenceSamples[]`，从 `sources + evidenceMap` 生成可展示证据样本；path 保持旧字段同时补充结构化展示字段、`evidenceIds` 和 `sourceIds`。
+- grounding guard 的 deterministic overgeneralized 检查改为只拦截强建议/医疗类表达，避免把有证据支撑的“样本归纳”误删成安全废话。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- `FRONTEND_PORT=3001 npm run smoke`
+- 用 3 个质量问题跑 production task，检查 path/source/evidenceSamples 数量和是否 degraded。
+
 ## 2026-05-22 - Agent production Phase 5 minimal clarify loop
 
 本轮目标：只做 Phase 5 第一轮 clarify/refine 后端闭环；不做前端 UI、完整多轮 Agent 或长期用户画像。

@@ -3,8 +3,8 @@ import { config } from "../config/env.js";
 import { AGENT_EVIDENCE_EXTRACTION_VERSION } from "./stages/evidenceExtractLlmStage.js";
 
 export const AGENT_CACHE_SCHEMA_VERSION = "agent.production.cache.v1";
-export const AGENT_SCORING_VERSION = "agent.scoring.v2.rank-normalized";
-export const AGENT_PROMPT_VERSION = "agent.prompts.v7.grounding-warning-split-guard-json";
+export const AGENT_SCORING_VERSION = "agent.scoring.v3.answer-article-rank-normalized";
+export const AGENT_PROMPT_VERSION = "agent.prompts.v8.structured-path-evidence-samples";
 
 export interface AgentCacheIdentity {
   normalizedQuery: string;
