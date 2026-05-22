@@ -41,9 +41,8 @@
     return `
       <section class="entry-modal-overlay" role="presentation">
         <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
-          <h2 id="login-modal-title" class="login-modal-title">先登录，再开始匹配</h2>
-          <p class="login-modal-body">登录后，才能把你的处境和真实经历匹配起来。</p>
-          <p class="login-modal-note">只用于确认身份和保存你的浏览记录。</p>
+          <h2 id="login-modal-title" class="login-modal-title">先登录一下</h2>
+          <p class="login-modal-body">登录后，继续为你寻找相似经历。</p>
           <button class="btn-p login-modal-action" type="button" data-action="mock-login" ${state.auth.isLoggingIn ? "disabled" : ""}>
             ${icon("log-in")}${state.auth.isLoggingIn ? "登录中" : "用知乎账号登录"}
           </button>

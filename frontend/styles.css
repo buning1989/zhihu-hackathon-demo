@@ -324,31 +324,24 @@ img {
 }
 
 .login-modal {
-  width: min(420px, 100%);
-  padding: 26px 26px 24px;
+  width: min(360px, 100%);
+  padding: 22px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg);
 }
 
 .login-modal-title {
-  margin: 0 0 10px;
-  font-size: 19px;
+  margin: 0 0 8px;
+  font-size: 18px;
   line-height: 1.45;
   font-weight: 600;
 }
 
 .login-modal-body {
-  margin: 0 0 6px;
+  margin: 0 0 18px;
   color: var(--text-secondary);
   font-size: 14px;
-  line-height: 1.7;
-}
-
-.login-modal-note {
-  margin: 0 0 20px;
-  color: var(--text-muted);
-  font-size: 12px;
   line-height: 1.6;
 }
 
