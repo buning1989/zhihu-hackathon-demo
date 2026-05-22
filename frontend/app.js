@@ -18,6 +18,7 @@
   function render() {
     const state = App.store.getState();
     document.body.dataset.page = state.page;
+    document.body.dataset.phase = state.transitionPhase || state.page;
 
     const view = {
       entry: App.views.renderEntryView,
@@ -92,6 +93,32 @@
     });
   }
 
+  function transitionTimings() {
+    const reducedMotion = window.matchMedia
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      return {
+        entryExit: 0,
+        loadingEnter: 0,
+        loadingExit: 0,
+        feedEnter: 0
+      };
+    }
+    return {
+      entryExit: 320,
+      loadingEnter: 380,
+      loadingExit: 320,
+      feedEnter: 480
+    };
+  }
+
+  function setTransitionPhase(phase) {
+    App.store.update((draft) => {
+      draft.transitionPhase = phase;
+      return draft;
+    });
+  }
+
   async function submitSearch(query, options = {}) {
     const cleanQuery = String(query || "").trim();
     if (!cleanQuery) {
@@ -158,20 +185,49 @@
   }
 
   async function loadResults(query, requestId, answers) {
-    const loadingStartedAt = Date.now();
+    const timings = transitionTimings();
+    const currentState = App.store.getState();
+    if (currentState.page === "entry") {
+      App.store.update((draft) => {
+        draft.search.requestId = requestId;
+        draft.search.clarifyOpen = false;
+        draft.transitionPhase = "entryExiting";
+        return draft;
+      });
+      if (timings.entryExit > 0) {
+        await wait(timings.entryExit);
+      }
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+    }
+
     App.store.update((draft) => {
       draft.page = "feed";
       draft.search.status = "loading";
       draft.search.message = "正在从真实经历里找相似的人";
       draft.search.requestId = requestId;
       draft.search.clarifyOpen = false;
+      draft.transitionPhase = "loadingEntering";
       return draft;
     });
 
-    const response = await App.Api.search({
+    const loadingStartedAt = Date.now();
+    const responsePromise = App.Api.search({
       query,
       answers
     });
+
+    if (timings.loadingEnter > 0) {
+      await wait(timings.loadingEnter);
+    }
+
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    setTransitionPhase("loading");
+    const response = await responsePromise;
 
     if (!isCurrentRequest(requestId)) {
       return;
@@ -187,6 +243,15 @@
       return;
     }
 
+    setTransitionPhase("loadingExiting");
+    if (timings.loadingExit > 0) {
+      await wait(timings.loadingExit);
+    }
+
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
     App.store.update((draft) => {
       draft.result = response.data;
       draft.search.status = "loaded";
@@ -194,8 +259,19 @@
       draft.search.error = "";
       draft.search.clarifyOpen = false;
       draft.activePathId = "all";
+      draft.transitionPhase = "feedEntering";
       return draft;
     });
+
+    if (timings.feedEnter > 0) {
+      await wait(timings.feedEnter);
+    }
+
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    setTransitionPhase("feed");
   }
 
   async function continueAfterClarify(options = {}) {
@@ -245,6 +321,7 @@
       draft.search.status = "idle";
       draft.search.message = "";
       draft.search.clarifyOpen = false;
+      draft.transitionPhase = "entry";
       draft.railExpanded = {
         recentlyViewed: false,
         interactions: false

@@ -204,6 +204,11 @@ img {
   border-radius: 0;
 }
 
+.view-exit-to-top {
+  pointer-events: none;
+  animation: viewExitToTop 320ms ease-in both;
+}
+
 .brand-line {
   margin: 0 0 22px;
   color: var(--text-muted);
@@ -658,6 +663,30 @@ img {
   }
 }
 
+@keyframes viewExitToTop {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+}
+
+@keyframes viewEnterFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(180px, var(--left-col)) minmax(0, var(--main-col)) minmax(240px, var(--right-col));
@@ -665,6 +694,10 @@ img {
   max-width: var(--shell-width);
   margin: 0 auto;
   padding: 16px var(--shell-pad) 88px;
+}
+
+.layout.feed-enter {
+  animation: viewEnterFromBottom 480ms ease-out both;
 }
 
 .left-rail,
@@ -769,6 +802,15 @@ img {
   background: var(--bg);
   overflow: hidden;
   border-radius: var(--radius-md);
+}
+
+.loading-card.loading-enter {
+  animation: viewEnterFromBottom 380ms ease-out both;
+}
+
+.loading-card.loading-exit {
+  pointer-events: none;
+  animation: viewExitToTop 320ms ease-in both;
 }
 
 .loading-title {
@@ -1642,6 +1684,25 @@ img {
   :root {
     --left-col: clamp(180px, 15vw, 220px);
     --right-col: 240px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-exit-to-top,
+  .loading-card.loading-enter,
+  .loading-card.loading-exit,
+  .layout.feed-enter {
+    animation-duration: 1ms;
+    animation-timing-function: linear;
+    transform: none;
+  }
+
+  .flow-lane,
+  .loading-step-strip,
+  .loading-progress-track span,
+  .loading-dot {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
   }
 }
 

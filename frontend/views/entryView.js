@@ -56,6 +56,7 @@
     const icon = App.components.renderIcon;
     const query = escapeAttribute(state.query || "");
     const isClarifying = state.search.clarifyOpen || state.search.status === "clarify";
+    const isExiting = state.transitionPhase === "entryExiting";
     const clarifyPanel = isClarifying
       ? App.components.renderClarifyCard(state, { variant: "entry" })
       : "";
@@ -63,7 +64,7 @@
     return `
       <main class="entry-view">
         ${renderEntryTop(state)}
-        <section class="entry-center">
+        <section class="entry-center ${isExiting ? "view-exit-to-top" : ""}">
           <h1 class="entry-title">有什么让你纠结了很久的事？越具体越好</h1>
           <form data-form="search">
             <label class="sr-only" for="entry-query">输入你的处境</label>

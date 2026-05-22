@@ -24,6 +24,7 @@
       clarifyOpen: false,
       error: ""
     },
+    transitionPhase: "entry",
     result: null,
     activePathId: "all",
     selectedPersonId: null,

@@ -5,6 +5,11 @@
   function renderLoading(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
     const result = state.result || App.store.getResult();
+    const phaseClass = state.transitionPhase === "loadingEntering"
+      ? "loading-enter"
+      : state.transitionPhase === "loadingExiting"
+        ? "loading-exit"
+        : "";
     const people = (result.people || App.mockData.people).slice(0, 6);
     const flowingPeople = people.concat(people);
     const lane = flowingPeople.map((person) => `
@@ -21,7 +26,7 @@
     ];
 
     return `
-      <section class="card loading-card">
+      <section class="card loading-card ${phaseClass}">
         <h2 class="loading-title">${escapeHtml(state.search.message || "正在整理路径")}</h2>
         <div class="people-flow" aria-hidden="true">
           <div class="flow-lane">${lane}</div>
@@ -88,7 +93,7 @@
     }).join("");
 
     return `
-      <main class="layout">
+      <main class="layout ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
           ${renderSideNav(state, result)}
           <section class="main-feed">
             ${renderFeedSummary(result)}
