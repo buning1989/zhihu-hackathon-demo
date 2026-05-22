@@ -6,6 +6,8 @@
   let entryPlaceholderTimer = null;
   const mockMinimumLoadingMs = 3000;
   const defaultMinimumLoadingMs = 2000;
+  const entryPlaceholderTypeMs = 90;
+  const entryPlaceholderHoldTicks = 36;
   const entryPlaceholderExamples = [
     "为了工作长期异地恋，真的值得吗？",
     "毕业后留在大城市，还是回老家？",
@@ -64,7 +66,7 @@
       }
 
       restingTicks += 1;
-      if (restingTicks < 14) {
+      if (restingTicks < entryPlaceholderHoldTicks) {
         return;
       }
 
@@ -72,7 +74,7 @@
       charIndex = 0;
       restingTicks = 0;
       input.placeholder = "";
-    }, 80);
+    }, entryPlaceholderTypeMs);
   }
 
   function currentRequestId() {
