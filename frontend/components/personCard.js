@@ -10,6 +10,7 @@
     const quote = person.article?.paragraphs?.[0] || person.experienceSummary;
     const preview = person.experienceSummary;
     const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
+    const path = App.store.findPath(person.pathId);
     const similarLabels = {
       "path-reset": "也经历过长期消耗",
       "path-city": "也试着换个环境",
@@ -17,6 +18,7 @@
     };
     const similar = similarLabels[person.pathId] || "相似处境";
     const meta = `${brief} · ${similar}`;
+    const relevanceReason = path?.whyRelevant || person.source?.evidence || "";
     const timelineItems = person.timeline || [
       { date: "开始", event: person.article?.paragraphs?.[0] || person.experienceSummary },
       { date: "中段", event: person.article?.paragraphs?.[1] || person.source?.evidence || person.experienceSummary },
@@ -34,6 +36,7 @@
             <div class="timeline-event">${escapeHtml(item.event)}</div>
           </div>
         `).join("")}
+        ${relevanceReason ? `<p class="relevance-note">为什么相关：${escapeHtml(relevanceReason)}</p>` : ""}
       </section>
     ` : "";
 

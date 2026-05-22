@@ -1210,6 +1210,13 @@ img {
   line-height: 1.7;
 }
 
+.relevance-note {
+  margin: 10px 0 0 48px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .right-rail {
   display: grid;
   gap: 10px;
@@ -1235,6 +1242,12 @@ img {
 .activity-list {
   display: grid;
   gap: 0;
+}
+
+.activity-list.is-expanded {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .activity-item {
@@ -1689,6 +1702,10 @@ img {
   }
 
   .timeline-inline {
+    margin-left: 0;
+  }
+
+  .relevance-note {
     margin-left: 0;
   }
 }

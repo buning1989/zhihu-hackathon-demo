@@ -36,6 +36,10 @@
     bookItems: clone(data.starterBook),
     recentlyViewed: [],
     interactions: clone(data.starterInteractions),
+    railExpanded: {
+      recentlyViewed: false,
+      interactions: false
+    },
     notes: {},
     chatThreads: {},
     capsule: {

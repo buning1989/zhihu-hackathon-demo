@@ -243,6 +243,10 @@
       draft.search.status = "idle";
       draft.search.message = "";
       draft.search.clarifyOpen = false;
+      draft.railExpanded = {
+        recentlyViewed: false,
+        interactions: false
+      };
       draft.modal = { type: null, pathId: null, personId: null };
       return draft;
     });
@@ -309,6 +313,17 @@
     App.store.ensureChatThread(personId);
     App.store.update((draft) => {
       draft.modal = { type: "chat", pathId: null, personId };
+      return draft;
+    });
+  }
+
+  function toggleRail(section) {
+    if (!["recentlyViewed", "interactions"].includes(section)) {
+      return;
+    }
+    App.store.update((draft) => {
+      draft.railExpanded = draft.railExpanded || {};
+      draft.railExpanded[section] = !draft.railExpanded[section];
       return draft;
     });
   }
@@ -502,6 +517,8 @@
       openReading(target.dataset.personId);
     } else if (action === "open-chat" || action === "continue-interaction") {
       openChat(target.dataset.personId);
+    } else if (action === "toggle-rail") {
+      toggleRail(target.dataset.section);
     } else if (action === "add-book") {
       addBook(target.dataset.personId);
     } else if (action === "open-book") {

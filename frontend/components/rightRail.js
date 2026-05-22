@@ -5,8 +5,14 @@
   App.components.renderRightRail = function renderRightRail(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
+    const expanded = state.railExpanded || {};
+    const recentExpanded = Boolean(expanded.recentlyViewed);
+    const interactionsExpanded = Boolean(expanded.interactions);
+    const recentLimit = recentExpanded ? 10 : 3;
+    const interactionLimit = interactionsExpanded ? 10 : 3;
 
-    const recentItems = (state.recentlyViewed || []).slice(0, 3).map((item) => {
+    const recentItems = (state.recentlyViewed || []).slice(0, 10);
+    const recentHtml = recentItems.slice(0, recentLimit).map((item) => {
       const person = App.store.findPerson(item.personId);
       if (!person) {
         return "";
@@ -30,7 +36,8 @@
       seenInteractions.add(item.personId);
       return true;
     });
-    const interactions = interactionItems.slice(0, 3).map((item) => {
+    const interactions = interactionItems.slice(0, 10);
+    const interactionsHtml = interactions.slice(0, interactionLimit).map((item) => {
       const person = App.store.findPerson(item.personId);
       if (!person) {
         return "";
@@ -43,8 +50,8 @@
         </div>
       `;
     }).join("");
-    const hasRecent = Boolean(recentItems);
-    const hasInteractions = Boolean(interactions);
+    const hasRecent = Boolean(recentHtml);
+    const hasInteractions = Boolean(interactionsHtml);
 
     if (!hasRecent && !hasInteractions) {
       return `
@@ -61,15 +68,15 @@
         ${hasRecent ? `
           <section class="rail-card">
             <h3 class="rail-title">刚看过</h3>
-            <div class="activity-list">${recentItems}</div>
-            ${(state.recentlyViewed || []).length > 3 ? `<button class="btn-text rail-more" type="button" data-action="open-book">查看全部</button>` : ""}
+            <div class="activity-list ${recentExpanded ? "is-expanded" : ""}">${recentHtml}</div>
+            ${recentItems.length > 3 ? `<button class="btn-text rail-more" type="button" data-action="toggle-rail" data-section="recentlyViewed">${recentExpanded ? "收起" : "查看更多"}</button>` : ""}
           </section>
         ` : ""}
         ${hasInteractions ? `
           <section class="rail-card">
             <h3 class="rail-title">刚聊过</h3>
-            <div class="activity-list">${interactions}</div>
-            ${interactionItems.length > 3 ? `<button class="btn-text rail-more" type="button" data-action="open-book">查看全部</button>` : ""}
+            <div class="activity-list ${interactionsExpanded ? "is-expanded" : ""}">${interactionsHtml}</div>
+            ${interactions.length > 3 ? `<button class="btn-text rail-more" type="button" data-action="toggle-rail" data-section="interactions">${interactionsExpanded ? "收起" : "查看更多"}</button>` : ""}
           </section>
         ` : ""}
       </aside>
