@@ -1234,6 +1234,11 @@
   }
 
   function openChat(personId) {
+    const person = App.store.findPerson(personId);
+    if (!person?.displayCanChat) {
+      return;
+    }
+
     App.store.ensureChatThread(personId);
     App.store.update((draft) => {
       draft.modal = { type: "chat", pathId: null, personId };

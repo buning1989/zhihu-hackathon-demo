@@ -13,8 +13,8 @@
       return `
         <article class="book-block">
           <h2 class="book-name">${escapeHtml(person.name)}</h2>
-          <p class="book-text">${escapeHtml(person.article?.paragraphs?.[0] || person.experienceSummary)}</p>
-          <button class="btn-text" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}读原文 →</button>
+          <p class="book-text">${escapeHtml(person.representativeQuote || person.article?.paragraphs?.[0] || person.experienceSummary)}</p>
+          <button class="btn-text" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}${person.isProductionSample ? "查看来源" : "读原文 →"}</button>
         </article>
       `;
     }).join("");

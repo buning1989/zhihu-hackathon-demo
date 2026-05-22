@@ -92,6 +92,9 @@
   function renderFeedSummary(result) {
     const { escapeHtml } = App.utils;
     const notices = [];
+    const summaryText = result.meta?.evidenceOnly
+      ? `暂未形成稳定路径，先看 ${result.people.length} 段可追溯来源片段。`
+      : `先从 ${result.paths.length} 种走法里，看几段最接近的经历。`;
     if (result.meta?.cacheHit || result.meta?.reused) {
       notices.push("已使用近期相似结果");
     }
@@ -104,7 +107,7 @@
 
     return `
       <header class="feed-summary">
-        <p class="feed-summary-text">${escapeHtml(`先从 ${result.paths.length} 种走法里，看几段最接近的经历。`)}</p>
+        <p class="feed-summary-text">${escapeHtml(summaryText)}</p>
         <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点</button>
       </header>
       ${notices.length ? `<div class="result-notices">${notices.map((notice) => `<span>${escapeHtml(notice)}</span>`).join("")}</div>` : ""}

@@ -167,18 +167,54 @@
   }
 
   async function readAgentResult(taskId, taskStatus, options = {}) {
-    const view = await getTaskView(taskId, options);
+    let resultError = null;
+    let normalizedResult = null;
+    try {
+      const result = await getTaskResult(taskId, options);
+      normalizedResult = App.adapters.normalizeAgentResult(result, {
+        task: taskStatus
+      });
+      if (App.adapters.isDisplayableAgentResult(normalizedResult)) {
+        return normalizedResult;
+      }
+      resultError = new AgentApiError("RESULT_NOT_DISPLAYABLE", "结果缺少可展示证据。", {
+        status: 200,
+        body: result,
+        retriable: false
+      });
+    } catch (error) {
+      if (error?.code === "RESULT_NOT_READY") {
+        throw error;
+      }
+      resultError = error;
+    }
+
+    let view;
+    try {
+      view = await getTaskView(taskId, options);
+    } catch (error) {
+      if (normalizedResult) {
+        return normalizedResult;
+      }
+      throw resultError || error;
+    }
+
     if (view?.result) {
-      return App.adapters.normalizeAgentResult(view.result, {
+      const normalizedView = App.adapters.normalizeAgentResult(view.result, {
         task: taskStatus,
         query: view.result?.query
       });
+      if (App.adapters.isDisplayableAgentResult(normalizedView)) {
+        return normalizedView;
+      }
+      return normalizedResult || normalizedView;
     }
 
-    const result = await getTaskResult(taskId, options);
-    return App.adapters.normalizeAgentResult(result, {
-      task: taskStatus
-    });
+    if (normalizedResult) {
+      return normalizedResult;
+    }
+
+    throw resultError || new AgentApiError("RESULT_NOT_DISPLAYABLE", "结果缺少可展示证据。");
   }
 
   App.BackendApi = {

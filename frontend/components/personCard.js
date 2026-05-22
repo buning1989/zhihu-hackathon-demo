@@ -7,7 +7,8 @@
     const icon = App.components.renderIcon;
     const saved = App.store.isInBook(person.id);
     const expanded = state.expandedPersonId === person.id;
-    const quote = person.article?.paragraphs?.[0] || person.experienceSummary;
+    const isProductionSample = Boolean(person.isProductionSample);
+    const quote = person.representativeQuote || person.source?.evidence || person.article?.paragraphs?.[0] || person.experienceSummary;
     const preview = person.experienceSummary;
     const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
     const path = App.store.findPath(person.pathId);
@@ -16,15 +17,19 @@
       "path-city": "也试着换个环境",
       "path-skill": "也在慢慢攒底气"
     };
-    const similar = similarLabels[person.pathId] || "相似处境";
+    const similar = isProductionSample ? "证据样本" : similarLabels[person.pathId] || "相似处境";
     const meta = `${brief} · ${similar}`;
     const relevanceReason = path?.whyRelevant || person.source?.evidence || "";
-    const timelineItems = person.timeline || [
-      { date: "开始", event: person.article?.paragraphs?.[0] || person.experienceSummary },
-      { date: "中段", event: person.article?.paragraphs?.[1] || person.source?.evidence || person.experienceSummary },
-      { date: "复盘", event: person.article?.paragraphs?.[2] || person.article?.lead || person.experienceSummary }
-    ];
-    const timeline = expanded ? `
+    const timelineItems = Array.isArray(person.timeline) && person.timeline.length
+      ? person.timeline
+      : isProductionSample
+        ? []
+        : [
+          { date: "开始", event: person.article?.paragraphs?.[0] || person.experienceSummary },
+          { date: "中段", event: person.article?.paragraphs?.[1] || person.source?.evidence || person.experienceSummary },
+          { date: "复盘", event: person.article?.paragraphs?.[2] || person.article?.lead || person.experienceSummary }
+        ];
+    const details = expanded ? `
       <section class="timeline-inline">
         ${timelineItems.map((item, index) => `
           <div class="timeline-item">
@@ -39,11 +44,16 @@
         ${relevanceReason ? `<p class="relevance-note">为什么相关：${escapeHtml(relevanceReason)}</p>` : ""}
       </section>
     ` : "";
+    const avatar = person.avatar
+      ? `<img src="${escapeAttribute(person.avatar)}" alt="" />`
+      : `<span class="avatar-fallback" aria-hidden="true">${escapeHtml((person.name || "样").slice(0, 1))}</span>`;
+    const detailLabel = isProductionSample ? "证据片段" : "TA 的经历";
+    const readLabel = isProductionSample ? "查看来源" : "读原文 →";
 
     return `
       <article class="person-card">
         <header class="person-head">
-          <span class="avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
+          <span class="avatar" aria-hidden="true">${avatar}</span>
           <div>
             <h3 class="name">${escapeHtml(person.name)}</h3>
             <p class="person-meta">${escapeHtml(meta)}</p>
@@ -51,11 +61,11 @@
         </header>
         <div class="person-quote">${escapeHtml(quote)}</div>
         <p class="person-preview">${escapeHtml(preview)}</p>
-        ${timeline}
+        ${details}
         <footer class="person-actions">
-          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}">${icon(expanded ? "chevron-up" : "chevron-down")}${expanded ? "收起" : "TA 的经历"}</button>
+          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}">${icon(expanded ? "chevron-up" : "chevron-down")}${expanded ? "收起" : detailLabel}</button>
           <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
-          <button class="btn-text read-link ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}读原文 →</button>
+          <button class="btn-text read-link ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}${readLabel}</button>
         </footer>
       </article>
     `;

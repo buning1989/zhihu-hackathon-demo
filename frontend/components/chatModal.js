@@ -10,7 +10,7 @@
     const { escapeHtml, escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
     const person = App.store.findPerson(state.modal.personId);
-    if (!person) {
+    if (!person || !person.displayCanChat) {
       return "";
     }
 

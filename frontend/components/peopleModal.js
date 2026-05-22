@@ -11,15 +11,20 @@
     const icon = App.components.renderIcon;
     const path = App.store.findPath(state.modal.pathId);
     const people = App.store.getPeopleForPath(state.modal.pathId);
-    const rows = people.map((person) => `
-      <button class="drawer-person-item" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">
-        <span class="avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
-        <span>
-          <span class="name">${escapeHtml(person.name)}</span>
-          <span class="brief">${escapeHtml(person.article?.title || person.experienceSummary)}</span>
-        </span>
-      </button>
-    `).join("");
+    const rows = people.map((person) => {
+      const avatar = person.avatar
+        ? `<img src="${escapeAttribute(person.avatar)}" alt="" />`
+        : `<span class="avatar-fallback" aria-hidden="true">${escapeHtml((person.name || "样").slice(0, 1))}</span>`;
+      return `
+        <button class="drawer-person-item" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">
+          <span class="avatar" aria-hidden="true">${avatar}</span>
+          <span>
+            <span class="name">${escapeHtml(person.name)}</span>
+            <span class="brief">${escapeHtml(person.article?.title || person.experienceSummary)}</span>
+          </span>
+        </button>
+      `;
+    }).join("");
 
     return `
       <div class="modal-overlay" role="presentation" data-action="close-modal"></div>

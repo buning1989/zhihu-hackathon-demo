@@ -2,7 +2,7 @@
   const App = window.LifeSampleApp || (window.LifeSampleApp = {});
   App.adapters = App.adapters || {};
 
-  const defaultAvatar = () => App.mockData?.people?.[0]?.avatar || "";
+  const productionSchemaVersion = "agent.production_final_result.v1";
 
   function normalizeNeedInput(needInput) {
     if (!needInput || !Array.isArray(needInput.questions)) {
@@ -25,8 +25,9 @@
 
   function normalizeAgentResult(raw, context = {}) {
     const source = unwrapResult(raw);
-    const result = source?.final_result
-      ? normalizeProductionResult(source.final_result, context)
+    const finalResult = readProductionFinalResult(source);
+    const result = finalResult
+      ? normalizeProductionResult(finalResult, context)
       : normalizeDisplayResult(source || {}, context);
     const degraded = Boolean(context.task?.degraded || source?.degraded || result.degraded);
     const degradedReason = context.task?.degradedReason || source?.degradedReason || result.degradedReason || null;
@@ -43,10 +44,28 @@
       degradedReason,
       cacheHit,
       reused,
-      emptyResult: result.paths.length === 0 || result.people.length === 0
+      emptyResult: result.paths.length === 0 && result.people.length === 0,
+      emptyPaths: result.paths.length === 0,
+      emptyPeople: result.people.length === 0
     };
 
     return result;
+  }
+
+  function isDisplayableAgentResult(result) {
+    if (!result || typeof result !== "object") {
+      return false;
+    }
+
+    if (Array.isArray(result.paths) && result.paths.length > 0) {
+      return true;
+    }
+
+    if (Array.isArray(result.people) && result.people.length > 0) {
+      return true;
+    }
+
+    return isRecord(result.evidenceMap) && Object.keys(result.evidenceMap).length > 0;
   }
 
   function normalizeDisplayResult(raw, context = {}) {
@@ -80,54 +99,60 @@
     const sources = Array.isArray(finalResult.sources) ? finalResult.sources : [];
     const evidenceMap = isRecord(finalResult.evidenceMap) ? finalResult.evidenceMap : {};
     const personas = Array.isArray(finalResult.personas) ? finalResult.personas : [];
-    const paths = Array.isArray(finalResult.paths) ? finalResult.paths : [];
-    const sourceByCandidateId = new Map(sources.map((source) => [stringOf(source.sourceCandidateId), source]));
+    const rawPaths = Array.isArray(finalResult.paths) ? finalResult.paths : [];
+    const sourceByCandidateId = new Map(sources.map((source) => [sourceCandidateIdOf(source), source]));
+    const evidenceByCandidateId = groupEvidenceByCandidateId(evidenceMap);
+    const displayPaths = rawPaths
+      .filter((path) => hasSourceRefs(path.sourceRefs))
+      .map((path, index) => normalizeProductionPath(path, index, evidenceMap));
 
-    const people = personas.map((persona, index) => {
-      const evidenceItems = collectEvidenceItems(persona.sourceRefs, evidenceMap);
-      const source = sourceByCandidateId.get(stringOf(persona.sourceRefs?.[0]?.sourceCandidateId)) || sources[index] || {};
-      const article = normalizeArticle({
-        title: source.title || persona.displayLabel,
-        author: source.author || persona.displayLabel,
-        sourceUrl: source.url,
-        summary: persona.summary,
-        evidence: evidenceItems.map((item) => ({
-          id: item.id,
-          label: item.reason || item.supportType || "证据片段",
-          text: item.evidenceText || item.excerpt || item.normalizedClaim || "",
-          sourceUrl: item.sourceUrl || source.url || ""
-        })),
-        body: evidenceItems.map((item) => item.evidenceText || item.excerpt || item.normalizedClaim).filter(Boolean)
-      }, index);
+    let people = personas.length
+      ? personas.map((persona, index) => normalizeProductionPersona({
+        persona,
+        index,
+        rawPaths,
+        sources,
+        sourceByCandidateId,
+        evidenceMap
+      })).filter(Boolean)
+      : [];
 
-      return normalizePerson({
-        id: persona.id || `persona_${index + 1}`,
-        name: persona.displayLabel || source.author || `公开样本 ${index + 1}`,
-        pathId: findPathIdForPersona(paths, persona),
-        avatar: defaultAvatar(),
-        experienceSummary: persona.summary,
-        oneLine: persona.summary,
-        sourceRefs: persona.sourceRefs,
-        evidenceIds: evidenceItems.map((item) => item.id),
-        aiPersona: {
-          enabled: Boolean(persona.chatEnabled),
-          canChat: Boolean(persona.chatEnabled),
-          personaId: persona.id,
-          boundary: persona.boundary || "基于知乎公开内容整理，不代表作者本人。"
-        },
-        articles: [article]
-      }, index);
+    if (people.length === 0) {
+      people = sources
+        .filter((source) => evidenceItemsForCandidate(sourceCandidateIdOf(source), evidenceByCandidateId).length > 0)
+        .map((source, index) => normalizeEvidenceSample({
+          source,
+          index,
+          rawPaths,
+          evidenceItems: evidenceItemsForCandidate(sourceCandidateIdOf(source), evidenceByCandidateId)
+        }));
+    }
+
+    const unmatchedPeople = [];
+    people.forEach((person) => {
+      if (!person.pathId || !displayPaths.some((path) => path.id === person.pathId)) {
+        unmatchedPeople.push(person);
+      }
     });
 
-    const displayPaths = paths
-      .filter((path) => hasSourceRefs(path.sourceRefs))
-      .map((path, index) => normalizePath({
-        ...path,
-        personRefs: people
-          .filter((person) => person.pathId === path.id)
-          .map((person) => person.id),
-        representativeQuote: firstEvidenceText(path.sourceRefs, evidenceMap)
-      }, people, index, false));
+    if (unmatchedPeople.length > 0) {
+      const fallbackPath = buildEvidenceFallbackPath({
+        people: unmatchedPeople,
+        evidenceMap,
+        summary: finalResult.summary,
+        hasBackendPaths: displayPaths.length > 0
+      });
+      displayPaths.push(fallbackPath);
+      unmatchedPeople.forEach((person) => {
+        person.pathId = fallbackPath.id;
+      });
+    }
+
+    displayPaths.forEach((path) => {
+      const linkedPeople = people.filter((person) => person.pathId === path.id);
+      path.personRefs = linkedPeople.map((person) => person.id);
+      path.peopleIds = path.personRefs;
+    });
 
     return {
       schemaVersion: "frontend-agent-production-v1",
@@ -148,12 +173,195 @@
       meta: {
         taskId: finalResult.taskId,
         generatedAt: finalResult.meta?.generatedAt || new Date().toISOString(),
-        sourcePolicy: "AI 只负责组织公开内容与证据，不作为事实来源。"
+        sourcePolicy: "AI 只负责组织公开内容与证据，不作为事实来源。",
+        resultShape: "production_final_result",
+        groundingReport: finalResult.groundingReport || null,
+        suggestedQuestions: Array.isArray(finalResult.suggestedQuestions) ? finalResult.suggestedQuestions : [],
+        evidenceSampleCount: people.length,
+        sourceCount: sources.length,
+        evidenceCount: Object.keys(evidenceMap).length,
+        hasEvidenceSamples: people.length > 0,
+        evidenceOnly: rawPaths.length === 0 && people.length > 0
       },
       sourceRefs: sources,
       evidenceMap,
       degraded: Boolean(finalResult.degraded),
       degradedReason: finalResult.degradedReason || null
+    };
+  }
+
+  function normalizeProductionPath(path, index, evidenceMap) {
+    const id = stringOf(path.id || `path_${index + 1}`);
+    const sourceRefs = normalizeProductionSourceRefs(path.sourceRefs);
+    const quote = firstEvidenceText(sourceRefs, evidenceMap);
+    const title = stringOf(path.title || `证据路径 ${index + 1}`);
+    const summary = stringOf(path.summary || "");
+    const whyRelevant = stringOf(path.suitableContext || path.tradeoffs || summary);
+
+    return {
+      ...path,
+      id,
+      title,
+      shortTitle: stringOf(path.shortTitle || path.displayLabel || title).slice(0, 18),
+      summary,
+      whyRelevant,
+      representativeQuote: quote,
+      sourceRefs,
+      evidenceIds: sourceRefs.flatMap((sourceRef) => normalizeStringArray(sourceRef.evidenceItemIds)),
+      confidence: numberOr(path.confidence, 0),
+      personRefs: [],
+      peopleIds: [],
+      isProductionPath: true,
+      isWeaklyGrounded: sourceRefs.length === 0
+    };
+  }
+
+  function normalizeProductionPersona(input) {
+    const sourceRefs = normalizeProductionSourceRefs(input.persona.sourceRefs);
+    const evidenceItems = collectEvidenceItems(sourceRefs, input.evidenceMap);
+    const source = firstSourceForRefs(sourceRefs, input.sourceByCandidateId) || input.sources[input.index] || {};
+    const sourceUrl = stringOf(source.url || evidenceItems[0]?.sourceUrl);
+    const title = stringOf(source.title || evidenceItems[0]?.title || input.persona.displayLabel || "知乎公开内容");
+    const quote = evidenceDisplayText(evidenceItems[0]) || stringOf(input.persona.summary || source.excerpt || "");
+    const summary = stringOf(input.persona.summary || evidenceClaimText(evidenceItems[0]) || source.excerpt || quote);
+    const name = stringOf(input.persona.displayLabel || source.author || "知乎公开样本");
+
+    if (!summary && !quote) {
+      return null;
+    }
+
+    return {
+      id: stringOf(input.persona.id || `persona_${input.index + 1}`),
+      name,
+      displayName: name,
+      sampleType: "persona",
+      isProductionSample: true,
+      pathId: findPathIdForSourceRefs(input.rawPaths, sourceRefs),
+      avatar: "",
+      role: "知乎公开样本",
+      badge: title,
+      displayTier: "core",
+      evidenceStatus: "llm_extracted",
+      evidenceIds: evidenceItems.map((item) => item.id),
+      sourceRefs,
+      confidence: numberOr(input.persona.confidence, evidenceItems[0]?.confidence || 0),
+      representativeQuote: quote,
+      experienceSummary: summary,
+      oneLine: summary,
+      source: {
+        title,
+        evidence: quote || summary,
+        url: sourceUrl
+      },
+      article: {
+        id: `article_${stringOf(input.persona.id || input.index + 1)}`,
+        title,
+        author: stringOf(source.author || name),
+        sourceName: "知乎公开内容",
+        sourceUrl,
+        lead: quote || summary,
+        summary,
+        paragraphs: [],
+        evidence: evidenceItems.map(toArticleEvidence)
+      },
+      timeline: [],
+      aiPersona: {
+        enabled: false,
+        canChat: false,
+        backendChatEnabled: Boolean(input.persona.chatEnabled && sourceRefs.length > 0),
+        personaId: stringOf(input.persona.id || `persona_${input.index + 1}`),
+        boundary: stringOf(input.persona.boundary || "基于知乎公开内容整理，不代表作者本人。"),
+        suggestions: []
+      },
+      displayCanChat: false,
+      chatDisabledReason: "当前证据不足，暂不开放追问。"
+    };
+  }
+
+  function normalizeEvidenceSample(input) {
+    const candidateId = sourceCandidateIdOf(input.source);
+    const evidenceItems = input.evidenceItems;
+    const firstEvidence = evidenceItems[0] || {};
+    const evidenceIds = evidenceItems.map((item) => item.id).filter(Boolean);
+    const sourceRefs = candidateId && evidenceIds.length
+      ? [{ sourceCandidateId: candidateId, evidenceItemIds: evidenceIds }]
+      : [];
+    const title = stringOf(input.source.title || firstEvidence.title || "知乎公开内容");
+    const sourceUrl = stringOf(input.source.url || firstEvidence.sourceUrl);
+    const quote = evidenceDisplayText(firstEvidence) || stringOf(input.source.excerpt || "");
+    const summary = evidenceClaimText(firstEvidence) || quote || stringOf(input.source.excerpt || "");
+    const author = stringOf(input.source.author || firstEvidence.author || "知乎公开样本");
+
+    return {
+      id: `sample_${candidateId || input.index + 1}`,
+      name: author,
+      displayName: author,
+      sampleType: "evidence",
+      isProductionSample: true,
+      pathId: findPathIdForCandidate(input.rawPaths, candidateId),
+      avatar: "",
+      role: "知乎公开样本",
+      badge: title,
+      displayTier: "supplement",
+      evidenceStatus: "llm_extracted",
+      evidenceIds,
+      sourceRefs,
+      confidence: numberOr(firstEvidence.confidence, numberOr(input.source.qualityScore, 0)),
+      representativeQuote: quote,
+      experienceSummary: summary || "这条来源只有片段证据，建议查看来源后再判断。",
+      oneLine: summary || quote,
+      source: {
+        title,
+        evidence: quote || summary,
+        url: sourceUrl
+      },
+      article: {
+        id: `article_${candidateId || input.index + 1}`,
+        title,
+        author,
+        sourceName: "知乎公开内容",
+        sourceUrl,
+        lead: quote || summary,
+        summary: summary || quote,
+        paragraphs: [],
+        evidence: evidenceItems.map(toArticleEvidence)
+      },
+      timeline: [],
+      aiPersona: {
+        enabled: false,
+        canChat: false,
+        personaId: "",
+        boundary: "基于知乎公开内容整理，不代表作者本人。",
+        suggestions: []
+      },
+      displayCanChat: false,
+      chatDisabledReason: "当前证据不足，暂不开放追问。"
+    };
+  }
+
+  function buildEvidenceFallbackPath(input) {
+    const sourceRefs = input.people.flatMap((person) => person.sourceRefs || []);
+    const quote = firstEvidenceText(sourceRefs, input.evidenceMap);
+    const title = input.hasBackendPaths ? "其他可追溯来源片段" : "来源片段（暂未形成路径）";
+    const summary = input.hasBackendPaths
+      ? "这些来源有可追溯证据，但没有被后端归入某条路径。"
+      : "证据不足，暂时没有可展示路径；下面只展示可追溯的来源片段。";
+
+    return {
+      id: input.hasBackendPaths ? "production_extra_evidence_samples" : "production_evidence_samples",
+      title,
+      shortTitle: input.hasBackendPaths ? "其他来源" : "来源片段",
+      summary: summary || stringOf(input.summary),
+      whyRelevant: summary,
+      representativeQuote: quote,
+      sourceRefs,
+      evidenceIds: sourceRefs.flatMap((sourceRef) => normalizeStringArray(sourceRef.evidenceItemIds)),
+      confidence: average(input.people.map((person) => person.confidence).filter(isNumber)),
+      personRefs: [],
+      peopleIds: [],
+      isProductionPath: true,
+      isEvidenceFallbackPath: true,
+      isWeaklyGrounded: false
     };
   }
 
@@ -232,7 +440,7 @@
       ...person,
       id,
       name,
-      avatar: stringOf(person.avatar || article.avatar || defaultAvatar()),
+      avatar: stringOf(person.avatar || article.avatar || ""),
       pathId: stringOf(person.pathId || ""),
       experienceSummary,
       source,
@@ -254,7 +462,7 @@
       id: stringOf(raw.id || `article_${index + 1}`),
       title: stringOf(raw.title || raw.sourceName || "知乎公开内容"),
       author: stringOf(raw.author || "知乎用户"),
-      avatar: stringOf(raw.avatar || defaultAvatar()),
+      avatar: stringOf(raw.avatar || ""),
       lead: stringOf(raw.lead || raw.summary || raw.text || firstEvidence?.text || paragraphs[0] || ""),
       paragraphs: paragraphs.length ? paragraphs : [stringOf(raw.summary || firstEvidence?.text || "暂无更完整原文，只展示当前证据片段。")],
       sourceUrl: stringOf(raw.sourceUrl || raw.url || firstEvidence?.sourceUrl || ""),
@@ -296,6 +504,18 @@
     });
   }
 
+  function readProductionFinalResult(source) {
+    if (source?.final_result?.schemaVersion === productionSchemaVersion) {
+      return source.final_result;
+    }
+
+    if (source?.schemaVersion === productionSchemaVersion) {
+      return source;
+    }
+
+    return null;
+  }
+
   function normalizeOptions(options) {
     if (!Array.isArray(options)) {
       return [];
@@ -318,6 +538,24 @@
     }).filter((option) => option.id && option.label);
   }
 
+  function groupEvidenceByCandidateId(evidenceMap) {
+    const result = new Map();
+    Object.values(evidenceMap).filter(isRecord).forEach((item) => {
+      const candidateId = stringOf(item.sourceCandidateId || item.candidateId);
+      if (!candidateId) {
+        return;
+      }
+      const group = result.get(candidateId) || [];
+      group.push(item);
+      result.set(candidateId, group);
+    });
+    return result;
+  }
+
+  function evidenceItemsForCandidate(candidateId, evidenceByCandidateId) {
+    return candidateId ? evidenceByCandidateId.get(candidateId) || [] : [];
+  }
+
   function collectEvidenceItems(sourceRefs, evidenceMap) {
     if (!Array.isArray(sourceRefs)) {
       return [];
@@ -330,23 +568,68 @@
 
   function firstEvidenceText(sourceRefs, evidenceMap) {
     const item = collectEvidenceItems(sourceRefs, evidenceMap)[0];
-    return stringOf(item?.evidenceText || item?.excerpt || item?.normalizedClaim || "");
+    return evidenceDisplayText(item) || "";
   }
 
-  function findPathIdForPersona(paths, persona) {
-    const personaCandidateIds = new Set(
-      (persona.sourceRefs || []).map((ref) => stringOf(ref.sourceCandidateId)).filter(Boolean)
-    );
+  function firstSourceForRefs(sourceRefs, sourceByCandidateId) {
+    const firstCandidateId = sourceRefs.map((ref) => stringOf(ref.sourceCandidateId)).find(Boolean);
+    return firstCandidateId ? sourceByCandidateId.get(firstCandidateId) : null;
+  }
+
+  function findPathIdForSourceRefs(paths, sourceRefs) {
+    const candidateIds = new Set(sourceRefs.map((ref) => stringOf(ref.sourceCandidateId)).filter(Boolean));
     const path = paths.find((item) =>
-      (item.sourceRefs || []).some((ref) => personaCandidateIds.has(stringOf(ref.sourceCandidateId)))
+      (item.sourceRefs || []).some((ref) => candidateIds.has(stringOf(ref.sourceCandidateId)))
     );
     return stringOf(path?.id || "");
+  }
+
+  function findPathIdForCandidate(paths, candidateId) {
+    if (!candidateId) {
+      return "";
+    }
+    const path = paths.find((item) =>
+      (item.sourceRefs || []).some((ref) => stringOf(ref.sourceCandidateId) === candidateId)
+    );
+    return stringOf(path?.id || "");
+  }
+
+  function normalizeProductionSourceRefs(sourceRefs) {
+    if (!Array.isArray(sourceRefs)) {
+      return [];
+    }
+
+    return sourceRefs.map((ref) => ({
+      sourceCandidateId: stringOf(ref.sourceCandidateId),
+      evidenceItemIds: normalizeStringArray(ref.evidenceItemIds)
+    })).filter((ref) => ref.sourceCandidateId && ref.evidenceItemIds.length > 0);
   }
 
   function hasSourceRefs(sourceRefs) {
     return Array.isArray(sourceRefs) && sourceRefs.some((ref) =>
       stringOf(ref.sourceCandidateId) && Array.isArray(ref.evidenceItemIds) && ref.evidenceItemIds.length > 0
     );
+  }
+
+  function sourceCandidateIdOf(source) {
+    return stringOf(source?.sourceCandidateId || source?.id);
+  }
+
+  function evidenceDisplayText(item) {
+    return stringOf(item?.excerpt || item?.evidenceText || item?.normalizedClaim);
+  }
+
+  function evidenceClaimText(item) {
+    return stringOf(item?.normalizedClaim || item?.reason || item?.excerpt || item?.evidenceText);
+  }
+
+  function toArticleEvidence(item) {
+    return {
+      id: stringOf(item.id),
+      label: stringOf(item.reason || item.supportType || "证据片段"),
+      text: evidenceDisplayText(item),
+      sourceUrl: stringOf(item.sourceUrl)
+    };
   }
 
   function normalizeParagraphs(value) {
@@ -384,6 +667,18 @@
     return value.map(stringOf).filter(Boolean);
   }
 
+  function average(values) {
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }
+
+  function numberOr(value, fallback) {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  }
+
+  function isNumber(value) {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+
   function stringOf(value) {
     return typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
   }
@@ -394,4 +689,5 @@
 
   App.adapters.normalizeNeedInput = normalizeNeedInput;
   App.adapters.normalizeAgentResult = normalizeAgentResult;
+  App.adapters.isDisplayableAgentResult = isDisplayableAgentResult;
 })();
