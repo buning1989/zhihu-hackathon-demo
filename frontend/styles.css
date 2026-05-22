@@ -886,6 +886,36 @@ img {
   min-width: 0;
 }
 
+.layout-results {
+  grid-template-rows: auto auto;
+  column-gap: var(--grid-gap);
+  row-gap: 12px;
+  align-items: start;
+}
+
+.layout-results .left-rail {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.layout-results .main-feed {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.feed-card-list {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.layout-results .right-rail {
+  grid-column: 3;
+  grid-row: 2;
+}
+
 .feed-summary {
   display: flex;
   align-items: center;
@@ -1871,6 +1901,14 @@ img {
 
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .layout-results .left-rail,
+  .layout-results .main-feed,
+  .layout-results .feed-card-list,
+  .layout-results .right-rail {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .left-rail {

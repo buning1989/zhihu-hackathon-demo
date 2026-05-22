@@ -150,10 +150,12 @@
     const isEmpty = result.paths.length === 0 || result.people.length === 0;
 
     return `
-      <main class="layout ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
+      <main class="layout layout-results ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
           ${renderSideNav(state, result)}
           <section class="main-feed">
             ${renderFeedSummary(result)}
+          </section>
+          <section class="feed-card-list">
             ${isEmpty ? renderEmptyResult(result) : modules}
           </section>
           ${App.components.renderRightRail(state)}
