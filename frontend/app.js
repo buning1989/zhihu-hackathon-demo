@@ -255,7 +255,15 @@
     );
   }
 
-  async function showClarifyQuestions({ questions, requestId, pageBeforeSubmit, taskStatus = null }) {
+  function hasClarifyAnswers(answers) {
+    return Object.values(answers || {}).some(Boolean);
+  }
+
+  function getLocalClarifyQuestions() {
+    return App.mockData.clarifyQuestions.slice(0, 3);
+  }
+
+  async function showClarifyQuestions({ questions, requestId, pageBeforeSubmit, taskStatus = null, source = "backend" }) {
     if (!isCurrentRequest(requestId)) {
       return;
     }
@@ -268,6 +276,11 @@
       draft.search.clarifyQuestions = questions || [];
       draft.search.clarifyAnswers = {};
       draft.search.clarifyOpen = true;
+      draft.search.clarifySource = source;
+      if (source === "local") {
+        draft.search.hasShownInitialClarify = true;
+        draft.search.initialClarifySkipped = false;
+      }
       if (taskStatus) {
         applyTaskState(draft, taskStatus, {
           polling: false,
@@ -390,6 +403,15 @@
     await loadResults(query, requestId, answers);
   }
 
+  async function showInitialClarify(requestId, pageBeforeSubmit) {
+    await showClarifyQuestions({
+      questions: getLocalClarifyQuestions(),
+      requestId,
+      pageBeforeSubmit,
+      source: "local"
+    });
+  }
+
   async function submitSearch(query, options = {}) {
     const cleanQuery = String(query || "").trim();
     if (!cleanQuery) {
@@ -427,6 +449,9 @@
         clarifyQuestions: [],
         clarifyAnswers,
         clarifyOpen: false,
+        hasShownInitialClarify: false,
+        initialClarifySkipped: Boolean(options.skipClarify),
+        clarifySource: "",
         error: ""
       };
       draft.transitionPhase = pageBeforeSubmit === "entry" ? "entry" : draft.transitionPhase;
@@ -434,29 +459,16 @@
       return draft;
     });
 
+    if (!options.skipClarify && !hasClarifyAnswers(clarifyAnswers)) {
+      await showInitialClarify(requestId, pageBeforeSubmit);
+      return;
+    }
+
     if (!App.Api.isMockMode()) {
       await startBackendTask(cleanQuery, requestId, {
         pageBeforeSubmit,
         answers: clarifyAnswers,
         metadata: options.metadata || {}
-      });
-      return;
-    }
-
-    const preparation = await App.Api.prepareSearch({
-      query: cleanQuery,
-      answers: clarifyAnswers
-    });
-
-    if (!isCurrentRequest(requestId)) {
-      return;
-    }
-
-    if (preparation.status === "needs_clarification") {
-      await showClarifyQuestions({
-        questions: preparation.questions,
-        requestId,
-        pageBeforeSubmit
       });
       return;
     }
@@ -479,14 +491,14 @@
         pageBeforeSubmit: options.pageBeforeSubmit,
         query,
         answers: options.answers || {},
-        skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput),
+        skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput || options.metadata?.hasShownInitialClarify),
         start: started
       });
     } catch (error) {
       if (shouldUseMockFallback(error)) {
         await fallbackToMockSearch(query, requestId, options.answers || {}, {
           pageBeforeSubmit: options.pageBeforeSubmit,
-          skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput)
+          skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput || options.metadata?.hasShownInitialClarify)
         });
         return;
       }
@@ -758,10 +770,20 @@
     const answers = state.search.clarifyAnswers || {};
     const nextAnswers = options.skip ? {} : answers;
     const requestId = currentRequestId();
+    const clarifySource = state.search.clarifySource || "local";
+    const isInitialClarify = clarifySource === "local";
+    const clarifyMetadata = {
+      clarifySource,
+      clarifyAnswers: nextAnswers,
+      initialClarifySkipped: isInitialClarify ? Boolean(options.skip) : Boolean(state.search.initialClarifySkipped),
+      hasShownInitialClarify: Boolean(state.search.hasShownInitialClarify || isInitialClarify)
+    };
 
     App.store.update((draft) => {
       draft.search.requestId = requestId;
       draft.search.error = "";
+      draft.search.initialClarifySkipped = clarifyMetadata.initialClarifySkipped;
+      draft.search.hasShownInitialClarify = clarifyMetadata.hasShownInitialClarify;
       if (draft.page !== "entry") {
         draft.search.status = "loading";
         draft.search.message = "正在根据补充信息重新匹配";
@@ -777,6 +799,7 @@
           answers: nextAnswers,
           skipClarify: true,
           metadata: {
+            ...clarifyMetadata,
             skipNeedInput: true,
             skippedNeedInputTaskId: state.task.taskId
           }
@@ -789,7 +812,8 @@
           answers: nextAnswers,
           refineQuery: "",
           metadata: buildTaskMetadata({
-            source: "frontend_agent_refine"
+            source: "frontend_agent_refine",
+            ...clarifyMetadata
           })
         });
 
@@ -821,10 +845,10 @@
       await startBackendTask(state.query || state.pendingQuery, requestId, {
         pageBeforeSubmit: state.page,
         answers: nextAnswers,
-        skipClarify: true,
+        skipClarify: Boolean(options.skip),
         metadata: {
-          skipNeedInput: true,
-          clarifyAnswers: nextAnswers
+          ...clarifyMetadata,
+          skipClarify: Boolean(options.skip)
         }
       });
       return;
@@ -872,6 +896,9 @@
       draft.search.status = "idle";
       draft.search.message = "";
       draft.search.clarifyOpen = false;
+      draft.search.hasShownInitialClarify = false;
+      draft.search.initialClarifySkipped = false;
+      draft.search.clarifySource = "";
       draft.search.error = "";
       draft.task = emptyTaskState();
       draft.transitionPhase = "entry";
@@ -905,6 +932,8 @@
         ? draft.search.clarifyQuestions
         : App.mockData.clarifyQuestions.slice(0, 3);
       draft.search.clarifyOpen = true;
+      draft.search.clarifySource = "local";
+      draft.search.hasShownInitialClarify = true;
       return draft;
     });
   }

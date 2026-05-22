@@ -10,10 +10,12 @@
 - 接口快速返回时可能直接进入结果页，loading 的人来人往和阶段文案看不清。
 - 后端不可用时会直接进入 error，而不是保留本地静态 mock demo 的可演示能力。
 - backend `need_input` 分支需要继续走首页 composer 内展开，而不是恢复成独立页面、弹窗或横向状态条。
+- 非 mock 模式下首次提交会立即创建 backend task；如果后端没有返回 `need_input`，用户会跳过前端固定的处境补充卡。
 
 ## 已恢复
 
 - 未登录提交仍只弹登录 modal，登录后沿用原 query 继续流程。
+- 第一轮处境补充由前端本地固定控制；登录后先展示 composer 内补充信息，用户点击“开始看看”或“先直接看”后才启动 backend task。
 - 补充信息仍在首页输入 composer 内展开：标题渐隐、composer 上移、query 置顶、轻分割线、clarify panel 向下展开。
 - mock 和真实接口的 running/succeeded 都复用同一条纵向时间线：entry 向上淡出，loading 从下方进入，loading 向上淡出，feed 从下方进入。
 - loading 最短展示时间统一为 3 秒，真实接口快速返回也等待最短展示时间。
@@ -25,13 +27,14 @@
 - `services/api.js` 仍负责 agent task 创建、状态轮询、结果读取和 refine。
 - `services/adapter.js` 仍负责把后端 task/result/need_input 标准化成前端 view 可用字段。
 - `app.js` 只消费 adapter 后的 `paths / people / personas / meta / needInput`，不让 view 直接依赖后端原始字段。
+- 后端 `need_input` 保留为二次补充兜底，仍通过 adapter 进入同一个 composer clarify panel。
 - 非 fallback 的后端错误仍进入轻 error 状态，避免把失败伪装成真实结果。
 
 ## Mock Fallback
 
 - `?api=mock` 或 `localStorage.lifeSampleApiMode = "mock"` 时完全走本地 mock。
 - 默认 backend 模式下，如果静态前端无法访问后端、后端路由不存在、或本地静态服务返回 `404 / 405 / 501`，会回落到 `MockApi`。
-- fallback 仍保留模糊输入补充信息流程；如果用户已经点击“先直接看”或已提交补充信息，则直接进入 loading 和 mock feed。
+- fallback 发生前仍先走本地处境补充；如果用户已经点击“先直接看”或已提交补充信息，则不会重复弹补充信息，直接进入 loading 和 mock feed。
 - mockData 继续作为本地演示数据和后端不可用兜底，不改变 UI 结构。
 
 ## 仍待确认

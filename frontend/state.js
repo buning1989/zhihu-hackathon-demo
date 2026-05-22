@@ -22,6 +22,9 @@
       clarifyQuestions: [],
       clarifyAnswers: {},
       clarifyOpen: false,
+      hasShownInitialClarify: false,
+      initialClarifySkipped: false,
+      clarifySource: "",
       error: ""
     },
     task: {
