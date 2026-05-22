@@ -18,6 +18,7 @@
     search: {
       status: "idle",
       message: "",
+      loadingStageIndex: 0,
       requestId: "",
       clarifyQuestions: [],
       clarifyAnswers: {},

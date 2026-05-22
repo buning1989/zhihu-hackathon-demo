@@ -974,24 +974,24 @@ img {
 
 .people-flow {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 4px 0;
+  padding: 2px 0;
   overflow: hidden;
 }
 
-.flow-lane {
-  display: inline-flex;
+.marquee-track {
+  display: flex;
   gap: 12px;
   width: max-content;
-  padding-left: 18px;
-  animation: peopleDrift 24s linear infinite;
+  animation: marquee 22s linear infinite;
+  will-change: transform;
 }
 
-.flow-lane.is-reverse {
+.marquee-track.reverse {
   animation-direction: reverse;
-  animation-duration: 28s;
-  opacity: 0.78;
+  animation-duration: 26s;
+  opacity: 0.72;
 }
 
 .loading-person {
@@ -1023,115 +1023,79 @@ img {
   object-fit: cover;
 }
 
-.loading-progress {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.loading-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.68;
-  animation: quietPulse 2.4s ease-in-out infinite;
-}
-
-.loading-step-window {
-  height: 24px;
-  overflow: hidden;
-}
-
-.loading-step-strip {
+.loading-flow {
   display: grid;
-  animation: loadingSteps 3.4s ease-in-out infinite;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: start;
+  width: min(560px, calc(100% - 56px));
+  margin: 0 auto;
+  padding: 2px 0 0;
+  list-style: none;
 }
 
-.loading-step-strip span {
-  height: 24px;
-  line-height: 24px;
+.loading-node {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
 }
 
-.loading-progress-track {
-  width: min(320px, calc(100% - 56px));
-  height: 3px;
-  margin: -2px auto 0;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: #f1f2f5;
+.loading-node:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 8px;
+  left: calc(50% + 12px);
+  right: calc(-50% + 12px);
+  height: 1px;
+  background: #e8ebf0;
 }
 
-.loading-progress-track span {
-  display: block;
-  width: 42%;
-  height: 100%;
-  border-radius: inherit;
-  background: rgba(23, 114, 246, 0.62);
-  animation: loadingBar 3s ease-in-out infinite;
+.loading-node.is-done:not(:last-child)::after {
+  background: rgba(23, 114, 246, 0.22);
 }
 
-@keyframes peopleDrift {
+.loading-node-dot {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #dfe3eb;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+}
+
+.loading-node.is-done .loading-node-dot {
+  border-color: rgba(23, 114, 246, 0.28);
+  background: #eaf2ff;
+}
+
+.loading-node.is-current .loading-node-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(23, 114, 246, 0.1);
+}
+
+.loading-node.is-done .loading-node-label {
+  color: var(--text-secondary);
+}
+
+.loading-node.is-current .loading-node-label {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+@keyframes marquee {
   from {
     transform: translateX(0);
   }
 
   to {
     transform: translateX(-50%);
-  }
-}
-
-@keyframes quietPulse {
-  0%,
-  100% {
-    opacity: 0.38;
-  }
-
-  50% {
-    opacity: 0.86;
-  }
-}
-
-@keyframes loadingSteps {
-  0%,
-  16% {
-    transform: translateY(0);
-  }
-
-  25%,
-  41% {
-    transform: translateY(-24px);
-  }
-
-  50%,
-  66% {
-    transform: translateY(-48px);
-  }
-
-  75%,
-  91% {
-    transform: translateY(-72px);
-  }
-
-  100% {
-    transform: translateY(-96px);
-  }
-}
-
-@keyframes loadingBar {
-  0% {
-    transform: translateX(-110%);
-  }
-
-  55% {
-    transform: translateX(85%);
-  }
-
-  100% {
-    transform: translateX(180%);
   }
 }
 
@@ -1847,10 +1811,7 @@ img {
     transform: none;
   }
 
-  .flow-lane,
-  .loading-step-strip,
-  .loading-progress-track span,
-  .loading-dot {
+  .marquee-track {
     animation-duration: 1ms;
     animation-iteration-count: 1;
   }

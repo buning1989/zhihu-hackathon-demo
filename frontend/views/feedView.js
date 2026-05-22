@@ -5,6 +5,18 @@
   function renderLoading(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
     const result = state.result || App.store.getResult();
+    const loadingStages = App.loadingStages || [
+      { label: "理解处境", message: "正在理解你的处境" },
+      { label: "寻找经历", message: "正在寻找相似经历" },
+      { label: "抽取证据", message: "正在抽取证据片段" },
+      { label: "整理走法", message: "正在整理几种走法" },
+      { label: "生成结果", message: "正在挑出代表人物" }
+    ];
+    const currentStageIndex = Math.min(
+      Math.max(Number(state.search.loadingStageIndex) || 0, 0),
+      loadingStages.length - 1
+    );
+    const currentStage = loadingStages[currentStageIndex] || loadingStages[0];
     const phaseClass = state.transitionPhase === "loadingEntering"
       ? "loading-enter"
       : state.transitionPhase === "loadingExiting"
@@ -18,30 +30,29 @@
         <span>${escapeHtml(person.name)}</span>
       </span>
     `).join("");
-    const steps = [
-      "正在理解你的处境",
-      "正在寻找相似经历",
-      "正在整理几种走法",
-      "正在挑出最接近的人"
-    ];
 
     return `
       <section class="card loading-card ${phaseClass}">
-        <h2 class="loading-title">${escapeHtml(state.search.message || "正在整理路径")}</h2>
+        <h2 class="loading-title">${escapeHtml(currentStage.message)}</h2>
         <div class="people-flow" aria-hidden="true">
-          <div class="flow-lane">${lane}</div>
-          <div class="flow-lane is-reverse">${lane}</div>
+          <div class="marquee-track">${lane}</div>
+          <div class="marquee-track reverse">${lane}</div>
         </div>
-        <div class="loading-progress">
-          <span class="loading-dot"></span>
-          <div class="loading-step-window">
-            <div class="loading-step-strip">
-              ${steps.map((step) => `<span>${escapeHtml(step)}</span>`).join("")}
-              <span>${escapeHtml(steps[0])}</span>
-            </div>
-          </div>
-        </div>
-        <div class="loading-progress-track" aria-hidden="true"><span></span></div>
+        <ol class="loading-flow" aria-label="匹配进度">
+          ${loadingStages.map((stage, index) => {
+            const nodeClass = index < currentStageIndex
+              ? "is-done"
+              : index === currentStageIndex
+                ? "is-current"
+                : "";
+            return `
+              <li class="loading-node ${nodeClass}" ${index === currentStageIndex ? "aria-current=\"step\"" : ""}>
+                <span class="loading-node-dot" aria-hidden="true"></span>
+                <span class="loading-node-label">${escapeHtml(stage.label)}</span>
+              </li>
+            `;
+          }).join("")}
+        </ol>
       </section>
     `;
   }

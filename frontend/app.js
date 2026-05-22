@@ -6,9 +6,11 @@
   let entryPlaceholderTimer = null;
   let pollTimer = null;
   let pollController = null;
+  let loadingStageTimer = null;
   const mockMinimumLoadingMs = 3000;
   const defaultMinimumLoadingMs = 3000;
   const defaultPollMs = 1500;
+  const loadingStageIntervalMs = 700;
   const entryPlaceholderTypeMs = 90;
   const entryPlaceholderHoldTicks = 36;
   const entryPlaceholderExamples = [
@@ -17,6 +19,35 @@
     "一份稳定但消耗人的工作，要不要离开？",
     "关系里一直是我让步，还要继续吗？"
   ];
+  const loadingStages = [
+    {
+      id: "understand",
+      label: "理解处境",
+      message: "正在理解你的处境"
+    },
+    {
+      id: "search",
+      label: "寻找经历",
+      message: "正在寻找相似经历"
+    },
+    {
+      id: "evidence",
+      label: "抽取证据",
+      message: "正在抽取证据片段"
+    },
+    {
+      id: "paths",
+      label: "整理走法",
+      message: "正在整理几种走法"
+    },
+    {
+      id: "people",
+      label: "生成结果",
+      message: "正在挑出代表人物"
+    }
+  ];
+
+  App.loadingStages = loadingStages;
 
   function render() {
     const state = App.store.getState();
@@ -94,6 +125,185 @@
     return new Promise((resolve) => {
       window.setTimeout(resolve, ms);
     });
+  }
+
+  function clampLoadingStageIndex(index) {
+    const safeIndex = Number.isFinite(index) ? index : 0;
+    return Math.min(Math.max(safeIndex, 0), loadingStages.length - 1);
+  }
+
+  function loadingStageAt(index) {
+    return loadingStages[clampLoadingStageIndex(index)];
+  }
+
+  function applyLoadingStage(draft, index) {
+    const stageIndex = clampLoadingStageIndex(index);
+    draft.search.loadingStageIndex = stageIndex;
+    draft.search.message = loadingStageAt(stageIndex).message;
+  }
+
+  function normalizeLoadingStageIndex(value, fallback = 0) {
+    const text = String(value || "").toLowerCase();
+    if (!text) {
+      return fallback < 0 ? -1 : clampLoadingStageIndex(fallback);
+    }
+
+    if (
+      text.includes("grounding_guard")
+      || text.includes("结果已准备好")
+      || text.includes("代表人物")
+      || text.includes("生成结果")
+      || text.includes("succeeded")
+      || text.includes("completed")
+    ) {
+      return 4;
+    }
+
+    if (
+      text.includes("response_compose")
+      || text.includes("整理路径")
+      || text.includes("路径和样本")
+      || text.includes("整理几种")
+      || text.includes("走法")
+    ) {
+      return 3;
+    }
+
+    if (
+      text.includes("evidence_extract")
+      || text.includes("抽取证据")
+      || text.includes("证据片段")
+      || text.includes("检查证据")
+      || text.includes("继续检查证据")
+    ) {
+      return 2;
+    }
+
+    if (
+      text.includes("plan_search")
+      || text.includes("retrieve_sources")
+      || text.includes("normalize_candidates")
+      || text.includes("规划检索")
+      || text.includes("检索")
+      || text.includes("查找")
+      || text.includes("搜索")
+      || text.includes("寻找")
+      || text.includes("筛选")
+      || text.includes("候选")
+      || text.includes("相似经历")
+      || text.includes("公开内容")
+    ) {
+      return 1;
+    }
+
+    if (
+      text.includes("understand")
+      || text.includes("理解")
+      || text.includes("处境")
+      || text.includes("问题")
+      || text.includes("queued")
+      || text.includes("created")
+    ) {
+      return 0;
+    }
+
+    return fallback < 0 ? -1 : clampLoadingStageIndex(fallback);
+  }
+
+  function loadingStageIndexFromTaskStage(stage, fallback = 0) {
+    const name = stage?.name || stage?.stageName || stage?.id || "";
+    return normalizeLoadingStageIndex(name || stage?.label || stage?.status, fallback);
+  }
+
+  function loadingStageIndexFromTaskStatus(taskStatus, fallback = 0) {
+    if (!taskStatus) {
+      return clampLoadingStageIndex(fallback);
+    }
+
+    const stages = Array.isArray(taskStatus.stages) ? taskStatus.stages : [];
+    if (stages.length) {
+      const sortedStages = [...stages].sort((a, b) => {
+        const left = Number.isFinite(a?.stageOrder) ? a.stageOrder : 0;
+        const right = Number.isFinite(b?.stageOrder) ? b.stageOrder : 0;
+        return left - right;
+      });
+      const runningStage = sortedStages.find((stage) => ["running", "failed_retryable"].includes(stage?.status));
+      if (runningStage) {
+        return loadingStageIndexFromTaskStage(runningStage, fallback);
+      }
+
+      const latestTouchedStage = [...sortedStages].reverse().find((stage) =>
+        !["waiting", "pending"].includes(stage?.status)
+      );
+      if (latestTouchedStage) {
+        return loadingStageIndexFromTaskStage(latestTouchedStage, fallback);
+      }
+    }
+
+    const statusStage = normalizeLoadingStageIndex(taskStatus.frontendStatus || taskStatus.status, -1);
+    if (statusStage >= 0) {
+      return statusStage;
+    }
+
+    const progress = Number.isFinite(taskStatus.progressPercent) ? taskStatus.progressPercent : 0;
+    if (progress >= 85) {
+      return 4;
+    }
+    if (progress >= 65) {
+      return 3;
+    }
+    if (progress >= 42) {
+      return 2;
+    }
+    if (progress >= 18) {
+      return 1;
+    }
+    return clampLoadingStageIndex(fallback);
+  }
+
+  function stopLoadingStageTicker() {
+    if (loadingStageTimer) {
+      window.clearInterval(loadingStageTimer);
+      loadingStageTimer = null;
+    }
+  }
+
+  function setLoadingStage(requestId, index) {
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    App.store.update((draft) => {
+      if (draft.search.status === "loading") {
+        applyLoadingStage(draft, index);
+      }
+      return draft;
+    });
+  }
+
+  function startLoadingStageTicker(requestId) {
+    stopLoadingStageTicker();
+    loadingStageTimer = window.setInterval(() => {
+      if (!isCurrentRequest(requestId)) {
+        stopLoadingStageTicker();
+        return;
+      }
+
+      const state = App.store.getState();
+      if (state.page !== "feed" || state.search.status !== "loading") {
+        return;
+      }
+
+      const currentIndex = clampLoadingStageIndex(state.search.loadingStageIndex);
+      if (currentIndex >= loadingStages.length - 1) {
+        return;
+      }
+
+      App.store.update((draft) => {
+        applyLoadingStage(draft, currentIndex + 1);
+        return draft;
+      });
+    }, loadingStageIntervalMs);
   }
 
   function getAnonymousId() {
@@ -177,6 +387,7 @@
       return;
     }
 
+    stopLoadingStageTicker();
     const code = error?.code || error?.errorCode || "AGENT_FRONTEND_ERROR";
     const message = error?.message || error?.errorMessage || "任务处理失败，请稍后再试。";
     App.store.update((draft) => {
@@ -268,6 +479,7 @@
       return;
     }
 
+    stopLoadingStageTicker();
     App.store.update((draft) => {
       draft.page = pageBeforeSubmit === "entry" ? "entry" : "feed";
       draft.search.status = "clarify";
@@ -316,7 +528,12 @@
     App.store.update((draft) => {
       draft.page = "feed";
       draft.search.status = "loading";
-      draft.search.message = message || "正在从真实经历里找相似的人";
+      applyLoadingStage(
+        draft,
+        taskStatus?.status === "succeeded"
+          ? 0
+          : loadingStageIndexFromTaskStatus(taskStatus, normalizeLoadingStageIndex(message, 0))
+      );
       draft.search.requestId = requestId;
       draft.search.error = "";
       draft.search.clarifyOpen = false;
@@ -328,6 +545,7 @@
     });
 
     const loadingStartedAt = Date.now();
+    startLoadingStageTicker(requestId);
     if (timings.loadingEnter > 0) {
       await wait(timings.loadingEnter);
     }
@@ -349,6 +567,8 @@
       return;
     }
 
+    setLoadingStage(requestId, loadingStages.length - 1);
+    stopLoadingStageTicker();
     setTransitionPhase("loadingExiting");
     if (timings.loadingExit > 0) {
       await wait(timings.loadingExit);
@@ -418,6 +638,7 @@
       return;
     }
     cancelPolling();
+    stopLoadingStageTicker();
 
     const state = App.store.getState();
     if (!state.auth.loggedIn) {
@@ -444,7 +665,8 @@
       draft.result = null;
       draft.search = {
         status: "preparing",
-        message: "正在从真实经历里找相似的人",
+        message: "",
+        loadingStageIndex: 0,
         requestId,
         clarifyQuestions: [],
         clarifyAnswers,
@@ -552,8 +774,9 @@
       }
     } else {
       App.store.update((draft) => {
+        const nextStageIndex = loadingStageIndexFromTaskStatus(taskStatus, draft.search.loadingStageIndex);
         draft.search.status = "loading";
-        draft.search.message = taskData.frontendStatus || "正在从真实经历里找相似的人";
+        applyLoadingStage(draft, Math.max(clampLoadingStageIndex(draft.search.loadingStageIndex), nextStageIndex));
         draft.search.error = "";
         draft.search.clarifyOpen = false;
         applyTaskState(draft, taskStatus, {
@@ -696,7 +919,7 @@
     App.store.update((draft) => {
       draft.page = "feed";
       draft.search.status = "loading";
-      draft.search.message = "正在从真实经历里找相似的人";
+      applyLoadingStage(draft, 0);
       draft.search.requestId = requestId;
       draft.search.clarifyOpen = false;
       draft.transitionPhase = "loadingEntering";
@@ -704,6 +927,7 @@
     });
 
     const loadingStartedAt = Date.now();
+    startLoadingStageTicker(requestId);
     const responsePromise = App.Api.search({
       query,
       answers
@@ -734,6 +958,8 @@
       return;
     }
 
+    setLoadingStage(requestId, loadingStages.length - 1);
+    stopLoadingStageTicker();
     setTransitionPhase("loadingExiting");
     if (timings.loadingExit > 0) {
       await wait(timings.loadingExit);
@@ -786,11 +1012,14 @@
       draft.search.hasShownInitialClarify = clarifyMetadata.hasShownInitialClarify;
       if (draft.page !== "entry") {
         draft.search.status = "loading";
-        draft.search.message = "正在根据补充信息重新匹配";
+        applyLoadingStage(draft, 0);
         draft.search.clarifyOpen = false;
       }
       return draft;
     });
+    if (state.page !== "entry") {
+      startLoadingStageTicker(requestId);
+    }
 
     if (!App.Api.isMockMode() && state.task?.status === "need_input" && state.task.taskId) {
       if (options.skip) {
@@ -885,6 +1114,7 @@
 
   function mockLogout() {
     cancelPolling();
+    stopLoadingStageTicker();
     App.store.update((draft) => {
       draft.page = "entry";
       draft.query = "";
@@ -895,6 +1125,7 @@
       draft.auth.profile = null;
       draft.search.status = "idle";
       draft.search.message = "";
+      draft.search.loadingStageIndex = 0;
       draft.search.clarifyOpen = false;
       draft.search.hasShownInitialClarify = false;
       draft.search.initialClarifySkipped = false;
