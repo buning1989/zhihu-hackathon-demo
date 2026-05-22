@@ -65,6 +65,7 @@
     root.innerHTML = [
       view(state),
       App.components.renderPeopleModal(state),
+      App.components.renderReadingModal(state),
       App.components.renderChatModal(state)
     ].join("");
 
@@ -699,7 +700,7 @@
       draft.query = cleanQuery;
       draft.pendingQuery = cleanQuery;
       draft.activePathId = "all";
-      draft.modal = { type: null, pathId: null, personId: null };
+      draft.modal = { type: null, pathId: null, personId: null, panel: null };
       draft.result = null;
       draft.selectedPersonId = null;
       draft.expandedPersonId = null;
@@ -1197,7 +1198,7 @@
       draft.inlineChatPersonId = null;
       draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
-      draft.modal = { type: null, pathId: null, personId: null };
+      draft.modal = { type: null, pathId: null, personId: null, panel: null };
       return draft;
     });
   }
@@ -1216,6 +1217,7 @@
     draft.inlineChatPersonId = null;
     draft.inlineChatBlockedPersonId = null;
     draft.inlineMessagePersonId = null;
+    draft.modal = { type: null, pathId: null, personId: null, panel: null };
   }
 
   function ensurePersonVisible(draft, person) {
@@ -1292,14 +1294,14 @@
 
   function openPeople(pathId) {
     App.store.update((draft) => {
-      draft.modal = { type: "people", pathId, personId: null };
+      draft.modal = { type: "people", pathId, personId: null, panel: null };
       return draft;
     });
   }
 
   function closeModal() {
     App.store.update((draft) => {
-      draft.modal = { type: null, pathId: null, personId: null };
+      draft.modal = { type: null, pathId: null, personId: null, panel: null };
       return draft;
     });
   }
@@ -1310,32 +1312,24 @@
       draft.page = "reading";
       draft.selectedPersonId = personId;
       draft.expandedPersonId = null;
-      draft.modal = { type: null, pathId: null, personId: null };
+      draft.modal = { type: null, pathId: null, personId: null, panel: null };
       return draft;
     });
   }
 
-  function toggleOriginal(personId, forceOpen = false) {
+  function openReadingModal(personId, panel = null) {
     const person = App.store.findPerson(personId);
     if (!person) {
       return;
     }
 
     App.store.update((draft) => {
-      draft.page = "feed";
       draft.selectedPersonId = personId;
-      draft.modal = { type: null, pathId: null, personId: null };
-      ensurePersonVisible(draft, person);
-
-      if (draft.expandedOriginalPersonId === personId && !forceOpen) {
-        draft.expandedOriginalPersonId = null;
-        draft.inlineChatPersonId = null;
-        draft.inlineChatBlockedPersonId = null;
-        draft.inlineMessagePersonId = null;
-        return draft;
+      if (draft.page === "feed") {
+        ensurePersonVisible(draft, person);
       }
-
-      draft.expandedOriginalPersonId = personId;
+      draft.modal = { type: "reading", pathId: null, personId, panel };
+      draft.expandedOriginalPersonId = null;
       draft.expandedExperiencePersonId = null;
       draft.inlineChatPersonId = null;
       draft.inlineChatBlockedPersonId = null;
@@ -1352,24 +1346,27 @@
     }
 
     App.store.update((draft) => {
-      const isOpening = forceOpen || draft.inlineChatPersonId !== personId;
-      draft.page = "feed";
+      const panelOpen = draft.modal.type === "reading"
+        && draft.modal.personId === personId
+        && draft.modal.panel === "chat";
+      const isOpening = forceOpen || !panelOpen;
       draft.selectedPersonId = personId;
-      draft.modal = { type: null, pathId: null, personId: null };
-      ensurePersonVisible(draft, person);
-      draft.expandedOriginalPersonId = personId;
+      if (draft.page === "feed") {
+        ensurePersonVisible(draft, person);
+      }
+      draft.modal = { type: "reading", pathId: null, personId, panel: null };
+      draft.expandedOriginalPersonId = null;
       draft.expandedExperiencePersonId = null;
+      draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
 
       if (!isOpening) {
-        draft.inlineChatPersonId = null;
-        draft.inlineChatBlockedPersonId = null;
         return draft;
       }
 
       if (!canChatWithPerson(person)) {
-        draft.inlineChatPersonId = null;
-        draft.inlineChatBlockedPersonId = personId;
+        draft.modal.panel = "chat-blocked";
         addRecentViewToDraft(draft, personId);
         return draft;
       }
@@ -1377,8 +1374,7 @@
       if (!draft.chatThreads[personId]) {
         draft.chatThreads[personId] = [initialChatMessage(person)];
       }
-      draft.inlineChatPersonId = personId;
-      draft.inlineChatBlockedPersonId = null;
+      draft.modal.panel = "chat";
       addRecentViewToDraft(draft, personId);
       markInlineChatOpened(draft, personId);
       return draft;
@@ -1400,15 +1396,20 @@
     }
 
     App.store.update((draft) => {
-      const isOpening = draft.inlineMessagePersonId !== personId;
-      draft.page = "feed";
+      const panelOpen = draft.modal.type === "reading"
+        && draft.modal.personId === personId
+        && draft.modal.panel === "message";
+      const isOpening = !panelOpen;
       draft.selectedPersonId = personId;
-      draft.modal = { type: null, pathId: null, personId: null };
-      ensurePersonVisible(draft, person);
-      draft.expandedOriginalPersonId = personId;
+      if (draft.page === "feed") {
+        ensurePersonVisible(draft, person);
+      }
+      draft.modal = { type: "reading", pathId: null, personId, panel: isOpening ? "message" : null };
+      draft.expandedOriginalPersonId = null;
+      draft.expandedExperiencePersonId = null;
       draft.inlineChatPersonId = null;
       draft.inlineChatBlockedPersonId = null;
-      draft.inlineMessagePersonId = isOpening ? personId : null;
+      draft.inlineMessagePersonId = null;
       if (isOpening) {
         addRecentViewToDraft(draft, personId);
       }
@@ -1618,7 +1619,7 @@
     } else if (action === "open-people") {
       openPeople(target.dataset.pathId);
     } else if (action === "toggle-original" || action === "open-original") {
-      toggleOriginal(target.dataset.personId, action === "open-original");
+      openReadingModal(target.dataset.personId);
     } else if (action === "open-reading") {
       openReading(target.dataset.personId);
     } else if (action === "toggle-inline-chat") {
@@ -1634,14 +1635,14 @@
     } else if (action === "open-book") {
       App.store.update((draft) => {
         draft.page = "book";
-        draft.modal = { type: null, pathId: null, personId: null };
+        draft.modal = { type: null, pathId: null, personId: null, panel: null };
         clearInlinePanels(draft);
         return draft;
       });
     } else if (action === "open-capsule") {
       App.store.update((draft) => {
         draft.page = "capsule";
-        draft.modal = { type: null, pathId: null, personId: null };
+        draft.modal = { type: null, pathId: null, personId: null, panel: null };
         clearInlinePanels(draft);
         draft.capsule.sealed = false;
         draft.capsule.typedText = "";
@@ -1651,7 +1652,7 @@
     } else if (action === "open-feed") {
       App.store.update((draft) => {
         draft.page = draft.result ? "feed" : "entry";
-        draft.modal = { type: null, pathId: null, personId: null };
+        draft.modal = { type: null, pathId: null, personId: null, panel: null };
         return draft;
       });
     } else if (action === "toggle-book-status") {

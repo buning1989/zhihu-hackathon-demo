@@ -2,7 +2,20 @@
   const App = window.LifeSampleApp || (window.LifeSampleApp = {});
   App.components = App.components || {};
 
-  const clueLabels = ["开始", "转折", "后来"];
+  const structurePresets = {
+    "path-city": {
+      title: "决策拆解",
+      labels: ["现实约束", "做出的选择", "承担的代价", "后来的变化"]
+    },
+    "path-skill": {
+      title: "关键节点",
+      labels: ["动作", "阻力", "调整", "结果"]
+    },
+    default: {
+      title: "时间线拆解",
+      labels: ["开始", "转折", "后来", "结果"]
+    }
+  };
 
   function textOf(value) {
     if (typeof value === "string") {
@@ -45,22 +58,37 @@
     return paragraphs.slice(0, 2);
   }
 
-  function readerParagraphs(person) {
-    const paragraphs = sourceParagraphs(person);
-    if (!paragraphs.length) {
-      return [];
-    }
-    return paragraphs.slice(keySnippet(person).length, 6);
-  }
-
-  function experienceClues(person) {
-    const timeline = Array.isArray(person.timeline) && person.timeline.length
-      ? person.timeline
-      : sourceParagraphs(person);
-    return timeline.slice(0, 3).map((item, index) => ({
-      label: clueLabels[index] || `线索 ${index + 1}`,
-      text: textOf(item)
+  function normalizeStructureNodes(person) {
+    const rawNodes = Array.isArray(person.experienceStructure?.nodes)
+      ? person.experienceStructure.nodes
+      : Array.isArray(person.structure?.nodes)
+        ? person.structure.nodes
+        : Array.isArray(person.steps)
+          ? person.steps
+          : Array.isArray(person.timeline)
+            ? person.timeline
+            : [];
+    const preset = structurePresets[person.pathId] || structurePresets.default;
+    const nodes = rawNodes.map((item, index) => ({
+      title: textOf(item.title || item.label || item.stage || item.name) || preset.labels[index] || `节点 ${index + 1}`,
+      text: textOf(item.text || item.content || item.body || item.desc || item.event || item)
     })).filter((item) => item.text);
+
+    if (nodes.length) {
+      return {
+        title: textOf(person.experienceStructure?.title || person.structure?.title) || preset.title,
+        nodes: nodes.slice(0, 4)
+      };
+    }
+
+    const paragraphs = sourceParagraphs(person).slice(0, 4);
+    return {
+      title: preset.title,
+      nodes: paragraphs.map((paragraph, index) => ({
+        title: preset.labels[index] || `节点 ${index + 1}`,
+        text: paragraph
+      }))
+    };
   }
 
   function renderAvatar(person, escapeHtml, escapeAttribute) {
@@ -76,115 +104,22 @@
     }
 
     const { escapeHtml } = App.utils;
-    const reason = person.fitReason || person.match?.reason || path?.whyRelevant || "这段公开经历和你的问题有相近的约束，可以作为一个对照样本。";
-    const clues = experienceClues(person);
+    const structure = normalizeStructureNodes(person);
 
     return `
-      <section class="experience-inline" aria-label="TA 的经历">
-        <div class="experience-block">
-          <p class="experience-label">为什么和你相关</p>
-          <p class="experience-text">${escapeHtml(reason)}</p>
-        </div>
-        ${clues.length ? `
-          <div class="experience-block">
-            <p class="experience-label">经历线索</p>
-            <ol class="experience-clues">
-              ${clues.map((item) => `
-                <li>
-                  <span>${escapeHtml(item.label)}</span>
-                  <p>${escapeHtml(item.text)}</p>
-                </li>
-              `).join("")}
-            </ol>
-          </div>
-        ` : ""}
-      </section>
-    `;
-  }
-
-  function renderInlineChat(person, state) {
-    if (state.inlineChatPersonId !== person.id) {
-      return "";
-    }
-
-    const { escapeHtml, escapeAttribute } = App.utils;
-    const icon = App.components.renderIcon;
-    const thread = state.chatThreads[person.id] || [];
-    const messages = thread.map((message) => `
-      <div class="bubble ${message.role === "user" ? "user" : "ai"}">${escapeHtml(message.text)}</div>
-    `).join("");
-    const boundary = person.aiPersona?.boundary || "基于知乎公开内容生成，不代表作者本人。";
-
-    return `
-      <section class="inline-chat" aria-label="经验回声">
-        <p class="inline-boundary">${escapeHtml(boundary)}</p>
-        <div class="chat-messages inline-chat-messages">
-          ${messages}
-        </div>
-        <form class="chat-row inline-chat-row" data-form="chat" data-person-id="${escapeAttribute(person.id)}">
-          <label class="sr-only" for="inline-chat-${escapeAttribute(person.id)}">继续追问这段经历</label>
-          <input class="chat-input" id="inline-chat-${escapeAttribute(person.id)}" name="message" placeholder="继续问这个选择背后的细节……" />
-          <button class="btn-text chat-send" type="submit">${icon("send")}送出</button>
-        </form>
-      </section>
-    `;
-  }
-
-  function renderInlineMessage(person, state) {
-    if (state.inlineMessagePersonId !== person.id) {
-      return "";
-    }
-
-    const { escapeAttribute } = App.utils;
-    const icon = App.components.renderIcon;
-
-    return `
-      <section class="inline-message" aria-label="写给 TA 一句话">
-        <p class="inline-boundary">这只是你的私密记录，不会承诺发送给作者本人。</p>
-        <form class="message-row" data-form="note" data-person-id="${escapeAttribute(person.id)}">
-          <label class="sr-only" for="inline-note-${escapeAttribute(person.id)}">写给 TA 一句话</label>
-          <input class="message-input" id="inline-note-${escapeAttribute(person.id)}" name="note" placeholder="先把这句话留在这里。" />
-          <button class="btn-text note-save" type="submit">${icon("bookmark")}留下</button>
-        </form>
-      </section>
-    `;
-  }
-
-  function renderInlineChatBlocked(person, state) {
-    if (state.inlineChatBlockedPersonId !== person.id) {
-      return "";
-    }
-
-    return `
-      <section class="inline-chat-blocked" aria-label="暂不适合继续追问">
-        这段公开内容太少，暂时不适合继续追问。
-      </section>
-    `;
-  }
-
-  function renderInlineReader(person, state, saved) {
-    if (state.expandedOriginalPersonId !== person.id) {
-      return "";
-    }
-
-    const { escapeHtml, escapeAttribute } = App.utils;
-    const icon = App.components.renderIcon;
-    const paragraphs = readerParagraphs(person);
-    const body = paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
-
-    return `
-      <section class="inline-reader" aria-label="原文片段">
-        ${body ? `<article class="inline-reader-body">${body}</article>` : ""}
-        <p class="inline-reader-source">来自知乎公开内容</p>
-        <footer class="inline-reader-actions">
-          <button class="btn-text inline-primary" type="button" data-action="toggle-inline-chat" data-person-id="${escapeAttribute(person.id)}">${icon("message-circle")}听听 TA 会怎么说</button>
-          <button class="btn-text" type="button" data-action="toggle-inline-message" data-person-id="${escapeAttribute(person.id)}">${icon("reply")}写给 TA 一句话</button>
-          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
-          <button class="btn-text ml-auto" type="button" data-action="toggle-original" data-person-id="${escapeAttribute(person.id)}">${icon("chevron-up")}收起原文</button>
-        </footer>
-        ${renderInlineChatBlocked(person, state)}
-        ${renderInlineChat(person, state)}
-        ${renderInlineMessage(person, state)}
+      <section class="experience-inline" aria-label="经历结构">
+        <p class="experience-structure-title">${escapeHtml(structure.title)}</p>
+        <ol class="experience-structure-list">
+          ${structure.nodes.map((item, index) => `
+            <li>
+              <span class="experience-structure-index">${String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <h4>${escapeHtml(item.title)}</h4>
+                <p>${escapeHtml(item.text)}</p>
+              </div>
+            </li>
+          `).join("")}
+        </ol>
       </section>
     `;
   }
@@ -194,7 +129,6 @@
     const icon = App.components.renderIcon;
     const saved = App.store.isInBook(person.id);
     const experienceExpanded = state.expandedExperiencePersonId === person.id;
-    const originalExpanded = state.expandedOriginalPersonId === person.id;
     const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
     const path = App.store.findPath(person.pathId);
     const pathLabel = publicUiLabel(path?.shortTitle || path?.title, "相似处境");
@@ -213,14 +147,11 @@
         </header>
         <div class="original-snippet">${snippet}</div>
         ${renderExperience(person, path, state)}
-        ${originalExpanded ? "" : `
         <footer class="person-actions">
-          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "chevron-down")}${experienceExpanded ? "收起经历" : "TA 的经历"}</button>
-          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
-          <button class="btn-text read-link ml-auto" type="button" data-action="toggle-original" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${originalExpanded ? "true" : "false"}">${icon(originalExpanded ? "chevron-up" : "book-open")}${originalExpanded ? "收起原文" : "展开原文"}</button>
+          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "file-text")}${experienceExpanded ? "收起结构" : "看经历结构"}</button>
+          <button class="btn-text read-link" type="button" data-action="open-original" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}阅读原文</button>
+          <button class="btn-text ${saved ? "is-active" : ""} ml-auto" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
         </footer>
-        `}
-        ${renderInlineReader(person, state, saved)}
       </article>
     `;
   };

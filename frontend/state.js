@@ -56,7 +56,8 @@
     modal: {
       type: null,
       pathId: null,
-      personId: null
+      personId: null,
+      panel: null
     },
     bookItems: clone(data.starterBook),
     recentlyViewed: [],
@@ -200,7 +201,7 @@
 
   const byId = (items, id) => items.find((item) => item.id === id) || null;
 
-  const statusLabelPattern = /(证据不足|证据有限|证据样本|证据路径|可追溯证据|结果已保守收敛|保守收敛|degraded|evidenceStatus|grounding status|grounding)/i;
+  const statusLabelPattern = /(证据不足|证据有限|证据样本|证据路径|可追溯|结果已保守收敛|保守收敛|degraded|evidenceStatus|grounding status|grounding)/i;
 
   function publicUiLabel(value, fallback = "公开内容片段") {
     const text = String(value || "").trim();

@@ -432,7 +432,7 @@
       person.lesson ||
       article.lead ||
       source.evidence ||
-      "这条样本的公开证据有限，建议先查看来源片段。"
+      "这条样本目前只有较短公开内容，建议先查看来源片段。"
     );
     const aiPersona = normalizePersona(person.aiPersona, id);
 
@@ -464,7 +464,7 @@
       author: stringOf(raw.author || "知乎用户"),
       avatar: stringOf(raw.avatar || ""),
       lead: stringOf(raw.lead || raw.summary || raw.text || firstEvidence?.text || paragraphs[0] || ""),
-      paragraphs: paragraphs.length ? paragraphs : [stringOf(raw.summary || firstEvidence?.text || "暂无更完整原文，只展示当前证据片段。")],
+      paragraphs: paragraphs.length ? paragraphs : [stringOf(raw.summary || firstEvidence?.text || "暂无更完整原文，只展示当前公开内容片段。")],
       sourceUrl: stringOf(raw.sourceUrl || raw.url || firstEvidence?.sourceUrl || ""),
       evidence
     };

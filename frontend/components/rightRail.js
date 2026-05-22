@@ -30,6 +30,9 @@
 
     const seenInteractions = new Set();
     const interactionItems = (state.interactions || []).filter((item) => {
+      if (item.type !== "chat") {
+        return false;
+      }
       if (seenInteractions.has(item.personId)) {
         return false;
       }
