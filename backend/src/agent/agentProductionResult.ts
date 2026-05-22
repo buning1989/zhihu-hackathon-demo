@@ -4,11 +4,16 @@ import type {
   CandidatesArtifactData,
   EvidenceArtifactData,
   EvidenceItem,
+  EvidenceSupportType,
   FinalResultArtifactData,
   FinalResultPath,
   FinalResultPerson,
   GroundingGuardReport
 } from "./stages/stageTypes.js";
+
+const MIN_FINAL_CANDIDATE_QUALITY_SCORE = 0.45;
+const MIN_FINAL_EVIDENCE_CONFIDENCE = 0.35;
+const MIN_PERSONA_EVIDENCE_CONFIDENCE = 0.45;
 
 export interface ProductionSourceRef {
   sourceCandidateId: string;
@@ -46,6 +51,12 @@ export interface ProductionFinalResultSource {
   url: string;
   excerpt: string;
   score: number;
+  relevanceScore: number;
+  experienceScore: number;
+  qualityScore: number;
+  qualitySignals: string[];
+  selectedForEvidence: boolean;
+  rejectReason: string | null;
 }
 
 export interface ProductionEvidenceItem {
@@ -55,7 +66,11 @@ export interface ProductionEvidenceItem {
   author: string;
   sourceUrl: string;
   evidenceText: string;
+  excerpt: string;
   reason: string;
+  normalizedClaim: string;
+  supportType: EvidenceSupportType;
+  isExperienceEvidence: boolean;
   confidence: number;
 }
 
@@ -64,6 +79,16 @@ export interface DeterministicGroundingReport {
   removedPathIds: string[];
   removedPersonaIds: string[];
   warnings: string[];
+  qualityReport: {
+    checked: true;
+    minCandidateQualityScore: number;
+    minEvidenceConfidence: number;
+    minPersonaEvidenceConfidence: number;
+    lowQualityCandidateIds: string[];
+    lowConfidenceEvidenceIds: string[];
+    personaWithoutExperienceEvidenceIds: string[];
+    pathWithoutEvidenceIds: string[];
+  };
 }
 
 export interface ProductionFinalResultData {
@@ -112,7 +137,9 @@ export function buildProductionFinalResult(
     .filter((item) => candidateById.has(item.candidateId));
   const evidenceById = new Map(evidenceItems.map((item) => [item.id, item]));
   const evidenceByCandidateId = groupEvidenceByCandidateId(evidenceItems);
-  const sources = input.candidates.candidates.map(toProductionSource);
+  const sources = input.candidates.candidates
+    .filter((candidate) => candidate.selectedForEvidence)
+    .map(toProductionSource);
   const evidenceMap = Object.fromEntries(
     evidenceItems.map((item) => [item.id, toProductionEvidenceItem(item)])
   );
@@ -126,6 +153,7 @@ export function buildProductionFinalResult(
     paths: builtPaths,
     personas: builtPersonas,
     sourceIds: new Set(sources.map((source) => source.sourceCandidateId)),
+    candidateById,
     evidenceMap
   });
   const degradedReasons = uniqueNonEmpty([
@@ -149,7 +177,8 @@ export function buildProductionFinalResult(
         status: validation.status,
         removedPathIds: validation.removedPathIds,
         removedPersonaIds: validation.removedPersonaIds,
-        warnings: validation.warnings
+        warnings: validation.warnings,
+        qualityReport: validation.qualityReport
       }
     },
     degraded: degradedReasons.length > 0,
@@ -221,7 +250,7 @@ function toProductionPersona(
 ): ProductionFinalResultPersona {
   const sourceRefs = buildSourceRefs(
     [person.candidateId],
-    person.evidenceIds,
+    person.evidenceIds.filter((evidenceId) => evidenceById.get(evidenceId)?.candidateId === person.candidateId),
     candidateById,
     evidenceById,
     evidenceByCandidateId
@@ -282,6 +311,7 @@ function validateProductionItems(input: {
   paths: ProductionFinalResultPath[];
   personas: ProductionFinalResultPersona[];
   sourceIds: Set<string>;
+  candidateById: Map<string, CandidateItem>;
   evidenceMap: Record<string, ProductionEvidenceItem>;
 }): {
   status: DeterministicGroundingReport["status"];
@@ -290,23 +320,46 @@ function validateProductionItems(input: {
   removedPathIds: string[];
   removedPersonaIds: string[];
   warnings: string[];
+  qualityReport: DeterministicGroundingReport["qualityReport"];
 } {
   const warnings: string[] = [];
   const removedPathIds: string[] = [];
   const removedPersonaIds: string[] = [];
   const paths = input.paths.filter((path) => {
-    const valid = validateSourceRefs(path.sourceRefs, input.sourceIds, input.evidenceMap, warnings);
+    const valid = validateSourceRefs({
+      sourceRefs: path.sourceRefs,
+      sourceIds: input.sourceIds,
+      candidateById: input.candidateById,
+      evidenceMap: input.evidenceMap,
+      warnings,
+      itemLabel: path.id,
+      requireExperienceEvidence: false
+    });
     if (!valid) {
       removedPathIds.push(path.id);
     }
     return valid;
   });
   const personas = input.personas.filter((persona) => {
-    const valid = validateSourceRefs(persona.sourceRefs, input.sourceIds, input.evidenceMap, warnings);
+    const valid = validateSourceRefs({
+      sourceRefs: persona.sourceRefs,
+      sourceIds: input.sourceIds,
+      candidateById: input.candidateById,
+      evidenceMap: input.evidenceMap,
+      warnings,
+      itemLabel: persona.id,
+      requireExperienceEvidence: true
+    });
     if (!valid) {
       removedPersonaIds.push(persona.id);
     }
     return valid;
+  });
+  const qualityReport = buildQualityReport({
+    paths,
+    personas,
+    candidateById: input.candidateById,
+    evidenceMap: input.evidenceMap
   });
 
   const status =
@@ -322,46 +375,84 @@ function validateProductionItems(input: {
     personas,
     removedPathIds,
     removedPersonaIds,
-    warnings
+    warnings,
+    qualityReport
   };
 }
 
-function validateSourceRefs(
-  sourceRefs: ProductionSourceRef[],
-  sourceIds: Set<string>,
-  evidenceMap: Record<string, ProductionEvidenceItem>,
-  warnings: string[]
-): boolean {
+function validateSourceRefs(input: {
+  sourceRefs: ProductionSourceRef[];
+  sourceIds: Set<string>;
+  candidateById: Map<string, CandidateItem>;
+  evidenceMap: Record<string, ProductionEvidenceItem>;
+  warnings: string[];
+  itemLabel: string;
+  requireExperienceEvidence: boolean;
+}): boolean {
+  const {
+    sourceRefs,
+    sourceIds,
+    candidateById,
+    evidenceMap,
+    warnings,
+    itemLabel,
+    requireExperienceEvidence
+  } = input;
+
   if (sourceRefs.length === 0) {
-    warnings.push("sourceRefs missing");
+    warnings.push(`${itemLabel}: sourceRefs missing`);
     return false;
   }
 
+  let hasExperienceEvidence = false;
   for (const sourceRef of sourceRefs) {
     if (!sourceIds.has(sourceRef.sourceCandidateId)) {
-      warnings.push(`sourceCandidateId missing: ${sourceRef.sourceCandidateId}`);
+      warnings.push(`${itemLabel}: sourceCandidateId missing: ${sourceRef.sourceCandidateId}`);
+      return false;
+    }
+
+    const candidate = candidateById.get(sourceRef.sourceCandidateId);
+    if (!isCandidateAllowedInFinal(candidate)) {
+      warnings.push(`${itemLabel}: candidate below quality threshold: ${sourceRef.sourceCandidateId}`);
       return false;
     }
 
     if (sourceRef.evidenceItemIds.length === 0) {
-      warnings.push(`evidenceItemIds missing for sourceCandidateId: ${sourceRef.sourceCandidateId}`);
+      warnings.push(`${itemLabel}: evidenceItemIds missing for sourceCandidateId: ${sourceRef.sourceCandidateId}`);
       return false;
     }
 
     for (const evidenceItemId of sourceRef.evidenceItemIds) {
       const evidenceItem = evidenceMap[evidenceItemId];
       if (!evidenceItem) {
-        warnings.push(`evidenceItemId missing: ${evidenceItemId}`);
+        warnings.push(`${itemLabel}: evidenceItemId missing: ${evidenceItemId}`);
         return false;
       }
 
       if (evidenceItem.sourceCandidateId !== sourceRef.sourceCandidateId) {
         warnings.push(
-          `evidenceItemId ${evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}, not ${sourceRef.sourceCandidateId}`
+          `${itemLabel}: evidenceItemId ${evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}, not ${sourceRef.sourceCandidateId}`
         );
         return false;
       }
+
+      if (evidenceItem.confidence < MIN_FINAL_EVIDENCE_CONFIDENCE) {
+        warnings.push(`${itemLabel}: evidenceItemId below confidence threshold: ${evidenceItemId}`);
+        return false;
+      }
+
+      if (
+        evidenceItem.isExperienceEvidence &&
+        evidenceItem.confidence >= MIN_PERSONA_EVIDENCE_CONFIDENCE
+      ) {
+        hasExperienceEvidence = true;
+      }
     }
+  }
+
+  if (requireExperienceEvidence && !hasExperienceEvidence) {
+    warnings.push(`${itemLabel}: persona missing experience evidence`);
+    return false;
   }
 
   return true;
@@ -378,19 +469,29 @@ function toProductionSource(candidate: CandidateItem): ProductionFinalResultSour
     author: candidate.author,
     url: candidate.url,
     excerpt: candidate.excerpt,
-    score: candidate.score
+    score: candidate.score,
+    relevanceScore: candidate.relevanceScore,
+    experienceScore: candidate.experienceScore,
+    qualityScore: candidate.qualityScore,
+    qualitySignals: candidate.qualitySignals,
+    selectedForEvidence: candidate.selectedForEvidence,
+    rejectReason: candidate.rejectReason ?? null
   };
 }
 
 function toProductionEvidenceItem(item: EvidenceInputItem): ProductionEvidenceItem {
   return {
     id: item.id,
-    sourceCandidateId: item.candidateId,
+    sourceCandidateId: item.sourceCandidateId || item.candidateId,
     title: item.title,
     author: item.author,
     sourceUrl: item.sourceUrl,
     evidenceText: item.evidenceText,
+    excerpt: item.excerpt,
     reason: item.reason,
+    normalizedClaim: item.normalizedClaim,
+    supportType: item.supportType,
+    isExperienceEvidence: item.isExperienceEvidence,
     confidence: item.confidence
   };
 }
@@ -411,7 +512,7 @@ function groupEvidenceByCandidateId(
 function toEvidenceInputItem(item: EvidenceItem, index: number): EvidenceInputItem {
   return {
     ...item,
-    id: `evidence_${hashSafeId(item.candidateId || item.sourceUrl || item.title)}_${index + 1}`
+    id: item.id || `evidence_${hashSafeId(item.candidateId || item.sourceUrl || item.title)}_${index + 1}`
   };
 }
 
@@ -421,7 +522,7 @@ function calculateConfidence(
   evidenceById: Map<string, EvidenceInputItem>
 ): number {
   const candidateScores = sourceRefs
-    .map((sourceRef) => candidateById.get(sourceRef.sourceCandidateId)?.score)
+    .map((sourceRef) => candidateById.get(sourceRef.sourceCandidateId)?.qualityScore)
     .filter(isNumber);
   const evidenceScores = sourceRefs
     .flatMap((sourceRef) => sourceRef.evidenceItemIds)
@@ -433,6 +534,65 @@ function calculateConfidence(
   }
 
   return clampScore(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+}
+
+function buildQualityReport(input: {
+  paths: ProductionFinalResultPath[];
+  personas: ProductionFinalResultPersona[];
+  candidateById: Map<string, CandidateItem>;
+  evidenceMap: Record<string, ProductionEvidenceItem>;
+}): DeterministicGroundingReport["qualityReport"] {
+  const referencedSourceRefs = [...input.paths, ...input.personas].flatMap((item) => item.sourceRefs);
+  const referencedCandidateIds = uniqueNonEmpty(referencedSourceRefs.map((sourceRef) => sourceRef.sourceCandidateId));
+  const referencedEvidenceIds = uniqueNonEmpty(
+    referencedSourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds)
+  );
+  const lowQualityCandidateIds = referencedCandidateIds.filter(
+    (candidateId) => !isCandidateAllowedInFinal(input.candidateById.get(candidateId))
+  );
+  const lowConfidenceEvidenceIds = referencedEvidenceIds.filter((evidenceId) => {
+    const item = input.evidenceMap[evidenceId];
+    return !item || item.confidence < MIN_FINAL_EVIDENCE_CONFIDENCE;
+  });
+  const personaWithoutExperienceEvidenceIds = input.personas
+    .filter((persona) => !hasExperienceEvidence(persona.sourceRefs, input.evidenceMap))
+    .map((persona) => persona.id);
+  const pathWithoutEvidenceIds = input.paths
+    .filter((path) => path.sourceRefs.every((sourceRef) => sourceRef.evidenceItemIds.length === 0))
+    .map((path) => path.id);
+
+  return {
+    checked: true,
+    minCandidateQualityScore: MIN_FINAL_CANDIDATE_QUALITY_SCORE,
+    minEvidenceConfidence: MIN_FINAL_EVIDENCE_CONFIDENCE,
+    minPersonaEvidenceConfidence: MIN_PERSONA_EVIDENCE_CONFIDENCE,
+    lowQualityCandidateIds,
+    lowConfidenceEvidenceIds,
+    personaWithoutExperienceEvidenceIds,
+    pathWithoutEvidenceIds
+  };
+}
+
+function hasExperienceEvidence(
+  sourceRefs: ProductionSourceRef[],
+  evidenceMap: Record<string, ProductionEvidenceItem>
+): boolean {
+  return sourceRefs
+    .flatMap((sourceRef) => sourceRef.evidenceItemIds)
+    .some((evidenceId) => {
+      const item = evidenceMap[evidenceId];
+      return Boolean(
+        item?.isExperienceEvidence && item.confidence >= MIN_PERSONA_EVIDENCE_CONFIDENCE
+      );
+    });
+}
+
+function isCandidateAllowedInFinal(candidate: CandidateItem | undefined): boolean {
+  return Boolean(
+    candidate &&
+      candidate.selectedForEvidence &&
+      candidate.qualityScore >= MIN_FINAL_CANDIDATE_QUALITY_SCORE
+  );
 }
 
 function stableId(prefix: string, value: string): string {
@@ -524,7 +684,13 @@ function isProductionSource(value: unknown): value is ProductionFinalResultSourc
     typeof value.author === "string" &&
     typeof value.url === "string" &&
     typeof value.excerpt === "string" &&
-    typeof value.score === "number"
+    typeof value.score === "number" &&
+    typeof value.relevanceScore === "number" &&
+    typeof value.experienceScore === "number" &&
+    typeof value.qualityScore === "number" &&
+    isStringArray(value.qualitySignals) &&
+    typeof value.selectedForEvidence === "boolean" &&
+    (value.rejectReason === null || typeof value.rejectReason === "string")
   );
 }
 
@@ -540,8 +706,25 @@ function isProductionEvidenceItem(value: unknown): value is ProductionEvidenceIt
     typeof value.author === "string" &&
     typeof value.sourceUrl === "string" &&
     typeof value.evidenceText === "string" &&
+    typeof value.excerpt === "string" &&
     typeof value.reason === "string" &&
+    typeof value.normalizedClaim === "string" &&
+    isEvidenceSupportType(value.supportType) &&
+    typeof value.isExperienceEvidence === "boolean" &&
     typeof value.confidence === "number"
+  );
+}
+
+function isEvidenceSupportType(value: unknown): value is EvidenceSupportType {
+  return (
+    value === "experience_fact" ||
+    value === "decision_point" ||
+    value === "constraint" ||
+    value === "emotion_change" ||
+    value === "outcome" ||
+    value === "tradeoff" ||
+    value === "opinion" ||
+    value === "context"
   );
 }
 

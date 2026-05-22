@@ -1,5 +1,23 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 2 quality grounding
+
+本轮目标：只执行 Phase 2 的质量和证据增强；不做缓存限流、观测后台、信息补充卡、前端 UI，也不新增数据库表。
+
+已完成：
+
+- `normalize_candidates` 为 candidate 增加 `relevanceScore / experienceScore / qualityScore / qualitySignals / selectedForEvidence / rejectReason`，低质量、营销导流、过短或无法绑定来源的候选不会进入 evidence 抽取。
+- `evidence_extract_llm` 只处理 `selectedForEvidence=true` 的候选，并为每条 evidence 补齐稳定 `id`、`sourceCandidateId`、`supportType`、`isExperienceEvidence`、`excerpt`、`normalizedClaim` 和 confidence。
+- `grounding_guard_llm` 增加 deterministic quality report，记录低质量 candidate、低置信 evidence、缺少真实经历 evidence 的 persona。
+- `production_final_result` validator 增加硬规则：sourceRefs/evidence 归属必须一致，candidate 质量必须达标，persona 必须有真实经历 evidence；证据不足时移除 path/persona 并标记 degraded。
+- `smoke-agent-production.mjs` 扩展质量校验：检查 candidate 分数、evidence 字段、persona 真实经历证据、deterministic quality report 和 bad refs。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- 在 Postgres、Redis、backend、agent-worker、frontend 都运行时执行 `FRONTEND_PORT=3001 npm run smoke`
+
 ## 2026-05-22 - Agent production Phase 1 minimal loop
 
 本轮目标：按 `codex-agent-production-phase1.md` 只执行 Phase 1，将持久化 Agent demo 链路补成生产链路最小闭环；不做 Phase 2-5，不新增 WebSocket/SSE、管理后台、长期用户画像或多平台内容源。

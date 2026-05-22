@@ -83,6 +83,12 @@ export interface CandidateItem {
   url: string;
   score: number;
   provider: string;
+  relevanceScore: number;
+  experienceScore: number;
+  qualityScore: number;
+  qualitySignals: string[];
+  rejectReason?: string | null;
+  selectedForEvidence: boolean;
 }
 
 export interface CandidatesArtifactData {
@@ -94,22 +100,51 @@ export interface CandidatesArtifactData {
   filters?: {
     acceptedTypes: string[];
     minScoreExclusive: number;
+    minSelectedQualityScore?: number;
+  };
+  qualityReport?: {
+    selectedForEvidenceCount: number;
+    rejectedCount: number;
+    minSelectedQualityScore: number;
+    lowQualityCandidateIds: string[];
   };
   strategy: "rule_based";
 }
 
+export type EvidenceSupportType =
+  | "experience_fact"
+  | "decision_point"
+  | "constraint"
+  | "emotion_change"
+  | "outcome"
+  | "tradeoff"
+  | "opinion"
+  | "context";
+
 export interface EvidenceItem {
+  id: string;
   candidateId: string;
+  sourceCandidateId: string;
   title: string;
   author: string;
   sourceUrl: string;
   evidenceText: string;
+  excerpt: string;
   reason: string;
+  normalizedClaim: string;
+  supportType: EvidenceSupportType;
+  isExperienceEvidence: boolean;
   confidence: number;
 }
 
 export interface EvidenceArtifactData {
   evidenceItems: EvidenceItem[];
+  qualityReport?: {
+    totalEvidenceCount: number;
+    experienceEvidenceCount: number;
+    lowConfidenceEvidenceIds: string[];
+    invalidCandidateEvidenceCount: number;
+  };
   strategy: "llm_extracted" | "rule_fallback";
   llmUsed: boolean;
   fallbackReason?: string;
@@ -146,6 +181,12 @@ export interface GroundingGuardReport {
   removedItems: string[];
   warnings: string[];
   evidenceCoverage: number | null;
+  deterministicQualityReport?: {
+    checked: boolean;
+    lowQualityCandidateIds: string[];
+    lowConfidenceEvidenceIds: string[];
+    personaWithoutExperienceEvidenceIds: string[];
+  };
 }
 
 export interface GuardedFinalResultArtifactData {

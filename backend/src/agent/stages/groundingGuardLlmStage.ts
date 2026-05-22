@@ -18,6 +18,8 @@ const MAX_LLM_CANDIDATES = 8;
 const MAX_LLM_EVIDENCE_ITEMS = 12;
 const MAX_EXCERPT_LENGTH = 280;
 const MAX_EVIDENCE_TEXT_LENGTH = 240;
+const MIN_FINAL_CANDIDATE_QUALITY_SCORE = 0.45;
+const MIN_FINAL_EVIDENCE_CONFIDENCE = 0.35;
 
 interface EvidenceInputItem extends EvidenceItem {
   id: string;
@@ -71,7 +73,7 @@ export async function runGroundingGuardLlmStage(
 
   return {
     artifactType: AGENT_ARTIFACT_GUARDED_FINAL_RESULT,
-    data: result.data,
+    data: applyDeterministicQualityReport(result.data, limitedCandidates, limitedEvidence),
     status: result.status === "success" ? "succeeded" : "fallback",
     fallbackUsed: result.fallbackUsed,
     fallbackReason: result.fallbackReason || null
@@ -109,6 +111,9 @@ function buildGroundingGuardMessages(
         constraints: [
           "result.schemaVersion 必须保持 agent.final_result.v1",
           "如果 paths/people 引用不存在的 evidenceIds 或 candidateIds，应删除引用或降级该条目，并写入 guard.warnings",
+          "qualityScore 低于阈值的 candidate 不能作为最终 paths/people 的支撑",
+          "persona 必须至少有一条 isExperienceEvidence=true 的 evidence",
+          "低 confidence evidence 不能支撑强结论",
           "不要新增输入之外的 evidenceIds 或 candidateIds",
           "不要生成新事实、作者身份推断、联系方式、私信建议或 AI 分身",
           "guard.status 只能是 passed、repaired 或 partial"
@@ -121,16 +126,25 @@ function buildGroundingGuardMessages(
           author: truncateText(candidate.author, 80),
           excerpt: truncateText(candidate.excerpt, MAX_EXCERPT_LENGTH),
           url: candidate.url,
-          score: candidate.score
+          score: candidate.score,
+          relevanceScore: candidate.relevanceScore,
+          experienceScore: candidate.experienceScore,
+          qualityScore: candidate.qualityScore,
+          selectedForEvidence: candidate.selectedForEvidence,
+          qualitySignals: candidate.qualitySignals
         })),
         evidenceItems: evidenceItems.map((item) => ({
           id: item.id,
           candidateId: item.candidateId,
+          sourceCandidateId: item.sourceCandidateId,
           title: truncateText(item.title, 120),
           author: truncateText(item.author, 80),
           sourceUrl: item.sourceUrl,
           evidenceText: truncateText(item.evidenceText, MAX_EVIDENCE_TEXT_LENGTH),
           reason: truncateText(item.reason, 160),
+          normalizedClaim: item.normalizedClaim,
+          supportType: item.supportType,
+          isExperienceEvidence: item.isExperienceEvidence,
           confidence: item.confidence
         }))
       })
@@ -162,33 +176,172 @@ function buildGuardedFinalResultFallback(
   };
 }
 
+function applyDeterministicQualityReport(
+  data: GuardedFinalResultArtifactData,
+  candidates: CandidateItem[],
+  evidenceItems: EvidenceInputItem[]
+): GuardedFinalResultArtifactData {
+  const repair = repairFinalResultWithDeterministicRules(data.result, candidates, evidenceItems);
+  const deterministicWarnings = buildRuleWarnings(repair.result, candidates, evidenceItems);
+  const qualityReport = buildDeterministicQualityReport(repair.result, candidates, evidenceItems);
+  const warnings = uniqueNonEmpty([
+    ...data.guard.warnings,
+    ...repair.warnings,
+    ...deterministicWarnings
+  ]);
+  const removedItems = uniqueNonEmpty([...data.guard.removedItems, ...repair.removedItems]);
+  const status =
+    warnings.length === 0 && removedItems.length === 0
+      ? data.guard.status
+      : data.guard.status === "passed"
+        ? "repaired"
+        : data.guard.status;
+
+  return {
+    ...data,
+    result: repair.result,
+    guard: {
+      ...data.guard,
+      status,
+      removedItems,
+      warnings,
+      deterministicQualityReport: qualityReport
+    }
+  };
+}
+
+function repairFinalResultWithDeterministicRules(
+  finalResult: FinalResultArtifactData,
+  candidates: CandidateItem[],
+  evidenceItems: EvidenceInputItem[]
+): {
+  result: FinalResultArtifactData;
+  removedItems: string[];
+  warnings: string[];
+} {
+  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const evidenceById = new Map(evidenceItems.map((item) => [item.id, item]));
+  const removedItems: string[] = [];
+  const warnings: string[] = [];
+  const paths = finalResult.paths.flatMap((path, index) => {
+    const validEvidenceIds = path.evidenceIds.filter((id) => !isLowConfidenceEvidence(evidenceById.get(id)));
+    const validCandidateIds = uniqueNonEmpty([
+      ...path.candidateIds.filter((id) => !isLowQualityCandidate(candidateById.get(id))),
+      ...validEvidenceIds
+        .map((id) => evidenceById.get(id)?.candidateId ?? "")
+        .filter((id) => !isLowQualityCandidate(candidateById.get(id)))
+    ]);
+
+    if (validEvidenceIds.length === 0 || validCandidateIds.length === 0) {
+      removedItems.push(`paths[${index}]`);
+      warnings.push(`paths[${index}] removed by deterministic quality rules`);
+      return [];
+    }
+
+    if (
+      validEvidenceIds.length !== path.evidenceIds.length ||
+      validCandidateIds.length !== path.candidateIds.length
+    ) {
+      warnings.push(`paths[${index}] repaired by deterministic quality rules`);
+    }
+
+    return [
+      {
+        ...path,
+        evidenceIds: validEvidenceIds,
+        candidateIds: validCandidateIds
+      }
+    ];
+  });
+  const people = finalResult.people.flatMap((person, index) => {
+    const candidate = candidateById.get(person.candidateId);
+    const validExperienceEvidenceIds = person.evidenceIds.filter((id) => {
+      const evidence = evidenceById.get(id);
+      return (
+        evidence?.candidateId === person.candidateId &&
+        !isLowConfidenceEvidence(evidence) &&
+        evidence.isExperienceEvidence
+      );
+    });
+
+    if (isLowQualityCandidate(candidate) || validExperienceEvidenceIds.length === 0) {
+      removedItems.push(`people[${index}]`);
+      warnings.push(`people[${index}] removed by deterministic quality rules`);
+      return [];
+    }
+
+    if (validExperienceEvidenceIds.length !== person.evidenceIds.length) {
+      warnings.push(`people[${index}] repaired by deterministic quality rules`);
+    }
+
+    return [
+      {
+        ...person,
+        evidenceIds: validExperienceEvidenceIds
+      }
+    ];
+  });
+
+  return {
+    result: {
+      ...finalResult,
+      paths,
+      people
+    },
+    removedItems,
+    warnings
+  };
+}
+
 function buildRuleWarnings(
   finalResult: FinalResultArtifactData,
   candidates: CandidateItem[],
   evidenceItems: EvidenceInputItem[]
 ): string[] {
   const warnings: string[] = [];
-  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
-  const evidenceIds = new Set(evidenceItems.map((item) => item.id));
+  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const evidenceById = new Map(evidenceItems.map((item) => [item.id, item]));
 
   finalResult.paths.forEach((path, index) => {
-    const missingEvidence = path.evidenceIds.filter((id) => !evidenceIds.has(id));
-    const missingCandidates = path.candidateIds.filter((id) => !candidateIds.has(id));
+    const missingEvidence = path.evidenceIds.filter((id) => !evidenceById.has(id));
+    const missingCandidates = path.candidateIds.filter((id) => !candidateById.has(id));
+    const lowQualityCandidates = path.candidateIds.filter((id) => isLowQualityCandidate(candidateById.get(id)));
+    const lowConfidenceEvidence = path.evidenceIds.filter((id) => isLowConfidenceEvidence(evidenceById.get(id)));
     if (missingEvidence.length > 0) {
       warnings.push(`paths[${index}].evidenceIds missing: ${missingEvidence.join(", ")}`);
     }
     if (missingCandidates.length > 0) {
       warnings.push(`paths[${index}].candidateIds missing: ${missingCandidates.join(", ")}`);
     }
+    if (lowQualityCandidates.length > 0) {
+      warnings.push(`paths[${index}].candidateIds low quality: ${lowQualityCandidates.join(", ")}`);
+    }
+    if (lowConfidenceEvidence.length > 0) {
+      warnings.push(`paths[${index}].evidenceIds low confidence: ${lowConfidenceEvidence.join(", ")}`);
+    }
   });
 
   finalResult.people.forEach((person, index) => {
-    if (person.candidateId && !candidateIds.has(person.candidateId)) {
+    const personEvidence = person.evidenceIds
+      .map((id) => evidenceById.get(id))
+      .filter((item): item is EvidenceInputItem => Boolean(item));
+
+    if (person.candidateId && !candidateById.has(person.candidateId)) {
       warnings.push(`people[${index}].candidateId missing: ${person.candidateId}`);
     }
-    const missingEvidence = person.evidenceIds.filter((id) => !evidenceIds.has(id));
+    if (isLowQualityCandidate(candidateById.get(person.candidateId))) {
+      warnings.push(`people[${index}].candidateId low quality: ${person.candidateId}`);
+    }
+    const missingEvidence = person.evidenceIds.filter((id) => !evidenceById.has(id));
+    const lowConfidenceEvidence = person.evidenceIds.filter((id) => isLowConfidenceEvidence(evidenceById.get(id)));
     if (missingEvidence.length > 0) {
       warnings.push(`people[${index}].evidenceIds missing: ${missingEvidence.join(", ")}`);
+    }
+    if (lowConfidenceEvidence.length > 0) {
+      warnings.push(`people[${index}].evidenceIds low confidence: ${lowConfidenceEvidence.join(", ")}`);
+    }
+    if (!personEvidence.some((item) => item.isExperienceEvidence)) {
+      warnings.push(`people[${index}] has no experience evidence`);
     }
   });
 
@@ -202,10 +355,48 @@ function buildRuleWarnings(
   return warnings;
 }
 
+function buildDeterministicQualityReport(
+  finalResult: FinalResultArtifactData,
+  candidates: CandidateItem[],
+  evidenceItems: EvidenceInputItem[]
+): NonNullable<GroundingGuardReport["deterministicQualityReport"]> {
+  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const evidenceById = new Map(evidenceItems.map((item) => [item.id, item]));
+  const referencedCandidateIds = uniqueNonEmpty([
+    ...finalResult.paths.flatMap((path) => path.candidateIds),
+    ...finalResult.people.map((person) => person.candidateId)
+  ]);
+  const referencedEvidenceIds = uniqueNonEmpty([
+    ...finalResult.paths.flatMap((path) => path.evidenceIds),
+    ...finalResult.people.flatMap((person) => person.evidenceIds)
+  ]);
+  const lowQualityCandidateIds = referencedCandidateIds.filter((id) =>
+    isLowQualityCandidate(candidateById.get(id))
+  );
+  const lowConfidenceEvidenceIds = referencedEvidenceIds.filter((id) =>
+    isLowConfidenceEvidence(evidenceById.get(id))
+  );
+  const personaWithoutExperienceEvidenceIds = finalResult.people
+    .filter((person) => {
+      const personEvidence = person.evidenceIds
+        .map((id) => evidenceById.get(id))
+        .filter((item): item is EvidenceInputItem => Boolean(item));
+      return !personEvidence.some((item) => item.isExperienceEvidence);
+    })
+    .map((person, index) => person.candidateId || `people[${index}]`);
+
+  return {
+    checked: true,
+    lowQualityCandidateIds,
+    lowConfidenceEvidenceIds,
+    personaWithoutExperienceEvidenceIds
+  };
+}
+
 function toEvidenceInputItem(item: EvidenceItem, index: number): EvidenceInputItem {
   return {
     ...item,
-    id: `evidence_${hashSafeId(item.candidateId || item.sourceUrl || item.title)}_${index + 1}`,
+    id: item.id || `evidence_${hashSafeId(item.candidateId || item.sourceUrl || item.title)}_${index + 1}`,
     evidenceText: truncateText(item.evidenceText, MAX_EVIDENCE_TEXT_LENGTH),
     reason: truncateText(item.reason, 160)
   };
@@ -219,7 +410,11 @@ function toGatewayCandidateMetadata(candidate: CandidateItem): Record<string, un
     author: candidate.author,
     excerpt: truncateText(candidate.excerpt, MAX_EXCERPT_LENGTH),
     url: candidate.url,
-    score: candidate.score
+    score: candidate.score,
+    relevanceScore: candidate.relevanceScore,
+    experienceScore: candidate.experienceScore,
+    qualityScore: candidate.qualityScore,
+    selectedForEvidence: candidate.selectedForEvidence
   };
 }
 
@@ -227,10 +422,13 @@ function toGatewayEvidenceMetadata(item: EvidenceInputItem): Record<string, unkn
   return {
     id: item.id,
     candidateId: item.candidateId,
+    sourceCandidateId: item.sourceCandidateId,
     title: item.title,
     author: item.author,
     sourceUrl: item.sourceUrl,
     evidenceText: truncateText(item.evidenceText, MAX_EVIDENCE_TEXT_LENGTH),
+    supportType: item.supportType,
+    isExperienceEvidence: item.isExperienceEvidence,
     confidence: item.confidence
   };
 }
@@ -266,7 +464,22 @@ function isGroundingGuardReport(value: unknown): value is GroundingGuardReport {
       (typeof value.evidenceCoverage === "number" &&
         Number.isFinite(value.evidenceCoverage) &&
         value.evidenceCoverage >= 0 &&
-        value.evidenceCoverage <= 1))
+        value.evidenceCoverage <= 1)) &&
+    (value.deterministicQualityReport === undefined ||
+      isDeterministicQualityReport(value.deterministicQualityReport))
+  );
+}
+
+function isDeterministicQualityReport(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.checked === "boolean" &&
+    isStringArray(value.lowQualityCandidateIds) &&
+    isStringArray(value.lowConfidenceEvidenceIds) &&
+    isStringArray(value.personaWithoutExperienceEvidenceIds)
   );
 }
 
@@ -323,6 +536,33 @@ function isStringArray(value: unknown): value is string[] {
 function hashSafeId(value: string): string {
   const normalized = value.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   return normalized.slice(0, 48) || "item";
+}
+
+function isLowQualityCandidate(candidate: CandidateItem | undefined): boolean {
+  return (
+    !candidate ||
+    !candidate.selectedForEvidence ||
+    candidate.qualityScore < MIN_FINAL_CANDIDATE_QUALITY_SCORE
+  );
+}
+
+function isLowConfidenceEvidence(item: EvidenceInputItem | undefined): boolean {
+  return !item || item.confidence < MIN_FINAL_EVIDENCE_CONFIDENCE;
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+
+  return result;
 }
 
 function truncateText(value: string, maxLength: number): string {
