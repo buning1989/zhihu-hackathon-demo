@@ -77,6 +77,17 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
     throw new Error(`Agent task not found: ${taskId}`);
   }
 
+  if (task.status === "need_input") {
+    await agentRepository.createEvent({
+      taskId,
+      type: "task.worker_skipped",
+      payload: {
+        reason: "task_waiting_for_clarification_input"
+      }
+    });
+    return;
+  }
+
   const startedAt = new Date().toISOString();
   await updateTaskStatusWithMetadata(taskId, {
     status: "running",

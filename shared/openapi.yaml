@@ -696,6 +696,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/refine:
+    post:
+      tags:
+        - Agent
+      summary: Refine a persistent Agent task that needs input
+      description: >
+        Phase 5 minimal clarify loop. Creates a new persistent Agent task from
+        a parent task in need_input state by merging the original query,
+        structured clarification answers, and an optional refineQuery. The
+        parent task is not overwritten. The new task runs the normal Agent
+        workflow, and its cache key includes the refined context.
+      operationId: refinePersistentAgentTask
+      x-implementation-status: implemented-phase5-minimal
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersistentAgentTaskRefineRequest"
+            examples:
+              default:
+                value:
+                  answers:
+                    currentSituation: 工作痛苦
+                    riskTolerance: 不想失去稳定收入
+                  refineQuery: 我更关心不辞职怎么调整
+      responses:
+        "200":
+          description: Refined Agent task created and queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistentAgentTaskCreateResponse"
+        "400":
+          description: Missing or invalid refine request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "404":
+          description: Parent task was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Parent task is not waiting for clarification input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/agent/tasks/{taskId}/result:
     get:
       tags:
@@ -1303,6 +1360,25 @@ components:
           type: object
           additionalProperties: true
           default: {}
+    PersistentAgentTaskRefineRequest:
+      type: object
+      properties:
+        answers:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+          default: {}
+        refineQuery:
+          type: string
+          description: Optional extra intent text from the user.
+        metadata:
+          type: object
+          additionalProperties: true
+          default: {}
     PersistentAgentTaskCreateResponse:
       type: object
       required:
@@ -1328,6 +1404,7 @@ components:
               enum:
                 - queued
                 - running
+                - need_input
                 - succeeded
             frontendStatus:
               type: string
@@ -1340,6 +1417,7 @@ components:
               type: string
               enum:
                 - enqueued
+                - need_input
                 - reused_running
                 - reused_succeeded
             eventsUrl:
@@ -1354,6 +1432,12 @@ components:
               enum:
                 - running_task
                 - recent_succeeded_task
+            needInput:
+              oneOf:
+                - type: "null"
+                - $ref: "#/components/schemas/PersistentAgentNeedInput"
+            refinedFromTaskId:
+              type: string
     PersistentAgentTaskListResponse:
       type: object
       required:
@@ -1419,6 +1503,67 @@ components:
               const: succeeded
             final_result:
               $ref: "#/components/schemas/ProductionAgentFinalResult"
+    PersistentAgentNeedInput:
+      type: object
+      required:
+        - reason
+        - questions
+      properties:
+        reason:
+          type: string
+        questions:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/PersistentAgentNeedInputQuestion"
+        optionalFreeText:
+          $ref: "#/components/schemas/PersistentAgentNeedInputFreeText"
+    PersistentAgentNeedInputQuestion:
+      type: object
+      required:
+        - key
+        - label
+        - type
+        - options
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+          enum:
+            - single_select
+        options:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+        optional:
+          type: boolean
+        allowFreeText:
+          type: boolean
+    PersistentAgentNeedInputFreeText:
+      type: object
+      required:
+        - key
+        - label
+        - optional
+        - maxLength
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        placeholder:
+          type: string
+        optional:
+          type: boolean
+          const: true
+        maxLength:
+          type: integer
+          minimum: 1
+          maximum: 500
     PersistentAgentTaskStatusData:
       type: object
       required:
@@ -1462,9 +1607,9 @@ components:
         resultAvailable:
           type: boolean
         needInput:
-          type:
-            - object
-            - "null"
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/PersistentAgentNeedInput"
         stages:
           type: array
           items:

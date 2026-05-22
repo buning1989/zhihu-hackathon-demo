@@ -11,6 +11,10 @@ import {
   type ProductionFinalResultData
 } from "./agentProductionResult.js";
 import {
+  isAgentNeedInputPayload,
+  type AgentNeedInputPayload
+} from "./agentClarification.js";
+import {
   AGENT_ARTIFACT_CANDIDATES,
   AGENT_ARTIFACT_EVIDENCE,
   AGENT_ARTIFACT_FINAL_RESULT,
@@ -53,15 +57,17 @@ const STAGE_LABELS: Record<string, string> = {
 
 export interface PersistentAgentTaskStartData {
   taskId: string;
-  status: "queued" | "running" | "succeeded";
+  status: "queued" | "running" | "need_input" | "succeeded";
   frontendStatus: string;
   pollAfterMs: number;
   resultUrl: string;
-  queueStatus: "enqueued" | "reused_running" | "reused_succeeded";
+  queueStatus: "enqueued" | "need_input" | "reused_running" | "reused_succeeded";
   eventsUrl: string;
+  needInput?: AgentNeedInputPayload | null;
   cacheHit?: boolean;
   reused?: boolean;
   reusedReason?: "running_task" | "recent_succeeded_task";
+  refinedFromTaskId?: string;
 }
 
 export interface PersistentAgentTaskStatusData {
@@ -81,7 +87,7 @@ export interface PersistentAgentTaskStatusData {
   pollAfterMs: number;
   partialAvailable: boolean;
   resultAvailable: boolean;
-  needInput: null;
+  needInput: AgentNeedInputPayload | null;
   stages: Array<{
     name: string;
     stageOrder: number;
@@ -124,13 +130,17 @@ export function buildPersistentAgentTaskStartData(
     taskId: task.id,
     status: options.status ?? "queued",
     frontendStatus: readString(task.metadata.frontendStatus) || "正在理解你的问题",
-    pollAfterMs: options.status === "succeeded" ? 0 : POLL_AFTER_MS,
+    pollAfterMs: options.status === "succeeded" || options.status === "need_input" ? 0 : POLL_AFTER_MS,
     resultUrl: `/api/agent/tasks/${encodeURIComponent(task.id)}/result`,
     queueStatus: options.queueStatus ?? "enqueued",
     eventsUrl: `/api/agent/tasks/${encodeURIComponent(task.id)}/events`,
+    ...(readNeedInput(task.metadata) ? { needInput: readNeedInput(task.metadata) } : {}),
     ...(options.cacheHit !== undefined ? { cacheHit: options.cacheHit } : {}),
     ...(options.reused !== undefined ? { reused: options.reused } : {}),
-    ...(options.reusedReason ? { reusedReason: options.reusedReason } : {})
+    ...(options.reusedReason ? { reusedReason: options.reusedReason } : {}),
+    ...(readString(task.metadata.refinedFromTaskId)
+      ? { refinedFromTaskId: readString(task.metadata.refinedFromTaskId) }
+      : {})
   };
 }
 
@@ -162,10 +172,10 @@ export function buildPersistentAgentTaskStatusData(
     status,
     frontendStatus: readString(snapshot.task.metadata.frontendStatus) || getFrontendStatus(snapshot.task, status),
     progressPercent: normalizeProgress(snapshot.task.progress),
-    pollAfterMs: isTerminalTaskStatus(status) ? 0 : POLL_AFTER_MS,
+    pollAfterMs: isTerminalTaskStatus(status) || status === "need_input" ? 0 : POLL_AFTER_MS,
     partialAvailable,
     resultAvailable,
-    needInput: null,
+    needInput: readNeedInput(snapshot.task.metadata),
     stages,
     degraded,
     degradedReason,
@@ -294,6 +304,10 @@ function getFrontendStatus(
 
   if (status === "queued") {
     return "正在理解你的问题";
+  }
+
+  if (status === "need_input") {
+    return "需要你补充一点信息";
   }
 
   if (status === "partial_ready") {
@@ -445,6 +459,10 @@ function readNullableString(value: unknown): string | null {
 
 function readBoolean(value: unknown): boolean {
   return typeof value === "boolean" ? value : false;
+}
+
+function readNeedInput(metadata: Record<string, unknown>): AgentNeedInputPayload | null {
+  return isAgentNeedInputPayload(metadata.needInput) ? metadata.needInput : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

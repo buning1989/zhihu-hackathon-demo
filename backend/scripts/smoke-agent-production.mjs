@@ -48,6 +48,7 @@ try {
   }
 
   await assertSucceededTaskReuse(queries[0], startedByQuery.get(queries[0]));
+  await assertClarifyRefineFlow();
   await assertRunningTaskReuseAndRateLimit();
   console.log("agent production smoke ok");
 } catch (error) {
@@ -71,6 +72,7 @@ async function createTask(query, options = {}) {
       metadata: {
         source: "agent_production_smoke",
         createdBy: "backend/scripts/smoke-agent-production.mjs",
+        ...(options.metadata ?? {}),
         ...(options.anonymousId ? { anonymousId: options.anonymousId } : {})
       }
     })
@@ -95,12 +97,92 @@ async function createTask(query, options = {}) {
   }
 
   assert(typeof body.data?.taskId === "string" && body.data.taskId, `${query}: taskId missing`);
-  assert(["queued", "running", "succeeded"].includes(body.data.status), `${query}: create status invalid`);
+  const allowedStatuses = options.expectNeedInput
+    ? ["need_input"]
+    : ["queued", "running", "succeeded"];
+  assert(allowedStatuses.includes(body.data.status), `${query}: create status invalid`);
   assert(typeof body.data.frontendStatus === "string" && body.data.frontendStatus, `${query}: frontendStatus missing`);
   assert(Number.isFinite(body.data.pollAfterMs), `${query}: pollAfterMs missing`);
   assert(typeof body.data.resultUrl === "string" && body.data.resultUrl, `${query}: resultUrl missing`);
 
   return body.data;
+}
+
+async function refineTask(taskId, body) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/refine`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  const responseBody = await readJsonResponse(response);
+  if (!response.ok || !responseBody?.success) {
+    throw new Error(`POST /api/agent/tasks/${taskId}/refine failed: ${response.status} ${JSON.stringify(responseBody)}`);
+  }
+
+  assert(typeof responseBody.data?.taskId === "string" && responseBody.data.taskId, "refine: taskId missing");
+  assert(responseBody.data.taskId !== taskId, "refine: reused original taskId");
+  assert(["queued", "running", "succeeded"].includes(responseBody.data.status), "refine: status invalid");
+  assert(responseBody.data.refinedFromTaskId === taskId, "refine: refinedFromTaskId missing");
+  return responseBody.data;
+}
+
+async function assertClarifyRefineFlow() {
+  const suffix = Date.now().toString(36);
+  const anonymousId = `agent_phase5_clarify_${suffix}`;
+  const vagueQuery = "我要不要离职？";
+  const needInputStarted = await createTask(vagueQuery, {
+    anonymousId,
+    expectNeedInput: true,
+    metadata: {
+      phase: "phase5_clarify"
+    }
+  });
+
+  assert(needInputStarted.queueStatus === "need_input", "clarify: queueStatus should be need_input");
+  assert(isNeedInputPayload(needInputStarted.needInput), "clarify: create response needInput missing");
+  assertNeedInputPayload(needInputStarted.needInput, "clarify create");
+
+  const needInputStatus = await getTaskStatus(needInputStarted.taskId);
+  assert(needInputStatus.status === "need_input", "clarify: status endpoint did not return need_input");
+  assert(needInputStatus.pollAfterMs === 0, "clarify: need_input should not ask polling");
+  assertNeedInputPayload(needInputStatus.needInput, "clarify status");
+
+  const needInputDebug = await readTaskDebug(needInputStarted.taskId);
+  const originalCacheKey = needInputDebug.cache?.queryCacheKey;
+  assert(typeof originalCacheKey === "string" && originalCacheKey, "clarify: original cache key missing");
+
+  const sensitiveFreeText = "我不想在 debug 里暴露这段补充文本";
+  const refined = await refineTask(needInputStarted.taskId, {
+    answers: {
+      currentSituation: "工作痛苦",
+      timeline: "1 个月内",
+      riskTolerance: "不能失去稳定收入",
+      additionalContext: sensitiveFreeText
+    },
+    refineQuery: "我更关心不辞职怎么调整",
+    metadata: {
+      anonymousId,
+      source: "agent_production_smoke",
+      phase: "phase5_refine"
+    }
+  });
+  const refinedStatus = await waitForTerminalStatus(refined.taskId, "phase5 refined task");
+  assert(refinedStatus.status === "succeeded", "refine: refined task did not succeed");
+  assert(refinedStatus.resultAvailable === true, "refine: resultAvailable was not true");
+  const result = await readTaskResult(refined.resultUrl || `/api/agent/tasks/${encodeURIComponent(refined.taskId)}/result`);
+  assertProductionFinalResult(result.final_result, "phase5 refined task");
+
+  const refinedDebug = await readTaskDebug(refined.taskId);
+  const refinedCacheKey = refinedDebug.cache?.queryCacheKey;
+  assert(typeof refinedCacheKey === "string" && refinedCacheKey, "refine: refined cache key missing");
+  assert(refinedCacheKey !== originalCacheKey, "refine: cache key should include refined context");
+  assert(
+    !JSON.stringify(refinedDebug).includes(sensitiveFreeText),
+    "refine: debug leaked optional freeText"
+  );
+  console.log(`agent production clarify/refine smoke ok: parent=${needInputStarted.taskId} refined=${refined.taskId}`);
 }
 
 async function assertSucceededTaskReuse(query, originalTask) {
@@ -227,7 +309,8 @@ async function assertTaskDebug(taskId, label) {
   assert(Number.isFinite(debug.totalDurationMs), `${label}: debug totalDurationMs missing`);
 
   const metadataText = JSON.stringify(debug.task.metadata ?? {});
-  assert(!/anonymousId|actorHash|authorization|cookie|secret|token/i.test(metadataText), `${label}: debug leaked sensitive metadata`);
+  assert(!hasSensitiveMetadataKey(debug.task.metadata ?? {}), `${label}: debug leaked sensitive metadata key`);
+  assert(!/agent_production_smoke_[0-9]+/i.test(metadataText), `${label}: debug leaked raw anonymousId`);
 }
 
 function assertProductionFinalResult(finalResult, label) {
@@ -343,6 +426,45 @@ function assertDeterministicQualityReport(groundingReport, label) {
     qualityReport.personaWithoutExperienceEvidenceIds.length === 0,
     `${label}: final result contains persona without experience evidence`
   );
+}
+
+function assertNeedInputPayload(needInput, label) {
+  assert(isNeedInputPayload(needInput), `${label}: needInput missing`);
+  assert(typeof needInput.reason === "string" && needInput.reason, `${label}: needInput reason missing`);
+  assert(needInput.questions.length > 0 && needInput.questions.length <= 3, `${label}: question count invalid`);
+  for (const [index, question] of needInput.questions.entries()) {
+    assert(typeof question.key === "string" && question.key, `${label}: question[${index}].key missing`);
+    assert(typeof question.label === "string" && question.label, `${label}: question[${index}].label missing`);
+    assert(question.type === "single_select", `${label}: question[${index}].type invalid`);
+    assert(Array.isArray(question.options), `${label}: question[${index}].options missing`);
+    assert(question.options.length > 0 && question.options.length <= 5, `${label}: question[${index}].options count invalid`);
+  }
+}
+
+function isNeedInputPayload(value) {
+  return isRecord(value) && typeof value.reason === "string" && Array.isArray(value.questions);
+}
+
+function hasSensitiveMetadataKey(value) {
+  if (Array.isArray(value)) {
+    return value.some(hasSensitiveMetadataKey);
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.entries(value).some(([key, nestedValue]) => {
+    if (/anonymousId|actorHash|authorization|cookie|token/i.test(key)) {
+      return true;
+    }
+
+    if (/secret/i.test(key) && key !== "degradedReason") {
+      return true;
+    }
+
+    return hasSensitiveMetadataKey(nestedValue);
+  });
 }
 
 function assert(condition, message) {

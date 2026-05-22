@@ -23,7 +23,7 @@
 
 已有代码保留说明：
 
-- `backend/src/` 下已有 Express 后端代码，当前接口包括 `/health`、`/api/health`、`/api/demo/search`、`/api/agent/tasks`、`/api/agent/tasks/:taskId/view`、`/api/zhihu/search`、`/api/search` 和 `/auth/*`。
+- `backend/src/` 下已有 Express 后端代码，当前接口包括 `/health`、`/api/health`、`/api/demo/search`、`/api/agent/tasks`、`/api/agent/tasks/:taskId/refine`、`/api/agent/tasks/:taskId/view`、`/api/zhihu/search`、`/api/search` 和 `/auth/*`。
 - `backend/dist/`、`backend/node_modules/`、`__pycache__/` 等是本地生成内容，已经由 `.gitignore` 忽略，不应提交。
 - 早期 `docs/` 中有 FastAPI 方向设计，当前实际代码是 Node.js 后端。后续如需迁移，应先以 `shared/openapi.yaml` 为契约补齐兼容接口，再分 PR 替换实现。
 
@@ -134,6 +134,7 @@ npm run smoke
 - `POST /api/agent/tasks` 可创建持久化 Agent task，5 个固定问题能轮询到 `succeeded`，并通过 `/api/agent/tasks/:taskId/result` 读取带 `sourceRefs` 的 `final_result`。
 - Agent production smoke 还会校验候选质量分、evidence 质量字段、persona 真实经历证据、deterministic quality report 和 bad refs。
 - Agent production smoke 还会校验相同 query 的 succeeded/running task 复用、`cacheHit/reused` 标识和 active task 限流返回 `RATE_LIMITED`。
+- Agent production smoke 还会校验模糊问题进入 `need_input`、`POST /api/agent/tasks/:taskId/refine` 创建新 task、refined task 成功以及 refined cache key 不复用原始模糊 query。
 
 如果 smoke 在 Agent 检查处返回 `AGENT_DATABASE_UNCONFIGURED` 或 `AGENT_QUEUE_UNCONFIGURED`，表示当前后端没有读取到 `DATABASE_URL` 或 `REDIS_URL`；请先启动 compose 环境，或按上面的本机变量补齐后重新启动 backend 和 worker。
 

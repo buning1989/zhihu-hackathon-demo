@@ -1,5 +1,24 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 5 minimal clarify loop
+
+本轮目标：只做 Phase 5 第一轮 clarify/refine 后端闭环；不做前端 UI、完整多轮 Agent 或长期用户画像。
+
+已完成：
+
+- `POST /api/agent/tasks` 在高模糊问题上进入 `need_input`，返回最多 3 个结构化 single-select clarification questions 和 optional freeText 入口；清晰问题继续直接入队执行。
+- clarify 判断只覆盖高模糊短问法，例如“我要不要离职？”“要不要分手？”“要不要回老家？”“要不要考研？”“我现在很迷茫怎么办？”，避免误拦截已带场景的问题。
+- 新增 `POST /api/agent/tasks/:taskId/refine`：不覆盖旧 task，创建新的 refined task，记录 `refinedFromTaskId`，合并原问题、结构化答案和 `refineQuery` 后重新走完整 Agent 链路。
+- refined task 的 cache identity 纳入 refined metadata/answer hash，避免复用原始模糊 query 的结果；optional freeText 只保存 hash/length，不在 debug 中暴露明文。
+- production smoke 增加 clear query 直跑、vague query `need_input`、refine 后成功、refined cache key 不同和 freeText debug 脱敏校验。
+
+验证建议：
+
+- `git diff --check`
+- `npm run build -w backend`
+- `FRONTEND_PORT=3001 npm run smoke`
+- `EVAL_AGENT_PRODUCTION_FRESH=true AGENT_LLM_ENABLED=true AGENT_LLM_TEST_MODE=real npm run eval:agent-production -w backend`
+
 ## 2026-05-22 - Agent production Phase 4.2 grounding repair convergence
 
 本轮目标：只修 Phase 4.2 的 `grounding_guard_repaired` 原因收敛；不进入 Phase 5，不做前端 UI、信息补充卡或后台。

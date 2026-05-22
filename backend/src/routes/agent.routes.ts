@@ -20,6 +20,11 @@ import type { PersistentAgentTask } from "../agent/agentModels.js";
 import { buildPersistentAgentTaskDebugData } from "../agent/agentTaskDebug.js";
 import { completeTask, createTask, failTask, getTask } from "../agent/agentTaskStore.js";
 import { buildPersistentAgentTaskView } from "../agent/agentTaskView.js";
+import {
+  buildAgentRefineContext,
+  detectAgentNeedInput,
+  isAgentNeedInputPayload
+} from "../agent/agentClarification.js";
 import { config } from "../config/env.js";
 import type {
   AgentSearchTaskStartApiResponse,
@@ -52,6 +57,69 @@ agentRoutes.post("/tasks", async (req, res, next) => {
     });
     const queryCacheKey = buildAgentCacheKey(cacheIdentity);
     await assertAgentDatabaseReady();
+
+    const needInput = detectAgentNeedInput({
+      query: request.query,
+      metadata: storedMetadata
+    });
+    if (needInput) {
+      await assertAgentRateLimit(actor);
+      const snapshot = await agentRepository.createTaskWithCreatedEvent({
+        query: request.query,
+        userId: userContext.userId ?? null,
+        metadata: {
+          ...storedMetadata,
+          originalQuery: request.query,
+          normalizedQuery,
+          queryHash: hashQuery(normalizedQuery),
+          queryCacheKey,
+          cacheIdentity,
+          metadataHash: cacheIdentity.metadataHash,
+          actorHash: actor.actorHash,
+          actorType: actor.actorType,
+          costBudget: getAgentCostBudget(),
+          frontendStatus: "需要你补充一点信息",
+          progressPercent: 0,
+          partialAvailable: false,
+          resultAvailable: false,
+          degraded: false,
+          degradedReason: null,
+          clarifyNeeded: true,
+          needInput,
+          createdAt
+        }
+      });
+      const needInputTask = await agentRepository.updateTaskStatus(snapshot.task.id, {
+        status: "need_input",
+        currentStage: "clarify_need_input",
+        progress: 0,
+        metadata: {
+          ...snapshot.task.metadata,
+          frontendStatus: "需要你补充一点信息",
+          progressPercent: 0,
+          needInput
+        }
+      });
+      await agentRepository.createEvent({
+        taskId: snapshot.task.id,
+        type: "task.need_input",
+        payload: {
+          reason: needInput.reason,
+          questionKeys: needInput.questions.map((question) => question.key)
+        }
+      });
+
+      res.json({
+        success: true,
+        data: buildPersistentAgentTaskStartData(needInputTask ?? snapshot.task, {
+          status: "need_input",
+          queueStatus: "need_input",
+          cacheHit: false,
+          reused: false
+        })
+      });
+      return;
+    }
 
     const runningReusableTask = await agentRepository.findReusableTaskByCacheKey({
       queryCacheKey,
@@ -158,6 +226,152 @@ agentRoutes.post("/tasks", async (req, res, next) => {
       payload: {
         jobId: enqueueResult.jobId,
         queueName: enqueueResult.queueName
+      }
+    });
+
+    res.json({
+      success: true,
+      data: buildPersistentAgentTaskStartData(queuedTask ?? snapshot.task, {
+        cacheHit: false,
+        reused: false
+      })
+    });
+  } catch (error) {
+    next(toPersistentAgentTaskHttpError(error));
+  }
+});
+
+agentRoutes.post("/tasks/:taskId/refine", async (req, res, next) => {
+  try {
+    const parentTaskId = req.params.taskId.trim();
+    const request = parseRefinePersistentAgentTaskRequest(req.body);
+    const userContext = getCurrentUserContext(req);
+    const createdAt = new Date().toISOString();
+    await assertAgentDatabaseReady();
+
+    const parentSnapshot = await agentRepository.getTaskSnapshot(parentTaskId);
+    if (!parentSnapshot) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    const parentNeedInput = isAgentNeedInputPayload(parentSnapshot.task.metadata.needInput)
+      ? parentSnapshot.task.metadata.needInput
+      : null;
+    if (parentSnapshot.task.status !== "need_input" && !parentNeedInput) {
+      throw new HttpError(
+        409,
+        "AGENT_TASK_NOT_WAITING_FOR_INPUT",
+        "Agent task is not waiting for clarification input"
+      );
+    }
+
+    const originalContext = readString(parentSnapshot.task.metadata.originalContext);
+    const refineContext = buildAgentRefineContext({
+      originalQuery: originalContext
+        ? `${parentSnapshot.task.query}\n原上下文：${originalContext}`
+        : parentSnapshot.task.query,
+      needInput: parentNeedInput,
+      answers: request.answers,
+      refineQuery: request.refineQuery
+    });
+    const storedMetadata = sanitizeMetadataForStorage({
+      ...request.metadata,
+      refinedFromTaskId: parentSnapshot.task.id,
+      clarifyRefined: true,
+      originalQueryHash: hashQuery(parentSnapshot.task.query),
+      refineAnswerHash: refineContext.answerHash,
+      refineAnswerSummary: refineContext.answerSummary,
+      refineAnswers: refineContext.sanitizedAnswers,
+      ...(refineContext.refineQueryHash ? { refineQueryHash: refineContext.refineQueryHash } : {})
+    });
+    const normalizedQuery = normalizeQuery(refineContext.refinedQuery);
+    const anonymousId = readString(request.metadata.anonymousId) || req.ip || "anonymous";
+    const actor = buildActorIdentity({
+      userId: userContext.userId,
+      anonymousId
+    });
+    const cacheIdentity = buildAgentCacheIdentity({
+      normalizedQuery,
+      metadata: storedMetadata,
+      userId: userContext.userId
+    });
+    const queryCacheKey = buildAgentCacheKey(cacheIdentity);
+
+    await assertAgentRateLimit(actor);
+    await assertAgentTaskQueueReady();
+    const snapshot = await agentRepository.createTaskWithCreatedEvent({
+      query: refineContext.refinedQuery,
+      userId: userContext.userId ?? null,
+      metadata: {
+        ...storedMetadata,
+        originalQuery: parentSnapshot.task.query,
+        normalizedQuery,
+        queryHash: hashQuery(normalizedQuery),
+        queryCacheKey,
+        cacheIdentity,
+        metadataHash: cacheIdentity.metadataHash,
+        actorHash: actor.actorHash,
+        actorType: actor.actorType,
+        costBudget: getAgentCostBudget(),
+        frontendStatus: "任务已创建",
+        progressPercent: 0,
+        partialAvailable: false,
+        resultAvailable: false,
+        degraded: false,
+        degradedReason: null,
+        createdAt
+      }
+    });
+    const queuedAt = new Date().toISOString();
+    const queuedTask = await agentRepository.updateTaskStatus(snapshot.task.id, {
+      status: "queued",
+      currentStage: "understand_goal_rule",
+      progress: 5,
+      metadata: {
+        ...snapshot.task.metadata,
+        frontendStatus: "正在理解你的问题",
+        progressPercent: 5,
+        queuedAt
+      }
+    });
+    let enqueueResult: Awaited<ReturnType<typeof enqueueAgentTask>>;
+    try {
+      enqueueResult = await enqueueAgentTask(snapshot.task.id);
+    } catch (error) {
+      const failedAt = new Date().toISOString();
+      const message = toErrorMessage(error);
+      await agentRepository.updateTaskStatus(snapshot.task.id, {
+        status: "failed",
+        currentStage: "enqueue_agent_task",
+        progress: 5,
+        completedAt: failedAt,
+        error: message,
+        metadata: {
+          ...(queuedTask ?? snapshot.task).metadata,
+          frontendStatus: "任务失败",
+          errorCode: "AGENT_QUEUE_ENQUEUE_FAILED",
+          errorMessage: message,
+          resultAvailable: false,
+          finishedAt: failedAt
+        }
+      });
+      throw error;
+    }
+    await agentRepository.createEvent({
+      taskId: snapshot.task.id,
+      type: "task.enqueued",
+      payload: {
+        jobId: enqueueResult.jobId,
+        queueName: enqueueResult.queueName,
+        refinedFromTaskId: parentSnapshot.task.id
+      }
+    });
+    await agentRepository.createEvent({
+      taskId: parentSnapshot.task.id,
+      type: "task.refined",
+      payload: {
+        refinedTaskId: snapshot.task.id,
+        answerHash: refineContext.answerHash
       }
     });
 
@@ -355,6 +569,38 @@ function parseCreatePersistentAgentTaskRequest(body: unknown): {
 
   return {
     query,
+    metadata: record.metadata ?? {}
+  };
+}
+
+function parseRefinePersistentAgentTaskRequest(body: unknown): {
+  answers: Record<string, unknown>;
+  refineQuery: string;
+  metadata: Record<string, unknown>;
+} {
+  const record = isRecord(body) ? body : {};
+
+  if (record.answers !== undefined && !isRecord(record.answers)) {
+    throw new HttpError(400, "REFINE_ANSWERS_INVALID", "answers must be an object");
+  }
+
+  if (record.metadata !== undefined && !isRecord(record.metadata)) {
+    throw new HttpError(400, "METADATA_INVALID", "metadata must be an object");
+  }
+
+  const answers = record.answers ?? {};
+  const refineQuery = readString(record.refineQuery).trim();
+  if (Object.keys(answers).length === 0 && !refineQuery) {
+    throw new HttpError(
+      400,
+      "REFINE_INPUT_REQUIRED",
+      "Provide at least one clarification answer or refineQuery"
+    );
+  }
+
+  return {
+    answers,
+    refineQuery,
     metadata: record.metadata ?? {}
   };
 }
