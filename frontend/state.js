@@ -34,6 +34,7 @@
       personId: null
     },
     bookItems: clone(data.starterBook),
+    recentlyViewed: [],
     interactions: clone(data.starterInteractions),
     notes: {},
     chatThreads: {},
@@ -115,6 +116,20 @@
         createdAt: "刚刚",
         ...interaction
       });
+      draft.interactions = draft.interactions.slice(0, 10);
+      return draft;
+    });
+  }
+
+  function addRecentView(personId) {
+    update((draft) => {
+      draft.recentlyViewed = [
+        {
+          personId,
+          viewedAt: "刚刚"
+        },
+        ...draft.recentlyViewed.filter((item) => item.personId !== personId)
+      ].slice(0, 10);
       return draft;
     });
   }
@@ -161,6 +176,7 @@
     isInBook,
     addToBook,
     addInteraction,
+    addRecentView,
     ensureChatThread
   };
 

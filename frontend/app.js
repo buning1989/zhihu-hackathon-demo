@@ -221,6 +221,7 @@
   }
 
   function openReading(personId) {
+    App.store.addRecentView(personId);
     App.store.update((draft) => {
       draft.page = "reading";
       draft.selectedPersonId = personId;
@@ -273,6 +274,7 @@
         reply: `经验回声：${reply.text}`,
         createdAt: "刚刚"
       });
+      draft.interactions = draft.interactions.slice(0, 10);
       return draft;
     });
   }

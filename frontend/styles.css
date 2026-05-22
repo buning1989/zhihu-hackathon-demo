@@ -517,7 +517,7 @@ img {
 .left-rail,
 .right-rail {
   position: sticky;
-  top: 96px;
+  top: 77px;
   align-self: start;
 }
 
@@ -576,10 +576,10 @@ img {
 
 .feed-summary {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
-  min-height: 44px;
+  min-height: 32px;
   color: var(--text-muted);
   font-size: 13px;
 }
@@ -588,19 +588,7 @@ img {
   margin: 0;
 }
 
-.feed-summary-copy {
-  min-width: 0;
-}
-
-.feed-summary-title {
-  color: var(--text-primary);
-  font-size: 16px;
-  line-height: 1.4;
-  font-weight: 600;
-}
-
 .feed-summary-text {
-  margin-top: 2px;
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.55;
@@ -608,7 +596,6 @@ img {
 
 .feed-summary .status-clarify {
   flex: 0 0 auto;
-  margin-bottom: 1px;
 }
 
 .card,
@@ -960,12 +947,12 @@ img {
   line-height: 1.6;
 }
 
-.connected-list {
+.activity-list {
   display: grid;
   gap: 0;
 }
 
-.connected-item {
+.activity-item {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
@@ -974,13 +961,13 @@ img {
   padding: 10px 0;
 }
 
-.connected-name {
+.activity-name {
   color: var(--text-primary);
   font-weight: 500;
   font-size: 13px;
 }
 
-.connected-snippet {
+.activity-snippet {
   color: var(--text-muted);
   margin: 2px 0 4px;
   display: -webkit-box;
@@ -989,9 +976,14 @@ img {
   -webkit-box-orient: vertical;
 }
 
-.connected-meta {
-  color: var(--text-muted);
-  font-size: 11px;
+.rail-empty {
+  border-color: #f1f2f5;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.rail-more {
+  margin-top: 8px;
+  font-size: 12px;
 }
 
 .right-rail .btn-text {
