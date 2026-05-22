@@ -615,6 +615,12 @@
       draft.search.error = "";
       draft.search.clarifyOpen = false;
       draft.activePathId = "all";
+      draft.selectedPersonId = null;
+      draft.expandedPersonId = null;
+      draft.expandedExperiencePersonId = null;
+      draft.expandedOriginalPersonId = null;
+      draft.inlineChatPersonId = null;
+      draft.inlineMessagePersonId = null;
       draft.transitionPhase = "feedEntering";
       return draft;
     });
@@ -694,6 +700,12 @@
       draft.activePathId = "all";
       draft.modal = { type: null, pathId: null, personId: null };
       draft.result = null;
+      draft.selectedPersonId = null;
+      draft.expandedPersonId = null;
+      draft.expandedExperiencePersonId = null;
+      draft.expandedOriginalPersonId = null;
+      draft.inlineChatPersonId = null;
+      draft.inlineMessagePersonId = null;
       draft.search = {
         status: "preparing",
         message: "",
@@ -1008,6 +1020,12 @@
       draft.search.error = "";
       draft.search.clarifyOpen = false;
       draft.activePathId = "all";
+      draft.selectedPersonId = null;
+      draft.expandedPersonId = null;
+      draft.expandedExperiencePersonId = null;
+      draft.expandedOriginalPersonId = null;
+      draft.inlineChatPersonId = null;
+      draft.inlineMessagePersonId = null;
       draft.transitionPhase = "feedEntering";
       return draft;
     });
@@ -1169,6 +1187,12 @@
         recentlyViewed: false,
         interactions: false
       };
+      draft.selectedPersonId = null;
+      draft.expandedPersonId = null;
+      draft.expandedExperiencePersonId = null;
+      draft.expandedOriginalPersonId = null;
+      draft.inlineChatPersonId = null;
+      draft.inlineMessagePersonId = null;
       draft.modal = { type: null, pathId: null, personId: null };
       return draft;
     });
@@ -1181,10 +1205,62 @@
     });
   }
 
+  function clearInlinePanels(draft) {
+    draft.expandedPersonId = null;
+    draft.expandedExperiencePersonId = null;
+    draft.expandedOriginalPersonId = null;
+    draft.inlineChatPersonId = null;
+    draft.inlineMessagePersonId = null;
+  }
+
+  function ensurePersonVisible(draft, person) {
+    if (draft.activePathId !== "all" && draft.activePathId !== person.pathId) {
+      draft.activePathId = person.pathId || "all";
+    }
+  }
+
+  function addRecentViewToDraft(draft, personId) {
+    draft.recentlyViewed = [
+      {
+        personId,
+        viewedAt: "刚刚"
+      },
+      ...(draft.recentlyViewed || []).filter((item) => item.personId !== personId)
+    ].slice(0, 10);
+  }
+
+  function canChatWithPerson(person) {
+    return Boolean(
+      person?.displayCanChat
+      || person?.aiPersona?.canChat
+      || (person?.aiPersona?.enabled && person?.aiPersona?.personaId)
+    );
+  }
+
+  function initialChatMessage(person) {
+    return {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      text: `我只能沿着${person.name}留下的这段公开经历说说看。你可以问这段路是怎么开始、怎么收尾，或中间最难的地方。`
+    };
+  }
+
+  function markInlineChatOpened(draft, personId) {
+    draft.interactions.unshift({
+      id: `interaction-${Date.now()}`,
+      type: "chat",
+      personId,
+      content: "你打开了这段经验回声",
+      reply: "经验回声：可以继续问这个选择背后的细节。",
+      createdAt: "刚刚"
+    });
+    draft.interactions = draft.interactions.slice(0, 10);
+  }
+
   function setPath(pathId) {
     App.store.update((draft) => {
       draft.activePathId = pathId;
-      draft.expandedPersonId = null;
+      clearInlinePanels(draft);
       return draft;
     });
   }
@@ -1203,7 +1279,8 @@
 
   function toggleExperience(personId) {
     App.store.update((draft) => {
-      draft.expandedPersonId = draft.expandedPersonId === personId ? null : personId;
+      draft.expandedPersonId = null;
+      draft.expandedExperiencePersonId = draft.expandedExperiencePersonId === personId ? null : personId;
       return draft;
     });
   }
@@ -1233,17 +1310,95 @@
     });
   }
 
-  function openChat(personId) {
+  function toggleOriginal(personId) {
     const person = App.store.findPerson(personId);
-    if (!person?.displayCanChat) {
+    if (!person) {
       return;
     }
 
-    App.store.ensureChatThread(personId);
     App.store.update((draft) => {
-      draft.modal = { type: "chat", pathId: null, personId };
+      draft.page = "feed";
+      draft.selectedPersonId = personId;
+      draft.modal = { type: null, pathId: null, personId: null };
+      ensurePersonVisible(draft, person);
+
+      if (draft.expandedOriginalPersonId === personId) {
+        draft.expandedOriginalPersonId = null;
+        draft.inlineChatPersonId = null;
+        draft.inlineMessagePersonId = null;
+        return draft;
+      }
+
+      draft.expandedOriginalPersonId = personId;
+      draft.inlineChatPersonId = null;
+      draft.inlineMessagePersonId = null;
+      addRecentViewToDraft(draft, personId);
       return draft;
     });
+  }
+
+  function setInlineChat(personId, forceOpen = false) {
+    const person = App.store.findPerson(personId);
+    if (!canChatWithPerson(person)) {
+      return;
+    }
+
+    App.store.update((draft) => {
+      const isOpening = forceOpen || draft.inlineChatPersonId !== personId;
+      draft.page = "feed";
+      draft.selectedPersonId = personId;
+      draft.modal = { type: null, pathId: null, personId: null };
+      ensurePersonVisible(draft, person);
+      draft.expandedOriginalPersonId = personId;
+      draft.inlineMessagePersonId = null;
+
+      if (!isOpening) {
+        draft.inlineChatPersonId = null;
+        return draft;
+      }
+
+      if (!draft.chatThreads[personId]) {
+        draft.chatThreads[personId] = [initialChatMessage(person)];
+      }
+      draft.inlineChatPersonId = personId;
+      addRecentViewToDraft(draft, personId);
+      markInlineChatOpened(draft, personId);
+      return draft;
+    });
+  }
+
+  function toggleInlineChat(personId) {
+    setInlineChat(personId, false);
+  }
+
+  function openInlineChat(personId) {
+    setInlineChat(personId, true);
+  }
+
+  function toggleInlineMessage(personId) {
+    const person = App.store.findPerson(personId);
+    if (!person) {
+      return;
+    }
+
+    App.store.update((draft) => {
+      const isOpening = draft.inlineMessagePersonId !== personId;
+      draft.page = "feed";
+      draft.selectedPersonId = personId;
+      draft.modal = { type: null, pathId: null, personId: null };
+      ensurePersonVisible(draft, person);
+      draft.expandedOriginalPersonId = personId;
+      draft.inlineChatPersonId = null;
+      draft.inlineMessagePersonId = isOpening ? personId : null;
+      if (isOpening) {
+        addRecentViewToDraft(draft, personId);
+      }
+      return draft;
+    });
+  }
+
+  function openChat(personId) {
+    openInlineChat(personId);
   }
 
   function toggleRail(section) {
@@ -1395,6 +1550,7 @@
 
     if (formType === "note") {
       saveNote(form.dataset.personId, formData.get("note"));
+      form.reset();
     }
 
     if (formType === "capsule") {
@@ -1442,10 +1598,16 @@
       toggleExperience(target.dataset.personId);
     } else if (action === "open-people") {
       openPeople(target.dataset.pathId);
+    } else if (action === "toggle-original" || action === "open-original") {
+      toggleOriginal(target.dataset.personId);
     } else if (action === "open-reading") {
       openReading(target.dataset.personId);
+    } else if (action === "toggle-inline-chat") {
+      toggleInlineChat(target.dataset.personId);
+    } else if (action === "toggle-inline-message") {
+      toggleInlineMessage(target.dataset.personId);
     } else if (action === "open-chat" || action === "continue-interaction") {
-      openChat(target.dataset.personId);
+      openInlineChat(target.dataset.personId);
     } else if (action === "toggle-rail") {
       toggleRail(target.dataset.section);
     } else if (action === "add-book") {
@@ -1454,12 +1616,14 @@
       App.store.update((draft) => {
         draft.page = "book";
         draft.modal = { type: null, pathId: null, personId: null };
+        clearInlinePanels(draft);
         return draft;
       });
     } else if (action === "open-capsule") {
       App.store.update((draft) => {
         draft.page = "capsule";
         draft.modal = { type: null, pathId: null, personId: null };
+        clearInlinePanels(draft);
         draft.capsule.sealed = false;
         draft.capsule.typedText = "";
         draft.capsule.typingDone = false;

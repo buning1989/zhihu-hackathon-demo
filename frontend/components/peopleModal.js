@@ -16,7 +16,7 @@
         ? `<img src="${escapeAttribute(person.avatar)}" alt="" />`
         : `<span class="avatar-fallback" aria-hidden="true">${escapeHtml((person.name || "样").slice(0, 1))}</span>`;
       return `
-        <button class="drawer-person-item" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">
+        <button class="drawer-person-item" type="button" data-action="open-original" data-person-id="${escapeAttribute(person.id)}">
           <span class="avatar" aria-hidden="true">${avatar}</span>
           <span>
             <span class="name">${escapeHtml(person.name)}</span>

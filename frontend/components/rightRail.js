@@ -23,7 +23,7 @@
         <div class="activity-item">
           <div class="activity-name">${escapeHtml(person.name)}</div>
           <div class="activity-snippet">${escapeHtml(meta)}</div>
-          <button class="btn-text" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}继续看</button>
+          <button class="btn-text" type="button" data-action="open-original" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}继续看</button>
         </div>
       `;
     }).join("");

@@ -17,7 +17,6 @@
         <header class="path-head">
           <div>
             <h2 class="path-title">${escapeHtml(path.title)}</h2>
-            <div class="path-quote">${escapeHtml(path.representativeQuote || path.summary)}</div>
           </div>
           <button class="path-count-btn" type="button" data-action="open-people" data-path-id="${escapeAttribute(path.id)}">
             <span class="avatar-stack">${avatars}</span>
