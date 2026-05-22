@@ -22,11 +22,12 @@ export const AGENT_ARTIFACT_CANDIDATES = "candidates";
 export const AGENT_ARTIFACT_EVIDENCE = "evidence";
 export const AGENT_ARTIFACT_FINAL_RESULT = "final_result";
 export const AGENT_ARTIFACT_GUARDED_FINAL_RESULT = "guarded_final_result";
+export const AGENT_ARTIFACT_PRODUCTION_FINAL_RESULT = "production_final_result";
 
 export interface AgentStageOutput<TData> {
   artifactType: string;
   data: TData;
-  status?: "succeeded" | "fallback";
+  status?: "succeeded" | "fallback" | "degraded";
   fallbackUsed?: boolean;
   fallbackReason?: string | null;
 }

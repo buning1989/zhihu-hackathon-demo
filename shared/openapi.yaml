@@ -614,8 +614,8 @@ paths:
         - Agent
       summary: Create a persistent Agent task
       description: >
-        Persistent Agent Runtime. Creates a queued task in
-        Postgres, writes task.created, enqueues a BullMQ job, and writes
+        Persistent Agent Runtime. Creates a task in Postgres, writes
+        task.created, enqueues a BullMQ job, marks it queued, and writes
         task.enqueued. A separate worker consumes the job and runs the
         rule-based business stage workflow: understand_goal_rule,
         plan_search_llm, retrieve_sources, normalize_candidates, and
@@ -628,8 +628,10 @@ paths:
         artifact without failing the task. response_compose_llm produces a
         final_result artifact or rule fallback artifact without failing the
         task. grounding_guard_llm produces a guarded_final_result artifact or
-        rule fallback artifact without failing the task. It does not run
-        persona build, the demo search orchestrator, or stream events.
+        rule fallback artifact without failing the task. Before completion,
+        the worker writes a production_final_result artifact after deterministic
+        sourceRefs validation. It does not run persona build, the demo search
+        orchestrator, WebSocket/SSE, or stream events.
       operationId: createPersistentAgentTask
       x-implementation-status: implemented
       requestBody:
@@ -670,8 +672,9 @@ paths:
       description: >
         First checks the legacy in-memory Agent task store used by
         /api/agent/search. If no in-memory task exists, checks the Phase 1
-        persistent Postgres task store and returns task, stages, artifacts and
-        events.
+        persistent Postgres task store and returns product-facing task status,
+        stage progress, partial/result availability, degraded flags, and
+        structured error information.
       operationId: getDemoSearchAgentTask
       x-implementation-status: implemented
       parameters:
@@ -682,13 +685,56 @@ paths:
             type: string
       responses:
         "200":
-          description: Current in-memory Agent task or persistent Agent task snapshot.
+          description: Current in-memory Agent task or persistent Agent task status.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentTaskResponse"
         "404":
           description: Task does not exist or expired from the in-memory store and was not found in Postgres.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/result:
+    get:
+      tags:
+        - Agent
+      summary: Read a persistent Agent task final result
+      description: >
+        Phase 1 result endpoint. Returns 202 with task status and pollAfterMs
+        while the task is not succeeded. Once succeeded, returns final_result
+        with paths, personas, sources, evidenceMap, groundingReport, degraded
+        flags, and deterministic sourceRefs validation.
+      operationId: getPersistentAgentTaskResult
+      x-implementation-status: implemented-phase1
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Final result is available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistentAgentTaskResultResponse"
+        "202":
+          description: Task is not finished yet; poll again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistentAgentTaskStatusResponse"
+        "404":
+          description: Persistent task was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          description: Task succeeded but final_result was unavailable.
           content:
             application/json:
               schema:
@@ -1240,20 +1286,28 @@ components:
           required:
             - taskId
             - status
-            - queueStatus
-            - eventsUrl
+            - frontendStatus
+            - pollAfterMs
+            - resultUrl
           properties:
             taskId:
               type: string
             status:
               type: string
               const: queued
+            frontendStatus:
+              type: string
+            pollAfterMs:
+              type: integer
+              minimum: 0
+            resultUrl:
+              type: string
             queueStatus:
               type: string
               const: enqueued
             eventsUrl:
               type: string
-              description: Reserved for future SSE; endpoint is not implemented in Phase 8.
+              description: Reserved for future event APIs; no WebSocket/SSE is introduced in Phase 1.
     PersistentAgentTaskListResponse:
       type: object
       required:
@@ -1284,7 +1338,374 @@ components:
         data:
           oneOf:
             - $ref: "#/components/schemas/AgentTask"
-            - $ref: "#/components/schemas/PersistentAgentTaskSnapshot"
+            - $ref: "#/components/schemas/PersistentAgentTaskStatusData"
+    PersistentAgentTaskStatusResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PersistentAgentTaskStatusData"
+    PersistentAgentTaskResultResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required:
+            - taskId
+            - status
+            - final_result
+          properties:
+            taskId:
+              type: string
+            status:
+              type: string
+              const: succeeded
+            final_result:
+              $ref: "#/components/schemas/ProductionAgentFinalResult"
+    PersistentAgentTaskStatusData:
+      type: object
+      required:
+        - taskId
+        - status
+        - frontendStatus
+        - progressPercent
+        - pollAfterMs
+        - partialAvailable
+        - resultAvailable
+        - needInput
+        - stages
+        - degraded
+        - error
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+          enum:
+            - created
+            - queued
+            - running
+            - need_input
+            - partial_ready
+            - succeeded
+            - failed
+            - cancelled
+            - expired
+        frontendStatus:
+          type: string
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        pollAfterMs:
+          type: integer
+          minimum: 0
+        partialAvailable:
+          type: boolean
+        resultAvailable:
+          type: boolean
+        needInput:
+          type:
+            - object
+            - "null"
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersistentAgentTaskStatusStage"
+        degraded:
+          type: boolean
+        degradedReason:
+          type:
+            - string
+            - "null"
+        error:
+          oneOf:
+            - type: "null"
+            - type: object
+              required:
+                - errorCode
+                - errorMessage
+              properties:
+                errorCode:
+                  type: string
+                errorMessage:
+                  type: string
+    PersistentAgentTaskStatusStage:
+      type: object
+      required:
+        - name
+        - stageOrder
+        - status
+        - attempt
+        - maxAttempts
+        - outputRef
+      properties:
+        name:
+          type: string
+        stageOrder:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - waiting
+            - running
+            - succeeded
+            - failed_retryable
+            - failed_final
+            - skipped
+            - degraded
+        attempt:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          minimum: 1
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        latencyMs:
+          type:
+            - integer
+            - "null"
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        outputRef:
+          type:
+            - string
+            - "null"
+    ProductionAgentFinalResult:
+      type: object
+      required:
+        - schemaVersion
+        - taskId
+        - summary
+        - paths
+        - personas
+        - sources
+        - evidenceMap
+        - groundingReport
+        - degraded
+      properties:
+        schemaVersion:
+          type: string
+          const: agent.production_final_result.v1
+        taskId:
+          type: string
+        summary:
+          type: string
+        paths:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionAgentPath"
+        personas:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionAgentPersona"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionAgentSource"
+        evidenceMap:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ProductionAgentEvidenceItem"
+        groundingReport:
+          type: object
+          required:
+            - llmGuard
+            - deterministicValidator
+          properties:
+            llmGuard:
+              type: object
+              additionalProperties: true
+            deterministicValidator:
+              $ref: "#/components/schemas/ProductionAgentDeterministicValidator"
+        degraded:
+          type: boolean
+        degradedReason:
+          type:
+            - string
+            - "null"
+        suggestedQuestions:
+          type: array
+          items:
+            type: string
+        meta:
+          type: object
+          additionalProperties: true
+    ProductionAgentPath:
+      type: object
+      required:
+        - id
+        - title
+        - summary
+        - suitableContext
+        - tradeoffs
+        - sourceRefs
+        - confidence
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        suitableContext:
+          type: string
+        tradeoffs:
+          type: string
+        sourceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionAgentSourceRef"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+    ProductionAgentPersona:
+      type: object
+      required:
+        - id
+        - displayLabel
+        - summary
+        - chatEnabled
+        - sourceRefs
+        - confidence
+      properties:
+        id:
+          type: string
+        displayLabel:
+          type: string
+        summary:
+          type: string
+        chatEnabled:
+          type: boolean
+        sourceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionAgentSourceRef"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        boundary:
+          type: string
+    ProductionAgentSourceRef:
+      type: object
+      required:
+        - sourceCandidateId
+        - evidenceItemIds
+      properties:
+        sourceCandidateId:
+          type: string
+        evidenceItemIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    ProductionAgentSource:
+      type: object
+      required:
+        - id
+        - sourceCandidateId
+        - title
+        - author
+        - url
+      properties:
+        id:
+          type: string
+        sourceCandidateId:
+          type: string
+        rawSourceId:
+          type: string
+        provider:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        url:
+          type: string
+        excerpt:
+          type: string
+        score:
+          type: number
+    ProductionAgentEvidenceItem:
+      type: object
+      required:
+        - id
+        - sourceCandidateId
+        - evidenceText
+      properties:
+        id:
+          type: string
+        sourceCandidateId:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        sourceUrl:
+          type: string
+        evidenceText:
+          type: string
+        reason:
+          type: string
+        confidence:
+          type: number
+    ProductionAgentDeterministicValidator:
+      type: object
+      required:
+        - status
+        - removedPathIds
+        - removedPersonaIds
+        - warnings
+      properties:
+        status:
+          type: string
+          enum:
+            - passed
+            - repaired
+            - failed
+        removedPathIds:
+          type: array
+          items:
+            type: string
+        removedPersonaIds:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
     PersistentAgentTaskViewResponse:
       type: object
       required:
@@ -1311,12 +1732,17 @@ components:
         status:
           type: string
           enum:
+            - created
             - queued
             - running
+            - need_input
+            - partial_ready
+            - succeeded
             - waiting_retry
             - completed
             - failed
             - cancelled
+            - expired
         currentStage:
           type: string
         progress:
@@ -1438,12 +1864,17 @@ components:
         status:
           type: string
           enum:
+            - created
             - queued
             - running
+            - need_input
+            - partial_ready
+            - succeeded
             - waiting_retry
             - completed
             - failed
             - cancelled
+            - expired
         currentStage:
           type:
             - string
@@ -1505,12 +1936,16 @@ components:
         status:
           type: string
           enum:
+            - waiting
             - pending
             - running
             - retrying
             - succeeded
             - fallback
+            - degraded
             - failed
+            - failed_retryable
+            - failed_final
             - skipped
         attempt:
           type: integer
@@ -1584,6 +2019,7 @@ components:
             - $ref: "#/components/schemas/PersistentAgentEvidenceArtifact"
             - $ref: "#/components/schemas/PersistentAgentFinalResultArtifact"
             - $ref: "#/components/schemas/PersistentAgentGuardedFinalResultArtifact"
+            - $ref: "#/components/schemas/ProductionAgentFinalResult"
             - type: object
               additionalProperties: true
         createdAt:

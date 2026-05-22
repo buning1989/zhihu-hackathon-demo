@@ -1,4 +1,6 @@
 import { agentRepository } from "../agentRepository.js";
+import { buildProductionFinalResult } from "../agentProductionResult.js";
+import type { PersistentAgentTaskStatus } from "../agentModels.js";
 import type {
   PersistentAgentArtifact,
   PersistentAgentStageRun
@@ -22,6 +24,7 @@ import {
   AGENT_STAGE_GROUNDING_GUARD_LLM,
   AGENT_STAGE_NORMALIZE_CANDIDATES,
   AGENT_STAGE_PLAN_SEARCH_LLM,
+  AGENT_ARTIFACT_PRODUCTION_FINAL_RESULT,
   AGENT_STAGE_RESPONSE_COMPOSE_LLM,
   AGENT_STAGE_RETRIEVE_SOURCES,
   AGENT_STAGE_UNDERSTAND_GOAL_RULE
@@ -37,6 +40,8 @@ interface ExecuteAgentStageInput<TData> {
   inputArtifactIds?: string[];
   progressStarted: number;
   progressCompleted: number;
+  taskStatus?: Extract<PersistentAgentTaskStatus, "running" | "partial_ready">;
+  partialAvailableAfter?: boolean;
   run: () => Promise<AgentStageOutput<TData>> | AgentStageOutput<TData>;
 }
 
@@ -63,13 +68,21 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
   }
 
   const startedAt = new Date().toISOString();
-  await agentRepository.updateTaskStatus(taskId, {
+  await updateTaskStatusWithMetadata(taskId, {
     status: "running",
     currentStage: AGENT_STAGE_UNDERSTAND_GOAL_RULE,
     progress: 5,
     startedAt: task.startedAt ?? startedAt,
     completedAt: null,
     error: null
+  }, {
+    frontendStatus: getFrontendStatus(AGENT_STAGE_UNDERSTAND_GOAL_RULE),
+    progressPercent: 5,
+    partialAvailable: false,
+    resultAvailable: false,
+    degraded: false,
+    degradedReason: null,
+    startedAt
   });
   await agentRepository.createEvent({
     taskId,
@@ -105,6 +118,7 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       inputArtifactIds: [searchPlanStage.artifact.id],
       progressStarted: 38,
       progressCompleted: 52,
+      partialAvailableAfter: true,
       run: () => runRetrieveSourcesStage(searchPlan, intent)
     });
     const rawSources = rawSourcesStage.output.data;
@@ -115,6 +129,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       inputArtifactIds: [rawSourcesStage.artifact.id],
       progressStarted: 56,
       progressCompleted: 66,
+      taskStatus: "partial_ready",
+      partialAvailableAfter: true,
       run: () => runNormalizeCandidatesStage(rawSources)
     });
     const candidates = candidatesStage.output.data;
@@ -129,6 +145,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       ],
       progressStarted: 70,
       progressCompleted: 80,
+      taskStatus: "partial_ready",
+      partialAvailableAfter: true,
       run: () => runEvidenceExtractLlmStage(taskId, candidates, searchPlan, intent)
     });
     const evidence = evidenceStage.output.data;
@@ -144,6 +162,8 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       ],
       progressStarted: 84,
       progressCompleted: 91,
+      taskStatus: "partial_ready",
+      partialAvailableAfter: true,
       run: () => runResponseComposeLlmStage(taskId, intent, searchPlan, candidates, evidence)
     });
     const finalResult = finalResultStage.output.data;
@@ -158,24 +178,70 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       ],
       progressStarted: 94,
       progressCompleted: 98,
+      taskStatus: "partial_ready",
+      partialAvailableAfter: true,
       run: () => runGroundingGuardLlmStage(taskId, finalResult, candidates, evidence)
+    });
+    const guardedFinalResult = guardedFinalResultStage.output.data;
+    const productionFinalResult = buildProductionFinalResult({
+      taskId,
+      finalResult: guardedFinalResult.result,
+      candidates,
+      evidence,
+      guard: guardedFinalResult.guard,
+      degradedReasons: [
+        ...[
+          searchPlanStage,
+          rawSourcesStage,
+          evidenceStage,
+          finalResultStage,
+          guardedFinalResultStage
+        ]
+          .filter((stage) => stage.output.fallbackUsed || stage.output.status === "fallback" || stage.output.status === "degraded")
+          .map((stage) => `${stage.stage.stageName}: ${stage.output.fallbackReason ?? "degraded"}`)
+      ]
+    });
+    const productionArtifact = await agentRepository.createArtifact({
+      taskId,
+      type: AGENT_ARTIFACT_PRODUCTION_FINAL_RESULT,
+      data: productionFinalResult
+    });
+    await agentRepository.createEvent({
+      taskId,
+      type: "artifact.created",
+      payload: {
+        stageName: "final_result_validator",
+        artifactId: productionArtifact.id,
+        type: productionArtifact.type,
+        deterministicValidator:
+          productionFinalResult.groundingReport.deterministicValidator.status
+      }
     });
 
     const completedAt = new Date().toISOString();
-    await agentRepository.updateTaskStatus(taskId, {
-      status: "completed",
+    await updateTaskStatusWithMetadata(taskId, {
+      status: "succeeded",
       currentStage: "completed",
       progress: 100,
-      resultArtifactId: guardedFinalResultStage.artifact.id,
+      resultArtifactId: productionArtifact.id,
       completedAt,
       error: null
+    }, {
+      frontendStatus: "结果已准备好",
+      progressPercent: 100,
+      partialAvailable: true,
+      resultAvailable: true,
+      degraded: productionFinalResult.degraded,
+      degradedReason: productionFinalResult.degradedReason,
+      finishedAt: completedAt,
+      resultArtifactType: productionArtifact.type
     });
     await agentRepository.createEvent({
       taskId,
       type: "task.completed",
       payload: {
-        status: "completed",
-        resultArtifactId: guardedFinalResultStage.artifact.id
+        status: "succeeded",
+        resultArtifactId: productionArtifact.id
       }
     });
   } catch (error) {
@@ -184,11 +250,17 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
       error instanceof AgentStageExecutionError ? error.stageName : "agent_stage_workflow";
     const message = toErrorMessage(error);
 
-    await agentRepository.updateTaskStatus(taskId, {
+    await updateTaskStatusWithMetadata(taskId, {
       status: "failed",
       currentStage: stageName,
       completedAt: failedAt,
       error: message
+    }, {
+      frontendStatus: "任务失败",
+      errorCode: "AGENT_STAGE_FAILED",
+      errorMessage: message,
+      resultAvailable: false,
+      finishedAt: failedAt
     });
     await agentRepository.createEvent({
       taskId,
@@ -206,11 +278,14 @@ export async function runAgentTaskStageWorkflow(taskId: string): Promise<void> {
 async function executeAgentStage<TData>(
   input: ExecuteAgentStageInput<TData>
 ): Promise<ExecutedAgentStage<TData>> {
-  await agentRepository.updateTaskStatus(input.taskId, {
-    status: "running",
+  await updateTaskStatusWithMetadata(input.taskId, {
+    status: input.taskStatus ?? "running",
     currentStage: input.stageName,
     progress: input.progressStarted,
     error: null
+  }, {
+    frontendStatus: getFrontendStatus(input.stageName),
+    progressPercent: input.progressStarted
   });
 
   const stageStartedAt = new Date();
@@ -234,8 +309,10 @@ async function executeAgentStage<TData>(
 
   try {
     const output = await input.run();
-    const status = output.status ?? "succeeded";
-    const fallbackUsed = output.fallbackUsed ?? status === "fallback";
+    const outputStatus = output.status ?? "succeeded";
+    const status = outputStatus === "fallback" ? "degraded" : outputStatus;
+    const fallbackUsed =
+      output.fallbackUsed ?? (outputStatus === "fallback" || outputStatus === "degraded");
     const fallbackReason = output.fallbackReason ?? null;
     const artifact = await agentRepository.createArtifact({
       taskId: input.taskId,
@@ -266,7 +343,7 @@ async function executeAgentStage<TData>(
 
     await agentRepository.createEvent({
       taskId: input.taskId,
-      type: status === "fallback" ? "stage.fallback" : "stage.completed",
+      type: status === "degraded" ? "stage.degraded" : "stage.completed",
       payload: {
         stageRunId: stage.id,
         stageName: input.stageName,
@@ -277,11 +354,17 @@ async function executeAgentStage<TData>(
         durationMs
       }
     });
-    await agentRepository.updateTaskStatus(input.taskId, {
-      status: "running",
+    await updateTaskStatusWithMetadata(input.taskId, {
+      status: input.partialAvailableAfter ? "partial_ready" : input.taskStatus ?? "running",
       currentStage: input.stageName,
       progress: input.progressCompleted,
       error: null
+    }, {
+      frontendStatus: input.partialAvailableAfter
+        ? "已找到可展示线索，继续检查证据"
+        : getFrontendStatus(input.stageName),
+      progressPercent: input.progressCompleted,
+      ...(input.partialAvailableAfter ? { partialAvailable: true } : {})
     });
 
     return {
@@ -302,7 +385,7 @@ async function executeAgentStage<TData>(
     const message = toErrorMessage(error);
 
     await agentRepository.updateStageRun(stage.id, {
-      status: "failed",
+      status: "failed_final",
       error: message,
       endedAt: failedAt.toISOString(),
       durationMs: failedAt.getTime() - stageStartedAt.getTime()
@@ -319,6 +402,35 @@ async function executeAgentStage<TData>(
 
     throw new AgentStageExecutionError(input.stageName, error);
   }
+}
+
+async function updateTaskStatusWithMetadata(
+  taskId: string,
+  patch: Parameters<typeof agentRepository.updateTaskStatus>[1],
+  metadataPatch: Record<string, unknown>
+): Promise<void> {
+  const current = await agentRepository.getTask(taskId);
+  await agentRepository.updateTaskStatus(taskId, {
+    ...patch,
+    metadata: {
+      ...(current?.metadata ?? {}),
+      ...metadataPatch
+    }
+  });
+}
+
+function getFrontendStatus(stageName: string): string {
+  const labels: Record<string, string> = {
+    [AGENT_STAGE_UNDERSTAND_GOAL_RULE]: "正在理解你的问题",
+    [AGENT_STAGE_PLAN_SEARCH_LLM]: "正在规划检索方向",
+    [AGENT_STAGE_RETRIEVE_SOURCES]: "正在查找知乎公开内容",
+    [AGENT_STAGE_NORMALIZE_CANDIDATES]: "正在筛选高质量样本",
+    [AGENT_STAGE_EVIDENCE_EXTRACT_LLM]: "正在抽取证据片段",
+    [AGENT_STAGE_RESPONSE_COMPOSE_LLM]: "正在整理路径和样本",
+    [AGENT_STAGE_GROUNDING_GUARD_LLM]: "正在检查证据边界"
+  };
+
+  return labels[stageName] ?? "正在处理任务";
 }
 
 function toErrorMessage(error: unknown): string {

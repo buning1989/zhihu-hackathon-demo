@@ -46,7 +46,7 @@ export async function startAgentWorker(
 
 async function processAgentTaskJob(job: Job<AgentTaskJobData>): Promise<{
   taskId: string;
-  status: "completed";
+  status: "succeeded";
 }> {
   if (job.name !== AGENT_TASK_JOB_NAME) {
     throw new Error(`Unsupported agent job name: ${job.name}`);
@@ -57,7 +57,7 @@ async function processAgentTaskJob(job: Job<AgentTaskJobData>): Promise<{
 
   return {
     taskId,
-    status: "completed"
+    status: "succeeded"
   };
 }
 

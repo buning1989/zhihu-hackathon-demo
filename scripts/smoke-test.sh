@@ -30,19 +30,28 @@ if [ "$search_status" -lt 200 ] || [ "$search_status" -ge 600 ]; then
   exit 1
 fi
 
-if ! grep -q '"success"[[:space:]]*:[[:space:]]*false' "$search_body"; then
-  printf "Search response did not contain success=false JSON error.\n" >&2
-  cat "$search_body" >&2
-  exit 1
-fi
-
-if ! grep -q '"code"[[:space:]]*:[[:space:]]*"ZHIHU_AUTH_FAILED"' "$search_body"; then
-  printf "Search response did not contain ZHIHU_AUTH_FAILED.\n" >&2
+if grep -q '"success"[[:space:]]*:[[:space:]]*false' "$search_body"; then
+  if ! grep -q '"code"[[:space:]]*:[[:space:]]*"ZHIHU_AUTH_FAILED"' "$search_body"; then
+    printf "Search error response did not contain ZHIHU_AUTH_FAILED.\n" >&2
+    cat "$search_body" >&2
+    exit 1
+  fi
+elif grep -q '"success"[[:space:]]*:[[:space:]]*true' "$search_body"; then
+  if ! grep -q '"items"[[:space:]]*:' "$search_body"; then
+    printf "Search success response did not contain data.items array.\n" >&2
+    cat "$search_body" >&2
+    exit 1
+  fi
+else
+  printf "Search response was neither success=true nor expected success=false JSON.\n" >&2
   cat "$search_body" >&2
   exit 1
 fi
 
 printf "Checking frontend homepage: %s/\n" "$FRONTEND_URL"
 curl -fsS "$FRONTEND_URL/" >/dev/null
+
+printf "Checking Agent Phase 1 production task flow: %s/api/agent/tasks\n" "$BACKEND_URL"
+BACKEND_URL="$BACKEND_URL" node backend/scripts/smoke-agent-production.mjs
 
 printf "Smoke test passed.\n"

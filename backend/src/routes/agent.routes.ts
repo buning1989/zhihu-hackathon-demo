@@ -1,6 +1,13 @@
+import { createHash } from "node:crypto";
 import { Router } from "express";
 import { getCurrentUserContext, type UserContext } from "../auth/session.js";
 import { assertAgentTaskQueueReady, enqueueAgentTask } from "../agent/agentQueue.js";
+import {
+  buildPersistentAgentTaskPendingResultData,
+  buildPersistentAgentTaskStartData,
+  buildPersistentAgentTaskStatusData,
+  resolveProductionFinalResult
+} from "../agent/agentTaskApi.js";
 import { agentRepository } from "../agent/agentRepository.js";
 import { completeTask, createTask, failTask, getTask } from "../agent/agentTaskStore.js";
 import { buildPersistentAgentTaskView } from "../agent/agentTaskView.js";
@@ -19,10 +26,64 @@ export const agentRoutes = Router();
 agentRoutes.post("/tasks", async (req, res, next) => {
   try {
     const request = parseCreatePersistentAgentTaskRequest(req.body);
+    const userContext = getCurrentUserContext(req);
+    const createdAt = new Date().toISOString();
+    const normalizedQuery = normalizeQuery(request.query);
     await assertAgentDatabaseReady();
     await assertAgentTaskQueueReady();
-    const snapshot = await agentRepository.createTaskWithCreatedEvent(request);
-    const enqueueResult = await enqueueAgentTask(snapshot.task.id);
+    const snapshot = await agentRepository.createTaskWithCreatedEvent({
+      query: request.query,
+      userId: userContext.userId ?? null,
+      metadata: {
+        ...request.metadata,
+        anonymousId: readString(request.metadata.anonymousId) || req.ip || "anonymous",
+        originalQuery: request.query,
+        normalizedQuery,
+        queryHash: hashQuery(normalizedQuery),
+        frontendStatus: "任务已创建",
+        progressPercent: 0,
+        partialAvailable: false,
+        resultAvailable: false,
+        degraded: false,
+        degradedReason: null,
+        createdAt
+      }
+    });
+    const queuedAt = new Date().toISOString();
+    const queuedTask = await agentRepository.updateTaskStatus(snapshot.task.id, {
+      status: "queued",
+      currentStage: "understand_goal_rule",
+      progress: 5,
+      metadata: {
+        ...snapshot.task.metadata,
+        frontendStatus: "正在理解你的问题",
+        progressPercent: 5,
+        queuedAt
+      }
+    });
+    let enqueueResult: Awaited<ReturnType<typeof enqueueAgentTask>>;
+    try {
+      enqueueResult = await enqueueAgentTask(snapshot.task.id);
+    } catch (error) {
+      const failedAt = new Date().toISOString();
+      const message = toErrorMessage(error);
+      await agentRepository.updateTaskStatus(snapshot.task.id, {
+        status: "failed",
+        currentStage: "enqueue_agent_task",
+        progress: 5,
+        completedAt: failedAt,
+        error: message,
+        metadata: {
+          ...(queuedTask ?? snapshot.task).metadata,
+          frontendStatus: "任务失败",
+          errorCode: "AGENT_QUEUE_ENQUEUE_FAILED",
+          errorMessage: message,
+          resultAvailable: false,
+          finishedAt: failedAt
+        }
+      });
+      throw error;
+    }
     await agentRepository.createEvent({
       taskId: snapshot.task.id,
       type: "task.enqueued",
@@ -34,12 +95,7 @@ agentRoutes.post("/tasks", async (req, res, next) => {
 
     res.json({
       success: true,
-      data: {
-        taskId: snapshot.task.id,
-        status: snapshot.task.status,
-        queueStatus: "enqueued",
-        eventsUrl: `/api/agent/tasks/${encodeURIComponent(snapshot.task.id)}/events`
-      }
+      data: buildPersistentAgentTaskStartData(queuedTask ?? snapshot.task)
     });
   } catch (error) {
     next(toPersistentAgentTaskHttpError(error));
@@ -115,7 +171,51 @@ agentRoutes.get("/tasks/:taskId", async (req, res, next) => {
 
     res.json({
       success: true,
-      data: snapshot
+      data: buildPersistentAgentTaskStatusData(snapshot)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+agentRoutes.get("/tasks/:taskId/result", async (req, res, next) => {
+  try {
+    const taskId = req.params.taskId.trim();
+
+    if (!agentRepository.isConfigured()) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    const snapshot = await agentRepository.getTaskSnapshot(taskId);
+    if (!snapshot) {
+      throw new HttpError(404, "AGENT_TASK_NOT_FOUND", "Agent task not found");
+    }
+
+    const status = buildPersistentAgentTaskStatusData(snapshot);
+    if (!status.resultAvailable || status.status !== "succeeded") {
+      res.status(202).json({
+        success: true,
+        data: buildPersistentAgentTaskPendingResultData(snapshot)
+      });
+      return;
+    }
+
+    const finalResult = resolveProductionFinalResult(snapshot);
+    if (!finalResult) {
+      throw new HttpError(
+        500,
+        "AGENT_RESULT_MISSING",
+        "Agent task succeeded but final_result is unavailable"
+      );
+    }
+
+    res.json({
+      success: true,
+      data: {
+        taskId,
+        status: "succeeded",
+        final_result: finalResult
+      }
     });
   } catch (error) {
     next(error);
@@ -196,6 +296,18 @@ function readString(value: unknown): string {
   }
 
   return "";
+}
+
+function normalizeQuery(query: string): string {
+  return query.replace(/\s+/g, " ").trim();
+}
+
+function hashQuery(query: string): string {
+  return createHash("sha256").update(query).digest("hex");
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function readPositiveInteger(value: unknown, fallback: number): number {

@@ -54,6 +54,19 @@ python3 -m http.server 3000 --directory frontend
 docker compose -f infra/docker-compose.yml up
 ```
 
+Phase 1 Agent smoke 依赖完整持久化运行环境：Postgres、Redis、后端、`agent-worker` 和前端都必须运行。推荐先启动 Docker Desktop，再用上面的 compose 命令启动整套环境。若不使用 compose，而是本机分别启动服务，需要为后端和 worker 设置：
+
+```bash
+DATABASE_URL=postgres://zhihu:zhihu@localhost:5432/zhihu_hackathon
+REDIS_URL=redis://localhost:6379
+```
+
+并先执行数据库迁移：
+
+```bash
+npm run db:migrate -w backend
+```
+
 启动后默认地址：
 
 - 后端健康检查：`http://localhost:8000/health`
@@ -108,6 +121,9 @@ npm run smoke
 - `GET /api/health` 可访问。
 - `GET /api/search?query=不工作了能去哪儿&count=1` 在没有真实知乎密钥时返回明确 JSON 错误，服务不能崩溃。
 - 前端首页 `/` 可访问。
+- `POST /api/agent/tasks` 可创建持久化 Agent task，5 个固定问题能轮询到 `succeeded`，并通过 `/api/agent/tasks/:taskId/result` 读取带 `sourceRefs` 的 `final_result`。
+
+如果 smoke 在 Agent 检查处返回 `AGENT_DATABASE_UNCONFIGURED` 或 `AGENT_QUEUE_UNCONFIGURED`，表示当前后端没有读取到 `DATABASE_URL` 或 `REDIS_URL`；请先启动 compose 环境，或按上面的本机变量补齐后重新启动 backend 和 worker。
 
 也可以手动检查：
 

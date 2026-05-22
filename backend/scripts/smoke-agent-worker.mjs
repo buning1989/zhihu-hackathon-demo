@@ -39,7 +39,10 @@ try {
 
   const completedSnapshot = await waitForCompletedSnapshot(taskId, getSnapshot);
 
-  assert(completedSnapshot.task.status === "completed", "task did not complete");
+  assert(
+    completedSnapshot.task.status === "succeeded" || completedSnapshot.task.status === "completed",
+    "task did not complete"
+  );
   assert(
     completedSnapshot.stages.some(
       (stage) => stage.stageName === "understand_goal_rule" && stage.status === "succeeded"
@@ -50,7 +53,7 @@ try {
     completedSnapshot.stages.some(
       (stage) =>
         stage.stageName === "plan_search_llm" &&
-        (stage.status === "succeeded" || stage.status === "fallback")
+        (stage.status === "succeeded" || stage.status === "fallback" || stage.status === "degraded")
     ),
     "plan_search_llm stage did not succeed or fallback"
   );
@@ -58,7 +61,7 @@ try {
     completedSnapshot.stages.some(
       (stage) =>
         stage.stageName === "retrieve_sources" &&
-        (stage.status === "succeeded" || stage.status === "fallback")
+        (stage.status === "succeeded" || stage.status === "fallback" || stage.status === "degraded")
     ),
     "retrieve_sources stage did not succeed or fallback"
   );
@@ -72,7 +75,7 @@ try {
     completedSnapshot.stages.some(
       (stage) =>
         stage.stageName === "evidence_extract_llm" &&
-        (stage.status === "succeeded" || stage.status === "fallback")
+        (stage.status === "succeeded" || stage.status === "fallback" || stage.status === "degraded")
     ),
     "evidence_extract_llm stage did not succeed or fallback"
   );
@@ -80,7 +83,7 @@ try {
     completedSnapshot.stages.some(
       (stage) =>
         stage.stageName === "response_compose_llm" &&
-        (stage.status === "succeeded" || stage.status === "fallback")
+        (stage.status === "succeeded" || stage.status === "fallback" || stage.status === "degraded")
     ),
     "response_compose_llm stage did not succeed or fallback"
   );
@@ -88,7 +91,7 @@ try {
     completedSnapshot.stages.some(
       (stage) =>
         stage.stageName === "grounding_guard_llm" &&
-        (stage.status === "succeeded" || stage.status === "fallback")
+        (stage.status === "succeeded" || stage.status === "fallback" || stage.status === "degraded")
     ),
     "grounding_guard_llm stage did not succeed or fallback"
   );
@@ -142,9 +145,13 @@ try {
   );
   assert(guardedFinalResultArtifact.data?.result, "guarded_final_result result was missing");
   assert(guardedFinalResultArtifact.data?.guard, "guarded_final_result guard was missing");
+  const productionFinalResultArtifact = completedSnapshot.artifacts.find(
+    (artifact) => artifact.type === "production_final_result"
+  );
+  assert(productionFinalResultArtifact, "production_final_result artifact was not found");
   assert(
-    completedSnapshot.task.resultArtifactId === guardedFinalResultArtifact.id,
-    "task.resultArtifactId does not point to guarded_final_result artifact"
+    completedSnapshot.task.resultArtifactId === productionFinalResultArtifact.id,
+    "task.resultArtifactId does not point to production_final_result artifact"
   );
   assert(
     completedSnapshot.events.some((event) => event.type === "task.completed"),
@@ -221,6 +228,8 @@ async function createTaskViaHttp(baseUrl) {
   const taskId = typeof body.data?.taskId === "string" ? body.data.taskId : "";
   assert(taskId, "POST /api/agent/tasks did not return taskId");
   assert(body.data?.queueStatus === "enqueued", "POST /api/agent/tasks did not enqueue task");
+  assert(body.data?.status === "queued", "POST /api/agent/tasks did not return queued status");
+  assert(body.data?.resultUrl, "POST /api/agent/tasks did not return resultUrl");
 
   return {
     taskId,
@@ -250,11 +259,11 @@ async function waitForCompletedSnapshot(taskId, getSnapshot) {
     const snapshot = await getSnapshot(taskId);
     if (snapshot) {
       lastSnapshot = snapshot;
-      if (snapshot.task.status === "completed") {
+      if (snapshot.task?.status === "succeeded" || snapshot.task?.status === "completed") {
         return snapshot;
       }
 
-      if (snapshot.task.status === "failed") {
+      if (snapshot.task?.status === "failed") {
         throw new Error(`task failed: ${snapshot.task.error ?? "unknown error"}`);
       }
     }

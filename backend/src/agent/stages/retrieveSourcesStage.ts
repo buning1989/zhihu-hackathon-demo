@@ -13,6 +13,7 @@ import {
 } from "./stageTypes.js";
 
 const RETRIEVE_SOURCE_COUNT = 10;
+const SEARCH_MAX_ATTEMPTS = 3;
 
 export async function runRetrieveSourcesStage(
   searchPlan: SearchPlanArtifactData | undefined,
@@ -29,25 +30,34 @@ export async function runRetrieveSourcesStage(
     );
   }
 
-  try {
-    const searchResult = await searchService.search(query, RETRIEVE_SOURCE_COUNT);
-    const sources = searchResult.items.map(mapSearchItemToRawSource);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= SEARCH_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const searchResult = await searchService.search(query, RETRIEVE_SOURCE_COUNT);
+      const sources = searchResult.items.map(mapSearchItemToRawSource);
 
-    return {
-      artifactType: AGENT_ARTIFACT_RAW_SOURCES,
-      data: {
-        query,
-        expandedQueries,
-        sources,
-        sourceCount: sources.length,
-        provider: "zhihu",
-        fallbackUsed: false,
-        fallbackReason: null
-      }
-    };
-  } catch (error) {
-    return buildFallbackRawSources(intent, expandedQueries, summarizeSearchFallbackReason(error));
+      return {
+        artifactType: AGENT_ARTIFACT_RAW_SOURCES,
+        data: {
+          query,
+          expandedQueries,
+          sources,
+          sourceCount: sources.length,
+          provider: "zhihu",
+          fallbackUsed: false,
+          fallbackReason: null
+        }
+      };
+    } catch (error) {
+      lastError = error;
+    }
   }
+
+  return buildFallbackRawSources(
+    intent,
+    expandedQueries,
+    `${summarizeSearchFallbackReason(lastError)} after ${SEARCH_MAX_ATTEMPTS} attempts`
+  );
 }
 
 function buildFallbackRawSources(

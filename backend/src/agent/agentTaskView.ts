@@ -560,7 +560,7 @@ function findLatestLlmEvent(
 }
 
 function mapStageStatus(status: PersistentAgentStageRun["status"] | undefined): AgentTaskViewStage["status"] {
-  if (!status || status === "pending") {
+  if (!status || status === "pending" || status === "waiting") {
     return "pending";
   }
 
@@ -568,15 +568,19 @@ function mapStageStatus(status: PersistentAgentStageRun["status"] | undefined): 
     return "completed";
   }
 
-  if (status === "failed") {
+  if (status === "failed" || status === "failed_final") {
     return "error";
   }
 
-  if (status === "retrying") {
+  if (status === "retrying" || status === "failed_retryable") {
     return "running";
   }
 
-  return status;
+  if (status === "degraded" || status === "fallback") {
+    return "fallback";
+  }
+
+  return status === "skipped" ? "skipped" : "pending";
 }
 
 function emptyCandidates(): CandidatesArtifactData {

@@ -83,7 +83,7 @@ export class AgentRepository {
     const result = await queryPostgres<AgentTaskRow>(
       `
         INSERT INTO agent_tasks (id, user_id, query, status, metadata, expires_at)
-        VALUES ($1, $2, $3, 'queued', $4::jsonb, $5)
+        VALUES ($1, $2, $3, 'created', $4::jsonb, $5)
         RETURNING *
       `,
       [
@@ -400,7 +400,7 @@ async function insertTask(
   const result = await client.query<AgentTaskRow>(
     `
       INSERT INTO agent_tasks (id, user_id, query, status, metadata, expires_at)
-      VALUES ($1, $2, $3, 'queued', $4::jsonb, $5)
+      VALUES ($1, $2, $3, 'created', $4::jsonb, $5)
       RETURNING *
     `,
     [

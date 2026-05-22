@@ -1,5 +1,32 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 1 minimal loop
+
+本轮目标：按 `codex-agent-production-phase1.md` 只执行 Phase 1，将持久化 Agent demo 链路补成生产链路最小闭环；不做 Phase 2-5，不新增 WebSocket/SSE、管理后台、长期用户画像或多平台内容源。
+
+已完成：
+
+- `POST /api/agent/tasks` 返回 `taskId/status/frontendStatus/pollAfterMs/resultUrl`，创建 task 后入 BullMQ，并把 task 标准化到 `created -> queued -> running/partial_ready -> succeeded/failed`。
+- `GET /api/agent/tasks/:taskId` 返回产品化状态、阶段进度、partial/result 可用性、degraded 信息和结构化错误。
+- 新增 `GET /api/agent/tasks/:taskId/result`，未完成返回 202，完成后返回 `final_result`。
+- worker 在 grounding 后写入 `production_final_result` artifact，包含 `summary/paths/personas/sources/evidenceMap/groundingReport/degraded`。
+- 新增 deterministic sourceRefs validator：无证据或引用不存在的 path/persona 会被移除，最终 succeeded 结果不保留无 `sourceRefs` 的 path/persona。
+- `retrieve_sources` 真实搜索失败时最多尝试 3 次，再降级到 deterministic mock sources。
+- 新增 `backend/scripts/smoke-agent-production.mjs`，root `npm run smoke` 会覆盖 5 个 Phase 1 固定问题的 task 创建、轮询、result schema 和 sourceRefs 校验。
+- 更新 `shared/openapi.yaml` 和 README 中的 Agent Phase 1 契约/验收说明。
+
+验证建议：
+
+- `npm run build -w backend`
+- 在 Postgres、Redis、backend、agent-worker、frontend 都运行时执行 `npm run smoke`
+
+本地验证记录：
+
+- `npm run build -w backend` 通过。
+- `git diff --check` 通过。
+- production final_result validator 的最小 Node 校验通过。
+- `npm run smoke` 已运行到 Agent Phase 1 检查，因当前环境缺少 `DATABASE_URL` 且 Docker daemon 未运行，无法启动 Postgres/Redis，返回 `AGENT_DATABASE_UNCONFIGURED`。
+
 ## 2026-05-22 - Frontend v2 architecture constraints
 
 本轮目标：执行 GitHub Issue #2，只更新前端 v2 架构约束和 Codex 执行说明，不开始前端实现，不修改后端代码。

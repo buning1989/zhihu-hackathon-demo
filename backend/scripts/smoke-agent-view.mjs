@@ -18,7 +18,7 @@ try {
   const view = await waitForCompletedView(taskId);
   const result = view.result;
 
-  assert(view.status === "completed", "task view did not complete");
+  assert(view.status === "succeeded" || view.status === "completed", "task view did not complete");
   assert(Array.isArray(view.stages) && view.stages.length === 7, "task view did not include 7 stages");
   assert(result, "task view result was missing");
   assert(result.meta?.runtime === "persistent-agent", "result.meta.runtime was not persistent-agent");
@@ -68,6 +68,8 @@ async function createPersistentTask() {
   const taskId = typeof body.data?.taskId === "string" ? body.data.taskId : "";
   assert(taskId, "POST /api/agent/tasks did not return taskId");
   assert(body.data?.queueStatus === "enqueued", "POST /api/agent/tasks did not enqueue task");
+  assert(body.data?.status === "queued", "POST /api/agent/tasks did not return queued status");
+  assert(body.data?.resultUrl, "POST /api/agent/tasks did not return resultUrl");
   return taskId;
 }
 
@@ -79,7 +81,7 @@ async function waitForCompletedView(taskId) {
     const view = await getTaskView(taskId);
     lastView = view;
 
-    if (view.status === "completed") {
+    if (view.status === "succeeded" || view.status === "completed") {
       return view;
     }
 

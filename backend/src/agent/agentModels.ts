@@ -1,18 +1,27 @@
 export type PersistentAgentTaskStatus =
+  | "created"
   | "queued"
   | "running"
+  | "need_input"
+  | "partial_ready"
+  | "succeeded"
   | "waiting_retry"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "expired";
 
 export type PersistentAgentStageRunStatus =
+  | "waiting"
   | "pending"
   | "running"
   | "retrying"
   | "succeeded"
   | "fallback"
+  | "degraded"
   | "failed"
+  | "failed_retryable"
+  | "failed_final"
   | "skipped";
 
 export interface PersistentAgentTask {
@@ -137,4 +146,3 @@ export interface CreatePersistentAgentEventInput {
   type: string;
   payload?: Record<string, unknown>;
 }
-
