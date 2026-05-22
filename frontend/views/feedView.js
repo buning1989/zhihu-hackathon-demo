@@ -46,10 +46,13 @@
   function renderFeedSummary(result) {
     const { escapeHtml } = App.utils;
     return `
-      <div class="feed-summary">
-        <p>${escapeHtml(`先整理出 ${result.paths.length} 种走法，下面是几段最接近的经历。`)}</p>
-        <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点你的处境</button>
-      </div>
+      <header class="feed-summary">
+        <div class="feed-summary-copy">
+          <p class="feed-summary-title">相似经历</p>
+          <p class="feed-summary-text">${escapeHtml(`先看这 ${result.paths.length} 种走法，下面是几段最接近的经历。`)}</p>
+        </div>
+        <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点</button>
+      </header>
     `;
   }
 
