@@ -35,8 +35,8 @@
       <section class="clarify-wrap clarify-${escapeAttribute(variant)}">
         <div class="clarify-card">
           <div class="clarify-panel">
-            <h2 class="clarify-title">再说一点你的处境</h2>
-            <p class="clarify-desc">选几项就好，不用写很完整。</p>
+            <h2 class="clarify-title">再补充一点你的处境</h2>
+            <p class="clarify-desc">这些信息会帮你找到更像的人，选几项就好。</p>
             ${questionHtml}
             <div class="clarify-actions">
               <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}先直接看</button>

@@ -236,30 +236,36 @@
     },
     clarifyQuestions: [
       {
-        id: "need",
-        text: "你现在最想先解决哪件事？",
+        id: "stage",
+        text: "你现在大概处在哪个阶段？",
         options: [
-          { id: "rest", label: "先缓过来" },
-          { id: "direction", label: "看清方向" },
-          { id: "move", label: "换个环境" }
+          { id: "just-started", label: "刚开始犹豫" },
+          { id: "enduring", label: "已经撑了一阵" },
+          { id: "deciding", label: "快要做决定" },
+          { id: "decided", label: "已经做了决定" }
         ]
       },
       {
-        id: "pace",
-        text: "你能接受哪种试错方式？",
+        id: "stuckAt",
+        text: "这件事主要卡在哪里？",
         options: [
-          { id: "small", label: "小步试探" },
-          { id: "season", label: "给自己一季" },
-          { id: "prepare", label: "先准备底牌" }
+          { id: "work-pressure", label: "工作压力" },
+          { id: "relationship", label: "关系拉扯" },
+          { id: "city-choice", label: "城市选择" },
+          { id: "money-reality", label: "钱和现实" },
+          { id: "family-expectation", label: "家庭期待" },
+          { id: "self-doubt", label: "自我怀疑" }
         ]
       },
       {
-        id: "concern",
-        text: "你最担心的代价是什么？",
+        id: "referenceType",
+        text: "你更想看到哪类经历？",
         options: [
-          { id: "money", label: "现金流" },
-          { id: "lonely", label: "孤独感" },
-          { id: "career", label: "履历断层" }
+          { id: "very-similar", label: "情况很像我的" },
+          { id: "already-out", label: "已经走出来的" },
+          { id: "in-progress", label: "还在过程中的" },
+          { id: "high-cost", label: "代价比较大的" },
+          { id: "no-standard-answer", label: "没有标准答案的" }
         ]
       }
     ],
