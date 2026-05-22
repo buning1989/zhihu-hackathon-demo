@@ -8,7 +8,7 @@
     const loadingStages = App.loadingStages || [
       { label: "理解处境", message: "正在理解你的处境" },
       { label: "寻找经历", message: "正在寻找相似经历" },
-      { label: "抽取证据", message: "正在抽取证据片段" },
+      { label: "整理片段", message: "正在整理公开内容片段" },
       { label: "整理走法", message: "正在整理几种走法" },
       { label: "生成结果", message: "正在生成结果" }
     ];
@@ -64,14 +64,14 @@
   }
 
   function renderSideNav(state, result) {
-    const { escapeHtml, escapeAttribute } = App.utils;
+    const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
     const allActive = state.activePathId === "all";
     const buttons = result.paths.map((path) => {
       const peopleCount = App.store.getPeopleForPath(path.id).length;
       return `
         <button class="path-nav-item ${state.activePathId === path.id ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="${escapeAttribute(path.id)}">
           <span class="path-nav-copy">
-            ${escapeHtml(path.shortTitle)}
+            ${escapeHtml(publicUiLabel(path.shortTitle || path.title, "公开片段"))}
             <span class="path-nav-count">${peopleCount} 人</span>
           </span>
         </button>
@@ -93,16 +93,13 @@
     const { escapeHtml } = App.utils;
     const notices = [];
     const summaryText = result.meta?.evidenceOnly
-      ? `暂未形成稳定路径，先看 ${result.people.length} 段可追溯来源片段。`
+      ? `先看 ${result.people.length} 段贴近的公开内容片段。`
       : `先从 ${result.paths.length} 种走法里，看几段最接近的经历。`;
     if (result.meta?.cacheHit || result.meta?.reused) {
       notices.push("已使用近期相似结果");
     }
-    if (result.degraded || result.meta?.degraded) {
-      notices.push("证据有限，结果已保守收敛");
-    }
     if (result.meta?.emptyResult) {
-      notices.push("当前证据不足，暂时没有可展示样本");
+      notices.push("暂时没有可展示样本");
     }
 
     return `
@@ -135,8 +132,8 @@
     const { escapeHtml } = App.utils;
     return `
       <section class="empty-panel result-empty">
-        <h2>证据有限，结果已保守收敛</h2>
-        <p>${escapeHtml(result.degradedReason || result.meta?.degradedReason || "当前没有足够可绑定来源的 paths/personas，先不展示强结论。")}</p>
+        <h2>暂时没找到足够贴近的公开经历</h2>
+        <p>${escapeHtml("可以补充一点处境，再重新看看。")}</p>
       </section>
     `;
   }

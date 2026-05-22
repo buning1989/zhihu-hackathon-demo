@@ -1391,18 +1391,10 @@ img {
 
 .inline-reader {
   margin: 14px 0 2px 47px;
-  padding: 14px 0 0;
+  padding: 12px 0 0;
   border-top: 1px solid #f1f2f5;
 }
 
-.inline-reader-head h4 {
-  margin: 0 0 3px;
-  font-size: 15px;
-  line-height: 1.55;
-  font-weight: 600;
-}
-
-.inline-reader-head p,
 .inline-boundary {
   margin: 0;
   color: var(--text-muted);
@@ -1411,7 +1403,7 @@ img {
 }
 
 .inline-reader-body {
-  margin: 12px 0 14px;
+  margin: 0 0 10px;
   color: var(--text-primary);
   font-size: 15px;
   line-height: 1.86;
@@ -1423,6 +1415,13 @@ img {
 
 .inline-reader-body p:last-child {
   margin-bottom: 0;
+}
+
+.inline-reader-source {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .inline-reader-actions {
@@ -1441,11 +1440,23 @@ img {
   color: var(--text-secondary);
 }
 
+.inline-reader-actions .inline-primary,
+.inline-reader-actions .inline-primary:hover {
+  color: var(--accent);
+}
+
 .inline-chat,
-.inline-message {
+.inline-message,
+.inline-chat-blocked {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid #f1f2f5;
+}
+
+.inline-chat-blocked {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .inline-chat-messages {

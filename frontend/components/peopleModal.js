@@ -7,7 +7,7 @@
       return "";
     }
 
-    const { escapeHtml, escapeAttribute } = App.utils;
+    const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
     const icon = App.components.renderIcon;
     const path = App.store.findPath(state.modal.pathId);
     const people = App.store.getPeopleForPath(state.modal.pathId);
@@ -20,7 +20,7 @@
           <span class="avatar" aria-hidden="true">${avatar}</span>
           <span>
             <span class="name">${escapeHtml(person.name)}</span>
-            <span class="brief">${escapeHtml(person.article?.title || person.experienceSummary)}</span>
+            <span class="brief">${escapeHtml(publicUiLabel(person.article?.title || person.source?.title, "知乎公开内容"))}</span>
           </span>
         </button>
       `;
@@ -30,7 +30,7 @@
       <div class="modal-overlay" role="presentation" data-action="close-modal"></div>
         <section class="people-modal" role="dialog" aria-modal="true" aria-labelledby="people-modal-title" data-stop-close>
           <header class="modal-header">
-            <span id="people-modal-title">${escapeHtml(path ? path.title : "路径")} · ${people.length} 人</span>
+            <span id="people-modal-title">${escapeHtml(publicUiLabel(path?.title, "公开内容片段"))} · ${people.length} 人</span>
             <button class="btn-text" type="button" data-action="close-modal">${icon("x")}关闭</button>
           </header>
           <div class="drawer-list">

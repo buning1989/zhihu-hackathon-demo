@@ -3,7 +3,7 @@
   App.components = App.components || {};
 
   App.components.renderRightRail = function renderRightRail(state) {
-    const { escapeHtml, escapeAttribute } = App.utils;
+    const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
     const icon = App.components.renderIcon;
     const expanded = state.railExpanded || {};
     const recentExpanded = Boolean(expanded.recentlyViewed);
@@ -18,7 +18,7 @@
         return "";
       }
       const path = App.store.findPath(person.pathId);
-      const meta = person.article?.title || path?.title || "刚看过的经历";
+      const meta = publicUiLabel(person.article?.title || path?.title, "刚看过的经历");
       return `
         <div class="activity-item">
           <div class="activity-name">${escapeHtml(person.name)}</div>

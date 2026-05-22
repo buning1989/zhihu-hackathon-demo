@@ -33,23 +33,24 @@
     return [
       person.representativeQuote,
       person.source?.evidence,
-      article.lead,
-      article.summary,
-      person.oneLine
+      article.lead
     ].map(textOf).filter(Boolean);
   }
 
   function keySnippet(person) {
     const paragraphs = sourceParagraphs(person);
     if (!paragraphs.length) {
-      return ["这条样本当前只有可追溯来源片段，建议展开后再对照查看。"];
+      return ["这条公开内容目前只有较短片段，展开后可以对照查看。"];
     }
     return paragraphs.slice(0, 2);
   }
 
   function readerParagraphs(person) {
     const paragraphs = sourceParagraphs(person);
-    return paragraphs.length ? paragraphs.slice(0, 5) : ["当前只有可追溯来源片段，暂无更完整原文。"];
+    if (!paragraphs.length) {
+      return [];
+    }
+    return paragraphs.slice(keySnippet(person).length, 6);
   }
 
   function experienceClues(person) {
@@ -60,14 +61,6 @@
       label: clueLabels[index] || `线索 ${index + 1}`,
       text: textOf(item)
     })).filter((item) => item.text);
-  }
-
-  function canChatWithPerson(person) {
-    return Boolean(
-      person.displayCanChat
-      || person.aiPersona?.canChat
-      || (person.aiPersona?.enabled && person.aiPersona?.personaId)
-    );
   }
 
   function renderAvatar(person, escapeHtml, escapeAttribute) {
@@ -157,34 +150,39 @@
     `;
   }
 
-  function renderInlineReader(person, state, saved, canChat) {
+  function renderInlineChatBlocked(person, state) {
+    if (state.inlineChatBlockedPersonId !== person.id) {
+      return "";
+    }
+
+    return `
+      <section class="inline-chat-blocked" aria-label="暂不适合继续追问">
+        这段公开内容太少，暂时不适合继续追问。
+      </section>
+    `;
+  }
+
+  function renderInlineReader(person, state, saved) {
     if (state.expandedOriginalPersonId !== person.id) {
       return "";
     }
 
     const { escapeHtml, escapeAttribute } = App.utils;
     const icon = App.components.renderIcon;
-    const article = person.article || {};
-    const title = article.title || person.source?.title || "知乎公开内容";
-    const sourceName = article.sourceName || "知乎";
-    const author = article.author || person.name || "知乎用户";
-    const body = readerParagraphs(person).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+    const paragraphs = readerParagraphs(person);
+    const body = paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
 
     return `
       <section class="inline-reader" aria-label="原文片段">
-        <header class="inline-reader-head">
-          <h4>${escapeHtml(title)}</h4>
-          <p>来自${escapeHtml(sourceName)} · ${escapeHtml(author)}</p>
-        </header>
-        <article class="inline-reader-body">
-          ${body}
-        </article>
+        ${body ? `<article class="inline-reader-body">${body}</article>` : ""}
+        <p class="inline-reader-source">来自知乎公开内容</p>
         <footer class="inline-reader-actions">
-          <button class="btn-text" type="button" data-action="toggle-inline-chat" data-person-id="${escapeAttribute(person.id)}" ${canChat ? "" : "disabled"}>${icon("message-circle")}${canChat ? "听听 TA 会怎么说" : "证据不足，暂不开放追问"}</button>
+          <button class="btn-text inline-primary" type="button" data-action="toggle-inline-chat" data-person-id="${escapeAttribute(person.id)}">${icon("message-circle")}听听 TA 会怎么说</button>
           <button class="btn-text" type="button" data-action="toggle-inline-message" data-person-id="${escapeAttribute(person.id)}">${icon("reply")}写给 TA 一句话</button>
           <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
           <button class="btn-text ml-auto" type="button" data-action="toggle-original" data-person-id="${escapeAttribute(person.id)}">${icon("chevron-up")}收起原文</button>
         </footer>
+        ${renderInlineChatBlocked(person, state)}
         ${renderInlineChat(person, state)}
         ${renderInlineMessage(person, state)}
       </section>
@@ -192,15 +190,15 @@
   }
 
   App.components.renderPersonCard = function renderPersonCard(person, state) {
-    const { escapeHtml, escapeAttribute } = App.utils;
+    const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
     const icon = App.components.renderIcon;
     const saved = App.store.isInBook(person.id);
     const experienceExpanded = state.expandedExperiencePersonId === person.id;
     const originalExpanded = state.expandedOriginalPersonId === person.id;
-    const canChat = canChatWithPerson(person);
     const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
     const path = App.store.findPath(person.pathId);
-    const meta = `${brief} · ${path?.shortTitle || path?.title || "相似处境"}`;
+    const pathLabel = publicUiLabel(path?.shortTitle || path?.title, "相似处境");
+    const meta = `${publicUiLabel(brief, "知乎公开经历样本")} · ${pathLabel}`;
     const snippet = keySnippet(person).map((paragraph) => escapeHtml(paragraph)).join("<br />");
     const avatar = renderAvatar(person, escapeHtml, escapeAttribute);
 
@@ -215,12 +213,14 @@
         </header>
         <div class="original-snippet">${snippet}</div>
         ${renderExperience(person, path, state)}
+        ${originalExpanded ? "" : `
         <footer class="person-actions">
           <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "chevron-down")}${experienceExpanded ? "收起经历" : "TA 的经历"}</button>
           <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
           <button class="btn-text read-link ml-auto" type="button" data-action="toggle-original" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${originalExpanded ? "true" : "false"}">${icon(originalExpanded ? "chevron-up" : "book-open")}${originalExpanded ? "收起原文" : "展开原文"}</button>
         </footer>
-        ${renderInlineReader(person, state, saved, canChat)}
+        `}
+        ${renderInlineReader(person, state, saved)}
       </article>
     `;
   };

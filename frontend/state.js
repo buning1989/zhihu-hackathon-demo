@@ -48,6 +48,11 @@
     activePathId: "all",
     selectedPersonId: null,
     expandedPersonId: null,
+    expandedOriginalPersonId: null,
+    expandedExperiencePersonId: null,
+    inlineChatPersonId: null,
+    inlineChatBlockedPersonId: null,
+    inlineMessagePersonId: null,
     modal: {
       type: null,
       pathId: null,
@@ -195,6 +200,16 @@
 
   const byId = (items, id) => items.find((item) => item.id === id) || null;
 
+  const statusLabelPattern = /(证据不足|证据有限|证据样本|证据路径|可追溯证据|结果已保守收敛|保守收敛|degraded|evidenceStatus|grounding status|grounding)/i;
+
+  function publicUiLabel(value, fallback = "公开内容片段") {
+    const text = String(value || "").trim();
+    if (!text || statusLabelPattern.test(text)) {
+      return fallback;
+    }
+    return text;
+  }
+
   App.store = {
     getState,
     update,
@@ -215,6 +230,7 @@
     escapeHtml,
     escapeAttribute,
     clone,
-    byId
+    byId,
+    publicUiLabel
   };
 })();

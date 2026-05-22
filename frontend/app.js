@@ -32,8 +32,8 @@
     },
     {
       id: "evidence",
-      label: "抽取证据",
-      message: "正在抽取证据片段"
+      label: "整理片段",
+      message: "正在整理公开内容片段"
     },
     {
       id: "paths",
@@ -620,6 +620,7 @@
       draft.expandedExperiencePersonId = null;
       draft.expandedOriginalPersonId = null;
       draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
       draft.transitionPhase = "feedEntering";
       return draft;
@@ -705,6 +706,7 @@
       draft.expandedExperiencePersonId = null;
       draft.expandedOriginalPersonId = null;
       draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
       draft.search = {
         status: "preparing",
@@ -1025,6 +1027,7 @@
       draft.expandedExperiencePersonId = null;
       draft.expandedOriginalPersonId = null;
       draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
       draft.transitionPhase = "feedEntering";
       return draft;
@@ -1192,6 +1195,7 @@
       draft.expandedExperiencePersonId = null;
       draft.expandedOriginalPersonId = null;
       draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
       draft.modal = { type: null, pathId: null, personId: null };
       return draft;
@@ -1210,6 +1214,7 @@
     draft.expandedExperiencePersonId = null;
     draft.expandedOriginalPersonId = null;
     draft.inlineChatPersonId = null;
+    draft.inlineChatBlockedPersonId = null;
     draft.inlineMessagePersonId = null;
   }
 
@@ -1310,7 +1315,7 @@
     });
   }
 
-  function toggleOriginal(personId) {
+  function toggleOriginal(personId, forceOpen = false) {
     const person = App.store.findPerson(personId);
     if (!person) {
       return;
@@ -1322,15 +1327,18 @@
       draft.modal = { type: null, pathId: null, personId: null };
       ensurePersonVisible(draft, person);
 
-      if (draft.expandedOriginalPersonId === personId) {
+      if (draft.expandedOriginalPersonId === personId && !forceOpen) {
         draft.expandedOriginalPersonId = null;
         draft.inlineChatPersonId = null;
+        draft.inlineChatBlockedPersonId = null;
         draft.inlineMessagePersonId = null;
         return draft;
       }
 
       draft.expandedOriginalPersonId = personId;
+      draft.expandedExperiencePersonId = null;
       draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = null;
       addRecentViewToDraft(draft, personId);
       return draft;
@@ -1339,7 +1347,7 @@
 
   function setInlineChat(personId, forceOpen = false) {
     const person = App.store.findPerson(personId);
-    if (!canChatWithPerson(person)) {
+    if (!person) {
       return;
     }
 
@@ -1350,10 +1358,19 @@
       draft.modal = { type: null, pathId: null, personId: null };
       ensurePersonVisible(draft, person);
       draft.expandedOriginalPersonId = personId;
+      draft.expandedExperiencePersonId = null;
       draft.inlineMessagePersonId = null;
 
       if (!isOpening) {
         draft.inlineChatPersonId = null;
+        draft.inlineChatBlockedPersonId = null;
+        return draft;
+      }
+
+      if (!canChatWithPerson(person)) {
+        draft.inlineChatPersonId = null;
+        draft.inlineChatBlockedPersonId = personId;
+        addRecentViewToDraft(draft, personId);
         return draft;
       }
 
@@ -1361,6 +1378,7 @@
         draft.chatThreads[personId] = [initialChatMessage(person)];
       }
       draft.inlineChatPersonId = personId;
+      draft.inlineChatBlockedPersonId = null;
       addRecentViewToDraft(draft, personId);
       markInlineChatOpened(draft, personId);
       return draft;
@@ -1389,6 +1407,7 @@
       ensurePersonVisible(draft, person);
       draft.expandedOriginalPersonId = personId;
       draft.inlineChatPersonId = null;
+      draft.inlineChatBlockedPersonId = null;
       draft.inlineMessagePersonId = isOpening ? personId : null;
       if (isOpening) {
         addRecentViewToDraft(draft, personId);
@@ -1599,7 +1618,7 @@
     } else if (action === "open-people") {
       openPeople(target.dataset.pathId);
     } else if (action === "toggle-original" || action === "open-original") {
-      toggleOriginal(target.dataset.personId);
+      toggleOriginal(target.dataset.personId, action === "open-original");
     } else if (action === "open-reading") {
       openReading(target.dataset.personId);
     } else if (action === "toggle-inline-chat") {
