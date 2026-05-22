@@ -192,6 +192,9 @@ export interface GroundingGuardReport {
   removedItems: string[];
   warnings: string[];
   evidenceCoverage: number | null;
+  hardRepairReasons?: string[];
+  softWarningReasons?: string[];
+  repairReasonCounts?: Record<string, number>;
   deterministicQualityReport?: {
     checked: boolean;
     lowQualityCandidateIds: string[];

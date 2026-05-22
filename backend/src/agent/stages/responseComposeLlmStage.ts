@@ -86,7 +86,7 @@ function buildResponseComposeMessages(
     {
       role: "system" as const,
       content:
-        "你是结果组织器。只输出 JSON，不要输出解释。只能基于输入 candidates 和 evidence 组织展示结果，不要编造事实，不要做 grounding guard，不要构造 AI 分身。"
+        "你是结果组织器。只输出 JSON，不要输出解释。只能基于输入 candidates 和 evidence 做样本归纳，不要给建议，不要编造事实，不要做 grounding guard，不要构造 AI 分身。"
     },
     {
       role: "user" as const,
@@ -117,10 +117,18 @@ function buildResponseComposeMessages(
         },
         constraints: [
           "summary 必须基于输入 evidence/candidates",
+          "summary 和 paths[].summary 只能写样本归纳：有人选择了什么、当时约束是什么、后来代价或结果是什么、这类样本不能推出什么",
+          "不要生成泛泛建议式 path summary，不要写成行动指南",
+          "禁止使用强建议语气和方法论词：你应该、应该、最好、一定、只要、必须、建议你、方法、策略、重要性、意志力",
+          "path title 不要写成方法标题；优先写成“样本：某类人如何选择/承受什么结果”",
+          "自我状态、低谷、焦虑、内耗相关问题不得输出心理治疗、诊断、药物、咨询师或医疗建议；只整理公开内容里的真实经历样本",
+          "证据弱或 experience evidence 少时，减少 paths/people 数量，可以返回空数组，不要为了凑数量泛化总结",
+          "paths[].summary 必须能被对应 evidenceIds 的短证据直接支撑",
           "paths[].evidenceIds 只能引用输入 evidenceItems[].id",
           "paths[].candidateIds 只能引用输入 candidates[].id",
           "people[].candidateId 只能引用输入 candidates[].id",
           "people[].evidenceIds 只能引用输入 evidenceItems[].id",
+          "people 只保留有 isExperienceEvidence=true evidence 的 candidate",
           "不要生成 AI 分身",
           "不要输出作者本人实时回应、联系方式或私信建议"
         ],
@@ -152,6 +160,9 @@ function buildResponseComposeMessages(
           sourceUrl: item.sourceUrl,
           evidenceText: truncateText(item.evidenceText, MAX_EVIDENCE_TEXT_LENGTH),
           reason: truncateText(item.reason, 160),
+          normalizedClaim: item.normalizedClaim,
+          supportType: item.supportType,
+          isExperienceEvidence: item.isExperienceEvidence,
           confidence: item.confidence
         }))
       })
@@ -166,7 +177,7 @@ function buildFinalResultFallback(
 ): FinalResultArtifactData {
   return {
     schemaVersion: "agent.final_result.v1",
-    summary: "已根据候选内容和证据整理出初步结果。",
+    summary: "已根据候选内容和证据整理出可对照的公开样本。",
     paths: buildFallbackPaths(candidates, evidenceItems),
     people: buildFallbackPeople(candidates, evidenceItems),
     suggestedQuestions: [
@@ -188,12 +199,18 @@ function buildFallbackPaths(
     return [];
   }
 
+  const evidenceCandidateIds = new Set(evidenceItems.map((item) => item.candidateId));
+  const referencedCandidates = candidates.filter((candidate) => evidenceCandidateIds.has(candidate.id));
+  if (referencedCandidates.length === 0 || evidenceItems.length === 0) {
+    return [];
+  }
+
   return [
     {
-      title: "先从相似经历里拆出可选路径",
-      summary: "候选内容中已经出现了一些与问题相关的经历片段，可以先按生活安排、风险和后续收入来源继续比较。",
+      title: "公开样本里的相似选择",
+      summary: "这些样本只说明有人在相近约束下做过选择并留下结果片段，不能直接推出当前问题的唯一答案。",
       evidenceIds: evidenceItems.slice(0, 3).map((item) => item.id),
-      candidateIds: candidates.slice(0, 3).map((candidate) => candidate.id)
+      candidateIds: referencedCandidates.slice(0, 3).map((candidate) => candidate.id)
     }
   ];
 }
@@ -202,15 +219,21 @@ function buildFallbackPeople(
   candidates: CandidateItem[],
   evidenceItems: EvidenceInputItem[]
 ): FinalResultPerson[] {
-  return candidates.slice(0, 3).map((candidate) => ({
-    name: candidate.author || "知乎用户",
-    reason: "TA 的内容和当前问题存在相似经历或选择线索，适合作为后续对比样本。",
-    candidateId: candidate.id,
-    evidenceIds: evidenceItems
-      .filter((item) => item.candidateId === candidate.id)
-      .slice(0, 2)
-      .map((item) => item.id)
-  }));
+  return candidates
+    .map((candidate) => {
+      const candidateEvidence = evidenceItems
+        .filter((item) => item.candidateId === candidate.id && item.isExperienceEvidence)
+        .slice(0, 2);
+
+      return {
+        name: candidate.author || "知乎用户",
+        reason: "这个公开样本包含可绑定的真实经历证据，只适合作为对照样本，不代表作者本人回应。",
+        candidateId: candidate.id,
+        evidenceIds: candidateEvidence.map((item) => item.id)
+      };
+    })
+    .filter((person) => person.evidenceIds.length > 0)
+    .slice(0, 3);
 }
 
 function toEvidenceInputItem(item: EvidenceItem, index: number): EvidenceInputItem {
@@ -242,6 +265,9 @@ function toGatewayEvidenceMetadata(item: EvidenceInputItem): Record<string, unkn
     author: item.author,
     sourceUrl: item.sourceUrl,
     evidenceText: truncateText(item.evidenceText, MAX_EVIDENCE_TEXT_LENGTH),
+    normalizedClaim: item.normalizedClaim,
+    supportType: item.supportType,
+    isExperienceEvidence: item.isExperienceEvidence,
     confidence: item.confidence
   };
 }

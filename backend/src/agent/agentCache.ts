@@ -4,7 +4,7 @@ import { AGENT_EVIDENCE_EXTRACTION_VERSION } from "./stages/evidenceExtractLlmSt
 
 export const AGENT_CACHE_SCHEMA_VERSION = "agent.production.cache.v1";
 export const AGENT_SCORING_VERSION = "agent.scoring.v2.rank-normalized";
-export const AGENT_PROMPT_VERSION = "agent.prompts.v4.evidence-chunked-claims-backfill";
+export const AGENT_PROMPT_VERSION = "agent.prompts.v7.grounding-warning-split-guard-json";
 
 export interface AgentCacheIdentity {
   normalizedQuery: string;

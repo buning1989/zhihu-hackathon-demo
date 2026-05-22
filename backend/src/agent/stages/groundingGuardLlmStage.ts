@@ -60,7 +60,7 @@ export async function runGroundingGuardLlmStage(
       candidates: limitedCandidates.map(toGatewayCandidateMetadata),
       evidenceItems: limitedEvidence.map(toGatewayEvidenceMetadata)
     },
-    maxTokens: 1800,
+    maxTokens: 2600,
     temperature: 0.1,
     onEvent: async (type, payload) => {
       await agentRepository.createEvent({
@@ -73,7 +73,7 @@ export async function runGroundingGuardLlmStage(
 
   return {
     artifactType: AGENT_ARTIFACT_GUARDED_FINAL_RESULT,
-    data: applyDeterministicQualityReport(result.data, limitedCandidates, limitedEvidence),
+    data: applyDeterministicQualityReport(result.data, finalResult, limitedCandidates, limitedEvidence),
     status: result.status === "success" ? "succeeded" : "fallback",
     fallbackUsed: result.fallbackUsed,
     fallbackReason: result.fallbackReason || null
@@ -114,6 +114,11 @@ function buildGroundingGuardMessages(
           "qualityScore 低于阈值的 candidate 不能作为最终 paths/people 的支撑",
           "persona 必须至少有一条 isExperienceEvidence=true 的 evidence",
           "低 confidence evidence 不能支撑强结论",
+          "如果只是保守措辞、样本归纳表达或证据有限提示，但未删除/修改 paths/people/evidenceIds/candidateIds，则 guard.status 保持 passed，只写 warnings",
+          "只有删除 path/person、修复 evidenceIds/candidateIds 或移除不被证据支撑的强结论时，guard.status 才能是 repaired",
+          "不要把“公开样本不能推出唯一答案”这类保守边界句当作 unsupported claim",
+          "自我状态、低谷、焦虑、内耗相关内容不得保留心理治疗、诊断、药物、咨询师或医疗建议",
+          "必须输出完整 JSON object，不要截断，不要输出 Markdown",
           "不要新增输入之外的 evidenceIds 或 candidateIds",
           "不要生成新事实、作者身份推断、联系方式、私信建议或 AI 分身",
           "guard.status 只能是 passed、repaired 或 partial"
@@ -179,6 +184,7 @@ function buildGuardedFinalResultFallback(
 
 function applyDeterministicQualityReport(
   data: GuardedFinalResultArtifactData,
+  originalFinalResult: FinalResultArtifactData,
   candidates: CandidateItem[],
   evidenceItems: EvidenceInputItem[]
 ): GuardedFinalResultArtifactData {
@@ -191,12 +197,25 @@ function applyDeterministicQualityReport(
     ...deterministicWarnings
   ]);
   const removedItems = uniqueNonEmpty([...data.guard.removedItems, ...repair.removedItems]);
+  const hardRepairReasons = uniqueNonEmpty([
+    ...classifyRemovedItems(data.guard.removedItems),
+    ...repair.hardRepairReasons,
+    hasReferenceChange(originalFinalResult, data.result) ? "source_refs_repaired" : "",
+    data.guard.status === "fallback" ? "llm_guard_fallback" : ""
+  ]);
+  const softWarningReasons = uniqueNonEmpty([
+    ...warnings.map(classifyGroundingWarning).filter((reason) => !hardRepairReasons.includes(reason)),
+    data.guard.status !== "passed" && hardRepairReasons.length === 0
+      ? "llm_guard_overconservative"
+      : ""
+  ]);
   const status =
-    warnings.length === 0 && removedItems.length === 0
-      ? data.guard.status
-      : data.guard.status === "passed"
+    data.guard.status === "fallback"
+      ? "fallback"
+      : hardRepairReasons.length > 0
         ? "repaired"
-        : data.guard.status;
+        : "passed";
+  const repairReasonCounts = countReasons([...hardRepairReasons, ...softWarningReasons]);
 
   return {
     ...data,
@@ -206,6 +225,9 @@ function applyDeterministicQualityReport(
       status,
       removedItems,
       warnings,
+      hardRepairReasons,
+      softWarningReasons,
+      repairReasonCounts,
       deterministicQualityReport: qualityReport
     }
   };
@@ -219,12 +241,21 @@ function repairFinalResultWithDeterministicRules(
   result: FinalResultArtifactData;
   removedItems: string[];
   warnings: string[];
+  hardRepairReasons: string[];
 } {
   const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const evidenceById = new Map(evidenceItems.map((item) => [item.id, item]));
   const removedItems: string[] = [];
   const warnings: string[] = [];
+  const hardRepairReasons: string[] = [];
   const paths = finalResult.paths.flatMap((path, index) => {
+    if (isOvergeneralizedPathSummary(path.summary)) {
+      removedItems.push(`paths[${index}]`);
+      warnings.push(`paths[${index}] removed for overgeneralized or advice-like summary`);
+      hardRepairReasons.push("path_summary_overgeneralized");
+      return [];
+    }
+
     const validEvidenceIds = path.evidenceIds.filter((id) => !isLowConfidenceEvidence(evidenceById.get(id)));
     const validCandidateIds = uniqueNonEmpty([
       ...path.candidateIds.filter((id) => !isLowQualityCandidate(candidateById.get(id))),
@@ -236,6 +267,7 @@ function repairFinalResultWithDeterministicRules(
     if (validEvidenceIds.length === 0 || validCandidateIds.length === 0) {
       removedItems.push(`paths[${index}]`);
       warnings.push(`paths[${index}] removed by deterministic quality rules`);
+      hardRepairReasons.push(validEvidenceIds.length === 0 ? "evidence_support_weak" : "source_refs_repaired");
       return [];
     }
 
@@ -244,6 +276,7 @@ function repairFinalResultWithDeterministicRules(
       validCandidateIds.length !== path.candidateIds.length
     ) {
       warnings.push(`paths[${index}] repaired by deterministic quality rules`);
+      hardRepairReasons.push("source_refs_repaired");
     }
 
     return [
@@ -268,11 +301,15 @@ function repairFinalResultWithDeterministicRules(
     if (isLowQualityCandidate(candidate) || validExperienceEvidenceIds.length === 0) {
       removedItems.push(`people[${index}]`);
       warnings.push(`people[${index}] removed by deterministic quality rules`);
+      hardRepairReasons.push(
+        validExperienceEvidenceIds.length === 0 ? "persona_evidence_insufficient" : "evidence_support_weak"
+      );
       return [];
     }
 
     if (validExperienceEvidenceIds.length !== person.evidenceIds.length) {
       warnings.push(`people[${index}] repaired by deterministic quality rules`);
+      hardRepairReasons.push("persona_evidence_insufficient");
     }
 
     return [
@@ -290,7 +327,8 @@ function repairFinalResultWithDeterministicRules(
       people
     },
     removedItems,
-    warnings
+    warnings,
+    hardRepairReasons: uniqueNonEmpty(hardRepairReasons)
   };
 }
 
@@ -354,6 +392,71 @@ function buildRuleWarnings(
   }
 
   return warnings;
+}
+
+function classifyRemovedItems(items: string[]): string[] {
+  return items.map((item) => {
+    if (/people|persona/i.test(item)) {
+      return "persona_evidence_insufficient";
+    }
+    if (/path/i.test(item)) {
+      return "evidence_support_weak";
+    }
+    return "source_refs_repaired";
+  });
+}
+
+function classifyGroundingWarning(value: string): string {
+  const normalized = value.toLowerCase();
+  if (/overgeneralized|advice-like|unsupported|泛化|强建议|summary/.test(normalized)) {
+    return "path_summary_overgeneralized";
+  }
+  if (/low confidence|below confidence|confidence/.test(normalized)) {
+    return "evidence_support_weak";
+  }
+  if (/missing|candidateids|evidenceids|sourcecandidateid|source ref|sourceref/.test(normalized)) {
+    return "source_refs_repaired";
+  }
+  if (/people|persona|experience evidence|真实经历/.test(normalized)) {
+    return "persona_evidence_insufficient";
+  }
+  if (/evidence|quality|support/.test(normalized)) {
+    return "evidence_support_weak";
+  }
+  if (/低谷|焦虑|内耗|自我状态/.test(value)) {
+    return "self_state_lacks_experience_evidence";
+  }
+  return "llm_guard_overconservative";
+}
+
+function hasReferenceChange(before: FinalResultArtifactData, after: FinalResultArtifactData): boolean {
+  return JSON.stringify(toReferenceSignature(before)) !== JSON.stringify(toReferenceSignature(after));
+}
+
+function toReferenceSignature(result: FinalResultArtifactData) {
+  return {
+    paths: result.paths.map((path) => ({
+      evidenceIds: [...path.evidenceIds].sort(),
+      candidateIds: [...path.candidateIds].sort()
+    })),
+    people: result.people.map((person) => ({
+      candidateId: person.candidateId,
+      evidenceIds: [...person.evidenceIds].sort()
+    }))
+  };
+}
+
+function isOvergeneralizedPathSummary(summary: string): boolean {
+  return /你应该|应该|建议你|最好|一定要|你一定|只要.+就|方法|策略|重要性|意志力|心理治疗|心理咨询|咨询师|药物|看医生|诊断|抑郁症|焦虑症/.test(
+    summary
+  );
+}
+
+function countReasons(values: string[]): Record<string, number> {
+  return values.reduce<Record<string, number>>((result, value) => {
+    result[value] = (result[value] ?? 0) + 1;
+    return result;
+  }, {});
 }
 
 function buildDeterministicQualityReport(
@@ -462,6 +565,9 @@ function isGroundingGuardReport(value: unknown): value is GroundingGuardReport {
     isStringArray(value.unsupportedClaims) &&
     isStringArray(value.removedItems) &&
     isStringArray(value.warnings) &&
+    (value.hardRepairReasons === undefined || isStringArray(value.hardRepairReasons)) &&
+    (value.softWarningReasons === undefined || isStringArray(value.softWarningReasons)) &&
+    (value.repairReasonCounts === undefined || isNumberRecord(value.repairReasonCounts)) &&
     (value.evidenceCoverage === null ||
       (typeof value.evidenceCoverage === "number" &&
         Number.isFinite(value.evidenceCoverage) &&
@@ -533,6 +639,10 @@ function isFinalResultPerson(value: unknown): boolean {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isNumberRecord(value: unknown): value is Record<string, number> {
+  return isRecord(value) && Object.values(value).every((item) => typeof item === "number" && Number.isFinite(item));
 }
 
 function hashSafeId(value: string): string {

@@ -160,7 +160,7 @@ export function buildProductionFinalResult(
   const degradedReasons = uniqueNonEmpty([
     ...(input.degradedReasons ?? []),
     input.finalResult.fallbackReason ?? "",
-    input.guard.status === "passed" ? "" : `grounding_guard_${input.guard.status}`,
+    getGroundingGuardDegradedReason(input.guard),
     validation.status === "passed" ? "" : `deterministic_validator_${validation.status}`
   ]);
 
@@ -191,6 +191,20 @@ export function buildProductionFinalResult(
       originalResultSchemaVersion: input.finalResult.schemaVersion
     }
   };
+}
+
+function getGroundingGuardDegradedReason(guard: GroundingGuardReport): string {
+  if (guard.status === "fallback") {
+    return "grounding_guard_fallback";
+  }
+  if (guard.status === "partial") {
+    return "grounding_guard_partial";
+  }
+  if (guard.status === "repaired" && (guard.hardRepairReasons?.length ?? 0) > 0) {
+    return "grounding_guard_hard_repaired";
+  }
+
+  return "";
 }
 
 export function isProductionFinalResultData(value: unknown): value is ProductionFinalResultData {

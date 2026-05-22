@@ -223,6 +223,15 @@ function buildEvalRow({ item, started, status, debug, requestDurationMs }) {
     llmGuardStatus: readNullableString(finalSummary.llmGuardStatus),
     groundingWarningCount: readNumber(finalSummary.groundingWarningCount, 0),
     groundingRemovedItemCount: readNumber(finalSummary.groundingRemovedItemCount, 0),
+    groundingHardRepairReasons: Array.isArray(finalSummary.groundingHardRepairReasons)
+      ? finalSummary.groundingHardRepairReasons
+      : [],
+    groundingSoftWarningReasons: Array.isArray(finalSummary.groundingSoftWarningReasons)
+      ? finalSummary.groundingSoftWarningReasons
+      : [],
+    groundingRepairReasonCounts: isObject(finalSummary.groundingRepairReasonCounts)
+      ? finalSummary.groundingRepairReasonCounts
+      : {},
     deterministicRemovedPathCount: readNumber(finalSummary.deterministicRemovedPathCount, 0),
     deterministicRemovedPersonaCount: readNumber(finalSummary.deterministicRemovedPersonaCount, 0),
     lowQualityCandidateIdsCount: readNumber(finalSummary.lowQualityCandidateCount, 0),
@@ -278,6 +287,12 @@ function buildFailedCreateRow(item, error, totalDurationMs) {
     degraded: false,
     degradedReason: null,
     deterministicValidator: null,
+    llmGuardStatus: null,
+    groundingWarningCount: 0,
+    groundingRemovedItemCount: 0,
+    groundingHardRepairReasons: [],
+    groundingSoftWarningReasons: [],
+    groundingRepairReasonCounts: {},
     lowQualityCandidateIdsCount: 0,
     lowConfidenceEvidenceIdsCount: 0,
     personaWithoutExperienceEvidenceIdsCount: 0,
@@ -316,6 +331,18 @@ function buildSummary(resultRows) {
   const evidenceChunkFailureReasonCounts = countReasons(
     resultRows.flatMap((row) => row.evidenceChunkFailureReasons ?? [])
   );
+  const groundingHardRepairReasonCounts = countReasons(
+    resultRows.flatMap((row) => row.groundingHardRepairReasons ?? [])
+  );
+  const groundingSoftWarningReasonCounts = countReasons(
+    resultRows.flatMap((row) => row.groundingSoftWarningReasons ?? [])
+  );
+  const groundingRepairedReasonCounts = mergeReasonCounts([
+    groundingHardRepairReasonCounts,
+    groundingSoftWarningReasonCounts,
+    countReasons(resultRows.flatMap(deriveEvalGroundingReasons)),
+    ...resultRows.map((row) => row.groundingRepairReasonCounts ?? {})
+  ]);
 
   return {
     total,
@@ -341,6 +368,9 @@ function buildSummary(resultRows) {
     degradedReasonCounts,
     deterministicValidatorCounts,
     llmGuardStatusCounts,
+    groundingHardRepairReasonCounts,
+    groundingSoftWarningReasonCounts,
+    groundingRepairedReasonCounts,
     evidenceChunkFailureReasonCounts,
     failedTaskList: failedRows.map((row) => ({
       category: row.category,
@@ -390,6 +420,15 @@ function splitReasons(value) {
       if (item.includes("grounding_guard_repaired")) {
         return "grounding_guard_repaired";
       }
+      if (item.includes("grounding_guard_hard_repaired")) {
+        return "grounding_guard_hard_repaired";
+      }
+      if (item.includes("grounding_guard_partial")) {
+        return "grounding_guard_partial";
+      }
+      if (item.includes("grounding_guard_fallback")) {
+        return "grounding_guard_fallback";
+      }
       if (item.includes("deterministic_validator_repaired")) {
         return "deterministic_validator_repaired";
       }
@@ -400,11 +439,43 @@ function splitReasons(value) {
     });
 }
 
+function deriveEvalGroundingReasons(row) {
+  const reasons = [];
+  if (
+    row.category === "自我状态与人生低谷" &&
+    row.status === "succeeded" &&
+    row.experienceEvidenceCount <= 1 &&
+    (row.degraded || row.llmGuardStatus === "repaired" || row.groundingWarningCount > 0)
+  ) {
+    reasons.push("self_state_lacks_experience_evidence");
+  }
+  if (row.groundingWarningCount > 0 && row.groundingRemovedItemCount === 0 && row.llmGuardStatus === "passed") {
+    reasons.push("llm_guard_soft_warning");
+  }
+
+  return reasons;
+}
+
 function countReasons(values) {
   return values.reduce((result, value) => {
     result[value] = (result[value] ?? 0) + 1;
     return result;
   }, {});
+}
+
+function mergeReasonCounts(countsList) {
+  return countsList.reduce((result, counts) => {
+    for (const [key, value] of Object.entries(counts ?? {})) {
+      if (Number.isFinite(value)) {
+        result[key] = (result[key] ?? 0) + value;
+      }
+    }
+    return result;
+  }, {});
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function roundNumber(value) {

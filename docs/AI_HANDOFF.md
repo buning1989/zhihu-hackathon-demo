@@ -1,5 +1,22 @@
 # AI Handoff
 
+## 2026-05-22 - Agent production Phase 4.2 grounding repair convergence
+
+本轮目标：只修 Phase 4.2 的 `grounding_guard_repaired` 原因收敛；不进入 Phase 5，不做前端 UI、信息补充卡或后台。
+
+已完成：
+
+- `response_compose_llm` 改为更明确的“样本归纳”输出约束：path summary 必须围绕有人选择了什么、当时约束、后来代价/结果、不能推出什么；禁止泛建议、强建议语气和方法论式标题。
+- 自我状态、低谷、焦虑、内耗类问题只整理公开经历样本；不输出心理治疗、诊断、药物、咨询师或医疗建议。证据弱时减少 paths/personas。
+- `grounding_guard_llm` 区分 `hardRepairReasons` 和 `softWarningReasons`：只有删除 path/person、修复 evidenceIds/candidateIds/source refs、fallback/partial 等硬修复才进入 degraded；普通 warning 不再直接导致 `degraded=true`。
+- debug/eval 输出并汇总 `groundingHardRepairReasonCounts`、`groundingSoftWarningReasonCounts`、`groundingRepairedReasonCounts`，可区分 `path_summary_overgeneralized`、`persona_evidence_insufficient`、`evidence_support_weak`、`source_refs_repaired`、`llm_guard_overconservative`、`self_state_lacks_experience_evidence` 等原因。
+- grounding guard JSON 预算提高到 2600 tokens，并要求完整 JSON，降低 guard fallback 风险；不放松 sourceRefs、persona 真实经历 evidence 或 deterministic validator。
+- Agent cache `promptVersion` 更新到 Phase 4.2 版本，避免复用 Phase 4.1 的 final result cache。
+
+最新真实 LLM fresh eval 摘要：30/30 succeeded，`avgEvidence=3.9`、`avgPaths=2.2`、`avgPersonas=1.733`、`degradedRate=0.367`、`groundingPassedRate=0.967`、`badRefsCount=0`，evidence chunk failure/repair/retry 均为 0。自我状态类 surface 文案抽查未发现医疗/心理治疗或强建议表达。
+
+剩余风险：`llmGuardStatus=fallback` 仍有 1/30，`deterministic_validator_repaired` 1/30；弱证据和自我状态类问题仍会因 `evidence_support_weak`、`path_summary_overgeneralized` 或 `source_refs_repaired` 保守降级。
+
 ## 2026-05-22 - Agent production Phase 4.1 LLM evidence stability
 
 本轮目标：只修 Phase 4.1 的真实 LLM evidence 抽取稳定性；不进入 Phase 5，不做前端 UI、信息补充卡或后台。
