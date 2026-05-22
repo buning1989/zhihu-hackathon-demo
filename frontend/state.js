@@ -21,11 +21,13 @@
       requestId: "",
       clarifyQuestions: [],
       clarifyAnswers: {},
+      clarifyOpen: false,
       error: ""
     },
     result: null,
     activePathId: "all",
     selectedPersonId: null,
+    expandedPersonId: null,
     modal: {
       type: null,
       pathId: null,
@@ -37,7 +39,12 @@
     chatThreads: {},
     capsule: {
       selectedPrompt: data.capsulePrompts[0],
-      entries: clone(data.starterCapsules)
+      entries: clone(data.starterCapsules),
+      sealed: false,
+      message: "",
+      typedText: "",
+      typingDone: false,
+      openAt: ""
     }
   };
 

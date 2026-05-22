@@ -5,20 +5,49 @@
   App.components.renderPersonCard = function renderPersonCard(person, state) {
     const { escapeHtml, escapeAttribute } = App.utils;
     const saved = App.store.isInBook(person.id);
+    const expanded = state.expandedPersonId === person.id;
+    const quote = person.article?.paragraphs?.[0] || person.experienceSummary;
+    const preview = person.experienceSummary;
+    const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
+    const similar = person.source?.evidence || "公开内容与你的问题存在相似处境";
+    const timelineItems = person.timeline || [
+      { date: "开始", event: person.article?.paragraphs?.[0] || person.experienceSummary },
+      { date: "中段", event: person.article?.paragraphs?.[1] || person.source?.evidence || person.experienceSummary },
+      { date: "复盘", event: person.article?.paragraphs?.[2] || person.article?.lead || person.experienceSummary }
+    ];
+    const timeline = expanded ? `
+      <section class="timeline-inline">
+        ${timelineItems.map((item, index) => `
+          <div class="timeline-item">
+            <div class="timeline-date">${escapeHtml(item.date)}</div>
+            <div class="timeline-rail">
+              <span class="timeline-dot"></span>
+              ${index === timelineItems.length - 1 ? "" : "<span class=\"timeline-line\"></span>"}
+            </div>
+            <div class="timeline-event">${escapeHtml(item.event)}</div>
+          </div>
+        `).join("")}
+      </section>
+    ` : "";
 
     return `
       <article class="person-card">
-        <div class="avatar" aria-hidden="true">
-          <img src="${escapeAttribute(person.avatar)}" alt="" />
-        </div>
-        <div class="person-main">
-          <h3>${escapeHtml(person.name)}</h3>
-          <p class="person-experience"><strong>TA 的经历：</strong>${escapeHtml(person.experienceSummary)}</p>
-          <div class="card-actions">
-            <button class="app-button" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${saved ? "已在路书" : "加入路书"}</button>
-            <button class="app-button primary" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">读原文</button>
+        <header class="person-head">
+          <span class="avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
+          <div>
+            <h3 class="name">${escapeHtml(person.name)}</h3>
+            <p class="brief">${escapeHtml(brief)}</p>
           </div>
-        </div>
+          <span class="similar">和你像：${escapeHtml(similar)}</span>
+        </header>
+        <div class="person-quote">${escapeHtml(quote)}</div>
+        <p class="person-preview">${escapeHtml(preview)}</p>
+        ${timeline}
+        <footer class="person-actions">
+          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}">${expanded ? "收起" : "TA 的经历"}</button>
+          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${saved ? "已加入路书" : "加入路书"}</button>
+          <button class="btn-s ml-auto" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">读原文 →</button>
+        </footer>
       </article>
     `;
   };

@@ -11,31 +11,26 @@
     const path = App.store.findPath(state.modal.pathId);
     const people = App.store.getPeopleForPath(state.modal.pathId);
     const rows = people.map((person) => `
-      <button class="people-row" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">
+      <button class="drawer-person-item" type="button" data-action="open-reading" data-person-id="${escapeAttribute(person.id)}">
         <span class="avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
         <span>
-          <strong>${escapeHtml(person.name)}</strong>
-          <p>${escapeHtml(person.experienceSummary)}</p>
+          <span class="name">${escapeHtml(person.name)}</span>
+          <span class="brief">${escapeHtml(person.article?.title || person.experienceSummary)}</span>
         </span>
-        <span class="app-button">读原文</span>
       </button>
     `).join("");
 
     return `
-      <div class="overlay" role="presentation" data-action="close-modal">
-        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="people-modal-title" data-stop-close>
+      <div class="modal-overlay" role="presentation" data-action="close-modal"></div>
+        <section class="people-modal" role="dialog" aria-modal="true" aria-labelledby="people-modal-title" data-stop-close>
           <header class="modal-header">
-            <div>
-              <h2 id="people-modal-title">${escapeHtml(path ? path.shortTitle : "路径")}下的人物样本</h2>
-              <p>点击任一人物进入原文页，继续看公开经历和证据片段。</p>
-            </div>
-            <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">×</button>
+            <span id="people-modal-title">${escapeHtml(path ? path.title : "路径")} · ${people.length} 人</span>
+            <button class="btn-text" type="button" data-action="close-modal">关闭</button>
           </header>
-          <div class="modal-body">
-            <div class="people-modal-list">${rows}</div>
+          <div class="drawer-list">
+            ${rows}
           </div>
         </section>
-      </div>
     `;
   };
 })();

@@ -9,32 +9,42 @@
     const isFeed = state.page === "feed";
     const isBook = state.page === "book";
     const isCapsule = state.page === "capsule";
+    const result = state.result;
+    const pathCount = result ? result.paths.length : 0;
+    const peopleCount = result ? result.people.length : 0;
     const statusText = state.search.status === "loading" ? state.search.message : "";
+    const loadedStatus = state.search.status === "loaded" && result ? `
+      <div class="status-bar">
+        <span class="status-text">找到 <strong>${pathCount} 条路径</strong> · <strong>${peopleCount} 个人</strong></span>
+        <button class="btn-text status-clarify" type="button" data-action="open-clarify">+ 补充关键信息，让匹配更准</button>
+      </div>
+    ` : statusText ? `
+      <div class="status-bar">
+        <span class="status-text">${escapeHtml(statusText)}</span>
+      </div>
+    ` : "";
 
     return `
-      <header class="topbar">
-        <button class="topbar-brand" type="button" data-action="open-feed">
-          <span class="brand-mark">人</span>
-          <span>
-            <strong>人生样本库</strong>
-            <span>从公开经历里找下一步</span>
-          </span>
+      <header class="top-bar">
+        <div class="top-bar-inner">
+        <button class="logo" type="button" data-action="open-feed">
+          人生样本库
         </button>
-        <form class="top-search" data-form="search">
+        <form class="top-form" data-form="search">
           <label class="sr-only" for="top-query">输入处境</label>
-          <input id="top-query" name="query" value="${query}" autocomplete="off" />
-          <button class="app-button primary" type="submit">重新匹配</button>
+          <textarea class="top-input" id="top-query" name="query" autocomplete="off">${query}</textarea>
+          <button class="btn-p" type="submit">重新匹配</button>
         </form>
-        <nav class="topbar-actions" aria-label="主导航">
-          <button class="app-button ${isFeed ? "primary" : "ghost"}" type="button" data-action="open-feed">路径</button>
-          <button class="app-button ${isBook ? "primary" : "ghost"}" type="button" data-action="open-book">路书</button>
-          <button class="app-button ${isCapsule ? "primary" : "ghost"}" type="button" data-action="open-capsule">时间胶囊</button>
-          <span class="profile-chip">
-            <span class="profile-dot">${escapeHtml(profile ? profile.name.slice(0, 1) : "知")}</span>
-            <span>${escapeHtml(profile ? profile.name : "未登录")}</span>
+        <nav class="top-actions" aria-label="主导航">
+          <button class="btn-text ${isFeed ? "is-active" : ""}" type="button" data-action="open-feed">路径</button>
+          <button class="btn-text ${isBook ? "is-active" : ""}" type="button" data-action="open-book">路书</button>
+          <button class="btn-text ${isCapsule ? "is-active" : ""}" type="button" data-action="open-capsule">时间胶囊</button>
+          <span class="user-area">
+            <span class="user-avatar">${escapeHtml(profile ? profile.name.slice(0, 1) : "我")}</span>
           </span>
         </nav>
-        <div class="topbar-state">${escapeHtml(statusText)}</div>
+        </div>
+        ${loadedStatus}
       </header>
     `;
   };

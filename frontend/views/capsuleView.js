@@ -4,43 +4,35 @@
 
   App.views.renderCapsuleView = function renderCapsuleView(state) {
     const { escapeHtml, escapeAttribute } = App.utils;
-    const prompts = App.mockData.capsulePrompts.map((prompt) => `
-      <button class="capsule-option ${state.capsule.selectedPrompt === prompt ? "is-selected" : ""}" type="button" data-action="select-capsule-prompt" data-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>
-    `).join("");
-    const entries = state.capsule.entries.map((entry) => `
-      <article class="rail-item">
-        <strong>${escapeHtml(entry.openAt)}</strong>
-        <span>${escapeHtml(entry.message)}</span>
-        <small>${escapeHtml(entry.status)}</small>
-      </article>
-    `).join("");
+    if (state.capsule.sealed) {
+      return `
+        <main class="capsule-view is-sealed">
+          <section class="capsule-main">
+            <div class="capsule-card">
+              <p class="capsule-date">写于 ${escapeHtml(new Date().toLocaleDateString("zh-CN"))}</p>
+              <p class="capsule-subtitle">一个站在岔路口的时刻</p>
+              <div class="capsule-body">${escapeHtml(state.capsule.typedText)}</div>
+              <div class="capsule-end ${state.capsule.typingDone ? "is-visible" : ""}">三年后再来看看。</div>
+            </div>
+            <div class="capsule-actions ${state.capsule.typingDone ? "is-visible" : ""}">
+              <button class="btn-s" type="button" data-action="open-feed">回到相似的人</button>
+            </div>
+          </section>
+        </main>
+      `;
+    }
 
     return `
-      ${App.components.renderTopBar(state)}
-      <main class="page-shell">
-        <div class="capsule-layout">
-          <section class="capsule-panel">
-            <h1>时间胶囊</h1>
-            <p>把今天的判断存起来，之后再回来对照。</p>
-            <div class="capsule-options">${prompts}</div>
-            <form class="capsule-form" data-form="capsule">
-              <label class="sr-only" for="capsule-message">写给未来的自己</label>
-              <textarea id="capsule-message" name="message" placeholder="${escapeAttribute(state.capsule.selectedPrompt)}"></textarea>
-              <div class="reading-actions">
-                <select name="openAt" aria-label="开启时间">
-                  <option value="2026-06-22">一个月后</option>
-                  <option value="2026-08-22">三个月后</option>
-                  <option value="2026-11-22">半年后</option>
-                </select>
-                <button class="app-button primary" type="submit">保存胶囊</button>
-              </div>
+      <main class="capsule-view">
+        <section class="capsule-main">
+          <p class="capsule-prompt">如果三年后的你，<br />回来看今天——<br />你想让 TA 知道什么？</p>
+          <form data-form="capsule">
+            <label class="sr-only" for="capsule-message">写给未来的自己</label>
+            <textarea class="capsule-input" id="capsule-message" name="message" placeholder="${escapeAttribute(state.capsule.selectedPrompt)}"></textarea>
+            <input type="hidden" name="openAt" value="2029-05-22" />
+            <button class="btn-p" type="submit">封存这封信</button>
             </form>
-          </section>
-          <section class="capsule-panel">
-            <h2>等待开启</h2>
-            <div class="capsule-list">${entries}</div>
-          </section>
-        </div>
+        </section>
       </main>
     `;
   };

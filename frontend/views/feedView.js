@@ -5,10 +5,14 @@
   function renderLoading(state) {
     const { escapeHtml } = App.utils;
     return `
-      <section class="loading-panel">
-        <h2>${escapeHtml(state.search.message || "正在整理路径")}</h2>
-        <p>输入框已经回到顶部，稍后会进入路径话题 Feed。</p>
-        <div class="loader-line" aria-hidden="true"></div>
+      <section class="card loading-card">
+        <h2 class="loading-title">${escapeHtml(state.search.message || "正在整理路径")}</h2>
+        <p class="loading-text">输入框已经回到顶部，稍后会进入路径话题 Feed。</p>
+        <div class="loading-lines" aria-hidden="true">
+          <span class="line"></span>
+          <span class="line"></span>
+          <span class="line"></span>
+        </div>
       </section>
     `;
   }
@@ -19,22 +23,21 @@
     const buttons = result.paths.map((path) => {
       const peopleCount = App.store.getPeopleForPath(path.id).length;
       return `
-        <button class="path-nav-button ${state.activePathId === path.id ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="${escapeAttribute(path.id)}">
+        <button class="path-nav-item ${state.activePathId === path.id ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="${escapeAttribute(path.id)}">
           ${escapeHtml(path.shortTitle)}
-          <span>${peopleCount} 个样本</span>
+          <span class="path-nav-count">${peopleCount} 人</span>
         </button>
       `;
     }).join("");
 
     return `
-      <aside class="side-nav">
-        <h2>路径导航</h2>
-        <button class="path-nav-button ${allActive ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="all">
-          全部路径
-          <span>${result.paths.length} 个话题中心</span>
+      <nav class="left-rail">
+        <p class="rail-label">路径</p>
+        <button class="path-nav-item ${allActive ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="all">
+          全部
         </button>
         ${buttons}
-      </aside>
+      </nav>
     `;
   }
 
@@ -49,12 +52,10 @@
     }).join("");
 
     return `
-      <main class="page-shell">
-        <div class="feed-grid">
+      <main class="layout">
           ${renderSideNav(state, result)}
-          <section class="feed-stack">${modules}</section>
+          <section class="main-feed">${modules}</section>
           ${App.components.renderRightRail(state)}
-        </div>
       </main>
     `;
   }
@@ -62,15 +63,17 @@
   App.views.renderFeedView = function renderFeedView(state) {
     const topBar = App.components.renderTopBar(state);
 
-    if (state.search.status === "clarify") {
+    if (state.search.clarifyOpen || state.search.status === "clarify") {
+      const content = state.result ? renderLoaded(state) : `<main class="layout"><aside></aside><section class="main-feed">${renderLoading(state)}</section><aside></aside></main>`;
       return `
         ${topBar}
-        <div class="underbar">${App.components.renderClarifyCard(state)}</div>
+        ${App.components.renderClarifyCard(state)}
+        ${state.search.status === "clarify" && !state.result ? "" : content}
       `;
     }
 
     if (state.search.status !== "loaded" || !state.result) {
-      return `${topBar}${renderLoading(state)}`;
+      return `${topBar}<main class="layout"><aside></aside><section class="main-feed">${renderLoading(state)}</section><aside></aside></main>`;
     }
 
     return `${topBar}${renderLoaded(state)}`;

@@ -8,21 +8,14 @@
 
     return `
       <section class="path-module">
-        <header class="path-header">
+        <header class="path-head">
           <div>
-            <h2>${escapeHtml(path.title)}</h2>
-            <p>${escapeHtml(path.summary)}</p>
-            <div class="quote-line">${escapeHtml(path.representativeQuote)}</div>
+            <h2 class="path-title">${escapeHtml(path.title)}</h2>
+            <div class="quote">${escapeHtml(path.representativeQuote || path.summary)}</div>
           </div>
-          <button class="app-button people-count" type="button" data-action="open-people" data-path-id="${escapeAttribute(path.id)}">${people.length} 人</button>
+          <button class="path-count-btn" type="button" data-action="open-people" data-path-id="${escapeAttribute(path.id)}">${people.length} 人 ›</button>
         </header>
-        <div class="path-body">
-          <div class="path-topic">
-            <strong>这条路径为什么相关</strong>
-            <span>${escapeHtml(path.whyRelevant)}</span>
-          </div>
-          <div class="person-list">${cards}</div>
-        </div>
+        <div class="people-row">${cards}</div>
       </section>
     `;
   };

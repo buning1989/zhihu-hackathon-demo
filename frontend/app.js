@@ -2,6 +2,7 @@
   const App = window.LifeSampleApp || (window.LifeSampleApp = {});
   const root = document.getElementById("app");
   let requestSeq = 0;
+  let capsuleTypingTimer = null;
 
   function render() {
     const state = App.store.getState();
@@ -64,6 +65,7 @@
         requestId,
         clarifyQuestions: [],
         clarifyAnswers,
+        clarifyOpen: false,
         error: ""
       };
       return draft;
@@ -84,6 +86,7 @@
         draft.search.message = "";
         draft.search.clarifyQuestions = preparation.questions;
         draft.search.clarifyAnswers = {};
+        draft.search.clarifyOpen = true;
         return draft;
       });
       return;
@@ -97,6 +100,7 @@
       draft.search.status = "loading";
       draft.search.message = "正在生成路径 Feed";
       draft.search.requestId = requestId;
+      draft.search.clarifyOpen = false;
       return draft;
     });
 
@@ -114,21 +118,19 @@
       draft.search.status = "loaded";
       draft.search.message = "";
       draft.search.error = "";
+      draft.search.clarifyOpen = false;
       draft.activePathId = "all";
       return draft;
     });
   }
 
-  async function continueAfterClarify() {
+  async function continueAfterClarify(options = {}) {
     const state = App.store.getState();
     const questions = state.search.clarifyQuestions || [];
     const answers = state.search.clarifyAnswers || {};
-    const complete = questions.every((question) => answers[question.id]);
-    if (!complete) {
-      return;
-    }
+    const nextAnswers = options.skip ? {} : answers;
     const requestId = currentRequestId();
-    await loadResults(state.query || state.pendingQuery, requestId, answers);
+    await loadResults(state.query || state.pendingQuery, requestId, nextAnswers);
   }
 
   async function mockLogin() {
@@ -164,6 +166,25 @@
   function setPath(pathId) {
     App.store.update((draft) => {
       draft.activePathId = pathId;
+      draft.expandedPersonId = null;
+      return draft;
+    });
+  }
+
+  function openClarify() {
+    App.store.update((draft) => {
+      draft.page = "feed";
+      draft.search.clarifyQuestions = draft.search.clarifyQuestions.length
+        ? draft.search.clarifyQuestions
+        : App.mockData.clarifyQuestions.slice(0, 3);
+      draft.search.clarifyOpen = true;
+      return draft;
+    });
+  }
+
+  function toggleExperience(personId) {
+    App.store.update((draft) => {
+      draft.expandedPersonId = draft.expandedPersonId === personId ? null : personId;
       return draft;
     });
   }
@@ -186,6 +207,7 @@
     App.store.update((draft) => {
       draft.page = "reading";
       draft.selectedPersonId = personId;
+      draft.expandedPersonId = null;
       draft.modal = { type: null, pathId: null, personId: null };
       return draft;
     });
@@ -273,20 +295,48 @@
     });
   }
 
+  function startCapsuleTyping(message) {
+    if (capsuleTypingTimer) {
+      window.clearInterval(capsuleTypingTimer);
+    }
+    let index = 0;
+    capsuleTypingTimer = window.setInterval(() => {
+      index += 1;
+      App.store.update((draft) => {
+        draft.capsule.typedText = message.slice(0, index);
+        if (index >= message.length) {
+          draft.capsule.typingDone = true;
+        }
+        return draft;
+      });
+      if (index >= message.length) {
+        window.clearInterval(capsuleTypingTimer);
+        capsuleTypingTimer = null;
+      }
+    }, 30);
+  }
+
   function saveCapsule(message, openAt) {
     const cleanMessage = String(message || "").trim();
     if (!cleanMessage) {
       return;
     }
     App.store.update((draft) => {
+      draft.page = "capsule";
       draft.capsule.entries.unshift({
         id: `capsule-${Date.now()}`,
         message: cleanMessage,
         openAt,
         status: "等待开启"
       });
+      draft.capsule.sealed = true;
+      draft.capsule.message = cleanMessage;
+      draft.capsule.typedText = "";
+      draft.capsule.typingDone = false;
+      draft.capsule.openAt = openAt;
       return draft;
     });
+    startCapsuleTyping(cleanMessage);
   }
 
   async function handleSubmit(event) {
@@ -338,8 +388,14 @@
       answerClarify(target.dataset.questionId, target.dataset.optionId);
     } else if (action === "continue-after-clarify") {
       await continueAfterClarify();
+    } else if (action === "skip-clarify") {
+      await continueAfterClarify({ skip: true });
+    } else if (action === "open-clarify") {
+      openClarify();
     } else if (action === "set-path") {
       setPath(target.dataset.pathId);
+    } else if (action === "toggle-experience") {
+      toggleExperience(target.dataset.personId);
     } else if (action === "open-people") {
       openPeople(target.dataset.pathId);
     } else if (action === "open-reading") {
@@ -358,6 +414,9 @@
       App.store.update((draft) => {
         draft.page = "capsule";
         draft.modal = { type: null, pathId: null, personId: null };
+        draft.capsule.sealed = false;
+        draft.capsule.typedText = "";
+        draft.capsule.typingDone = false;
         return draft;
       });
     } else if (action === "open-feed") {
