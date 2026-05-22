@@ -107,7 +107,7 @@
     const sourceByCandidateId = new Map(sources.map((source) => [sourceCandidateIdOf(source), source]));
     const evidenceByCandidateId = groupEvidenceByCandidateId(evidenceMap);
     const displayPaths = rawPaths
-      .filter((path) => hasSourceRefs(path.sourceRefs))
+      .filter((path) => hasProductionPathRefs(path, evidenceMap))
       .map((path, index) => normalizeProductionPath(path, index, evidenceMap));
 
     let people = evidenceSamples.length
@@ -210,9 +210,9 @@
 
   function normalizeProductionPath(path, index, evidenceMap) {
     const id = stringOf(path.id || `path_${index + 1}`);
-    const sourceRefs = normalizeProductionSourceRefs(path.sourceRefs);
+    const sourceRefs = deriveProductionSourceRefs(path, evidenceMap);
     const quote = firstEvidenceText(sourceRefs, evidenceMap);
-    const title = stringOf(path.title || `证据路径 ${index + 1}`);
+    const title = stringOf(path.title || `样本方向 ${index + 1}`);
     const summary = stringOf(path.summary || "");
     const whyRelevant = stringOf(path.angle || path.suitableContext || path.tradeoffs || summary);
 
@@ -225,8 +225,11 @@
       whyRelevant,
       representativeQuote: quote,
       sourceRefs,
-      evidenceIds: sourceRefs.flatMap((sourceRef) => normalizeStringArray(sourceRef.evidenceItemIds)),
-      confidence: numberOr(path.confidence, 0),
+      evidenceIds: normalizeStringArray(path.evidenceIds || sourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds)),
+      sourceIds: normalizeStringArray(path.sourceIds || sourceRefs.map((sourceRef) => sourceRef.sourceCandidateId)),
+      confidence: numberOr(path.confidence, average(sourceRefs.flatMap((sourceRef) =>
+        normalizeStringArray(sourceRef.evidenceItemIds).map((id) => evidenceMap[id]?.confidence)
+      ).filter(isNumber))),
       personRefs: [],
       peopleIds: [],
       isProductionPath: true,
@@ -236,8 +239,8 @@
 
   function normalizeProductionEvidenceSample(input) {
     const sample = isRecord(input.sample) ? input.sample : {};
-    const candidateId = stringOf(sample.sourceCandidateId);
-    const evidenceItemId = stringOf(sample.evidenceItemId);
+    const candidateId = stringOf(sample.sourceId || sample.sourceCandidateId);
+    const evidenceItemId = stringOf(sample.evidenceId || sample.evidenceItemId);
     const evidenceItem = isRecord(input.evidenceMap[evidenceItemId]) ? input.evidenceMap[evidenceItemId] : {};
     const source = input.sourceByCandidateId.get(candidateId) || {};
     const sourceUrl = stringOf(sample.sourceUrl || source.url || evidenceItem.sourceUrl);
@@ -251,7 +254,7 @@
       : [];
     const articleEvidence = {
       id: evidenceItemId || stringOf(sample.id),
-      label: stringOf(sample.sampleType || evidenceItem.supportType || "证据片段"),
+      label: stringOf(sample.evidenceType || sample.sampleType || evidenceItem.supportType || "证据片段"),
       text: quote,
       sourceUrl
     };
@@ -265,7 +268,8 @@
       id: stringOf(sample.id || `sample_${candidateId || input.index + 1}`),
       name: author,
       displayName: author,
-      sampleType: stringOf(sample.sampleType || "evidence"),
+      sampleType: stringOf(sample.evidenceType || sample.sampleType || "evidence"),
+      evidenceType: stringOf(sample.evidenceType || sample.sampleType || ""),
       isProductionSample: true,
       pathId: findPathIdForCandidate(input.rawPaths, candidateId),
       avatar: "",
@@ -279,6 +283,7 @@
       representativeQuote: quote,
       experienceSummary: summary || quote,
       oneLine: summary || quote,
+      angle: stringOf(sample.angle || sample.evidenceType || sample.sampleType || ""),
       source: {
         title,
         evidence: quote || summary,
@@ -671,6 +676,7 @@
   function findPathIdForSourceRefs(paths, sourceRefs) {
     const candidateIds = new Set(sourceRefs.map((ref) => stringOf(ref.sourceCandidateId)).filter(Boolean));
     const path = paths.find((item) =>
+      normalizeStringArray(item.sourceIds).some((sourceId) => candidateIds.has(sourceId)) ||
       (item.sourceRefs || []).some((ref) => candidateIds.has(stringOf(ref.sourceCandidateId)))
     );
     return stringOf(path?.id || "");
@@ -681,9 +687,33 @@
       return "";
     }
     const path = paths.find((item) =>
+      normalizeStringArray(item.sourceIds).includes(candidateId) ||
       (item.sourceRefs || []).some((ref) => stringOf(ref.sourceCandidateId) === candidateId)
     );
     return stringOf(path?.id || "");
+  }
+
+  function deriveProductionSourceRefs(path, evidenceMap) {
+    const sourceRefs = normalizeProductionSourceRefs(path.sourceRefs);
+    if (sourceRefs.length > 0) {
+      return sourceRefs;
+    }
+
+    const sourceIds = normalizeStringArray(path.sourceIds);
+    const evidenceIds = normalizeStringArray(path.evidenceIds);
+    if (sourceIds.length === 0 || evidenceIds.length === 0) {
+      return [];
+    }
+
+    return sourceIds.map((sourceId) => {
+      const evidenceItemIds = evidenceIds.filter((evidenceId) =>
+        stringOf(evidenceMap[evidenceId]?.sourceCandidateId || evidenceMap[evidenceId]?.sourceId) === sourceId
+      );
+      return {
+        sourceCandidateId: sourceId,
+        evidenceItemIds
+      };
+    }).filter((ref) => ref.sourceCandidateId && ref.evidenceItemIds.length > 0);
   }
 
   function normalizeProductionSourceRefs(sourceRefs) {
@@ -701,6 +731,10 @@
     return Array.isArray(sourceRefs) && sourceRefs.some((ref) =>
       stringOf(ref.sourceCandidateId) && Array.isArray(ref.evidenceItemIds) && ref.evidenceItemIds.length > 0
     );
+  }
+
+  function hasProductionPathRefs(path, evidenceMap) {
+    return hasSourceRefs(path?.sourceRefs) || deriveProductionSourceRefs(path || {}, evidenceMap).length > 0;
   }
 
   function sourceCandidateIdOf(source) {

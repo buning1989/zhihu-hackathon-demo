@@ -389,19 +389,19 @@ function summarizeProductionFinalResult(data: ProductionFinalResultData) {
     paths: data.paths.slice(0, 10).map((path) => ({
       id: path.id,
       titlePreview: previewString(path.title),
-      anglePreview: previewString(path.angle ?? path.coreChoice ?? "", 100),
-      confidence: path.confidence,
-      sourceRefCount: path.sourceRefs.length,
-      evidenceRefCount: path.sourceRefs.reduce((count, ref) => count + ref.evidenceItemIds.length, 0)
+      anglePreview: previewString(path.angle ?? "", 100),
+      sourceCount: (path.sourceIds ?? []).length,
+      evidenceCount: (path.evidenceIds ?? []).length
     })),
     evidenceSamples: evidenceSamples.slice(0, 10).map((sample) => ({
       id: sample.id,
-      sampleType: sample.sampleType ?? "",
+      evidenceType: sample.evidenceType ?? "",
+      anglePreview: previewString(sample.angle ?? "", 80),
       titlePreview: previewString(sample.title, 80),
-      snippetPreview: previewString(sample.snippet ?? sample.evidenceText ?? "", 100),
+      snippetPreview: previewString(sample.snippet ?? "", 100),
       confidence: sample.confidence,
-      sourceCandidateId: sample.sourceCandidateId,
-      evidenceItemId: sample.evidenceItemId
+      sourceId: sample.sourceId,
+      evidenceId: sample.evidenceId
     })),
     personas: personas.slice(0, 10).map((persona) => ({
       id: persona.id,

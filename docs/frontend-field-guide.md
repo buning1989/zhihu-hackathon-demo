@@ -95,6 +95,8 @@ Content-Type: application/json
 - `paths[].diversityKey`：调试或辅助展示用的差异化标签。
 - `paths[].sourceRefs[]`：至少一条来源引用，用于回到 evidence/source。
 
+Agent production `agent.production_final_result.v2` 已收敛为真实内容发现与样本导航：`paths[]` 只表示搜索角度/样本方向，读取 `id / title / summary / angle / evidenceIds / sourceIds`；人物/证据卡优先由 `evidenceSamples[]` 的 `sourceId / evidenceId / snippet / whyRelevant / evidenceType / angle` 生成。旧 `sourceRefs` 仅作为 v1 或前端内部兼容结构。
+
 ## people[] 是主数据
 
 `people[]` 是唯一人物主数据来源。每个 people 表示一个基于公开知乎内容整理出的前人样本。

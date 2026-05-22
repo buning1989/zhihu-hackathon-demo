@@ -156,7 +156,7 @@ function buildResponseComposeMessages(
     {
       role: "user" as const,
       content: JSON.stringify({
-        task: "把检索候选和证据组织成最终可展示结果",
+        task: "把检索候选和证据组织成真实内容发现与样本导航结果",
         outputShape: {
           schemaVersion: "agent.final_result.v1",
           summary: "string",
@@ -184,13 +184,12 @@ function buildResponseComposeMessages(
         constraints: [
           "summary 必须基于输入 evidence/candidates",
           "summary 只做证据归纳：这些公开样本呈现了哪些差异，不要写建议或行动指南",
-          "paths 只生成 3 条左右轻路径角度，每条只需要 title / summary / angle / evidenceIds / candidateIds",
+          "paths 只生成 3 条左右搜索角度/样本方向，每条只需要 title / summary / angle / evidenceIds / candidateIds",
           "paths[].summary 必须能被对应 evidenceIds 的短证据直接支撑，只写来源里出现的处境、选择、观点或结果",
-          "angle 是这条路径的归纳角度，不是适合人群、前提、收益或风险清单",
-          "不要输出 coreChoice、suitableFor、prerequisites、benefits、costsOrRisks",
+          "angle 是这组样本的归纳角度，不写适合人群、前提、收益或风险清单",
           "不要生成泛泛建议式 path summary，不要写成行动指南",
           "禁止使用强建议语气和方法论词：你应该、最好、一定、只要、建议你、方法、策略、重要性、意志力",
-          "path title 不要写成方法标题；优先写成“样本：某类选择/处境/观点”",
+          "path title 不要写成方法标题；优先写成“样本方向：某类选择/处境/观点”",
           "证据不足时可以少于 3 条 path，但不要把同一证据拆成重复路径",
           "自我状态、低谷、焦虑、内耗相关问题不得输出心理治疗、诊断、药物、咨询师或医疗建议；只整理公开内容里的真实经历样本",
           "证据弱或 experience evidence 少时，减少 paths/people 数量，可以返回空数组，不要为了凑数量泛化总结",
@@ -199,6 +198,7 @@ function buildResponseComposeMessages(
           "people[].candidateId 只能引用输入 candidates[].id",
           "people[].evidenceIds 只能引用输入 evidenceItems[].id",
           "people 只保留有 isExperienceEvidence=true evidence 的 candidate",
+          "suggestedQuestions 只围绕继续发现相似来源、比较样本差异或回看证据，不写行动建议",
           "不要生成 AI 分身",
           "不要输出作者本人实时回应、联系方式或私信建议"
         ],
@@ -254,9 +254,9 @@ function buildFinalResultFallback(
     paths,
     people: buildFallbackPeople(candidates, evidenceItems),
     suggestedQuestions: [
-      "这些路径分别有哪些风险？",
-      "哪些经历和我的问题最相似？",
-      "如果先暂停工作，应该先准备什么？"
+      "哪些样本和我的问题最相似？",
+      "这些样本分别来自哪些来源？",
+      "还有哪些相关公开内容可以继续看？"
     ],
     strategy: "rule_fallback",
     llmUsed: false,
@@ -311,11 +311,11 @@ function buildFallbackSummary(
   evidenceItems: EvidenceInputItem[]
 ): string {
   if (paths.length === 0) {
-    return "当前可用证据不足以整理出稳定路径；需要更多公开来源后才能继续归纳。";
+    return "当前可用证据不足以整理出稳定样本方向；需要更多公开来源后才能继续归纳。";
   }
 
   const pathChoices = paths
-    .map((path) => path.angle || path.coreChoice || path.title)
+    .map((path) => path.angle || path.title)
     .map(stripTrailingPunctuation)
     .filter(Boolean)
     .filter((value, index, array) => array.indexOf(value) === index)
@@ -324,7 +324,7 @@ function buildFallbackSummary(
   const evidenceCount = evidenceItems.length;
   const query = intent.originalQuery || intent.normalizedQuery || "这个问题";
 
-  return `围绕「${truncateText(query, 40)}」，${evidenceCount} 条公开证据呈现出这些可能性：${pathChoices}。这些样本能帮助比较选择、收益和代价，但不能推出唯一答案。`;
+  return `围绕「${truncateText(query, 40)}」，${evidenceCount} 条公开证据呈现出这些样本方向：${pathChoices}。这里只做真实内容导航，不推出唯一答案。`;
 }
 
 function stripTrailingPunctuation(value: string): string {
@@ -414,7 +414,7 @@ function buildPathFromEvidenceGroup(
   return {
     title: descriptor.title,
     summary: `${descriptor.summaryPrefix}${evidencePreview}${titleSeed}。这只是公开来源中的对照样本，不代表完整人生或唯一结论。`,
-    angle: descriptor.coreChoice,
+    angle: descriptor.angle,
     evidenceIds: evidenceItems.map((item) => item.id),
     candidateIds: uniqueNonEmpty(evidenceItems.map((item) => item.candidateId))
   };
@@ -423,128 +423,84 @@ function buildPathFromEvidenceGroup(
 function describePathKey(key: string): {
   title: string;
   summaryPrefix: string;
-  coreChoice: string;
-  suitableFor: string[];
-  prerequisites: string[];
-  benefits: string[];
-  costsOrRisks: string[];
+  angle: string;
 } {
   if (key === "relationship_work_priority") {
     return {
-      title: "样本路径：把工作机会放到优先级前面",
+      title: "样本方向：工作机会与异地关系",
       summaryPrefix: "这组来源把职业机会、收入或前途放在关系距离之前，证据片段显示：",
-      coreChoice: "优先追求工作机会，同时承认异地关系会承受不确定性。",
-      suitableFor: ["正在比较职业机会和关系距离的人", "能接受关系结果存在不确定性的人"],
-      prerequisites: ["工作机会本身有明确成长或收入价值", "双方能把异地期限、见面频率和底线说清楚"],
-      benefits: ["保留职业机会或收入上升空间", "把关系选择放进更现实的约束里比较"],
-      costsOrRisks: ["分手或关系变淡的风险会变高", "长期异地的沟通和见面成本需要实际承担"]
+      angle: "职业机会和关系距离同时出现的样本"
     };
   }
 
   if (key === "relationship_boundary_cost") {
     return {
-      title: "样本路径：先把异地期限和成本说清楚",
+      title: "样本方向：异地期限与见面成本",
       summaryPrefix: "这组来源关注异地持续多久、多久见一次、谁承担成本，证据片段显示：",
-      coreChoice: "不先判断值不值得，而是先确认异地的期限、成本和可回撤条件。",
-      suitableFor: ["关系仍想继续，但现实安排很模糊的人", "需要把距离成本量化的人"],
-      prerequisites: ["双方愿意讨论期限、见面频率和城市安排", "有能力承担短期交通、时间和沟通成本"],
-      benefits: ["把抽象的值得与否变成可比较的现实条件", "降低长期悬空带来的消耗"],
-      costsOrRisks: ["讨论后可能发现条件不成立", "如果期限无限延长，消耗仍会累积"]
+      angle: "期限、频率和成本被明确提到的样本"
     };
   }
 
   if (key === "relationship_emotional_cost") {
     return {
-      title: "样本路径：承认异地带来的情感消耗",
+      title: "样本方向：异地中的情感消耗",
       summaryPrefix: "这组来源把异地带来的失落、分手风险或关系消耗放在前面，证据片段显示：",
-      coreChoice: "继续关系前，先承认异地会带来情绪消耗和分手风险。",
-      suitableFor: ["关系感受已经被距离明显影响的人", "想知道异地真实消耗而不是只看职业收益的人"],
-      prerequisites: ["能诚实评估双方对异地的接受度", "愿意讨论分手风险和长期不确定性"],
-      benefits: ["避免只用职业收益掩盖关系成本", "让情感代价进入同一张决策表"],
-      costsOrRisks: ["关系可能因距离持续消耗", "如果双方预期不同，冲突会更早暴露"]
+      angle: "失落、关系消耗或分手风险相关样本"
     };
   }
 
   if (key === "career_ai_adjacent_experience") {
     return {
-      title: "样本路径：从相邻经验切入 AI",
+      title: "样本方向：相邻经验切入 AI",
       summaryPrefix: "这组来源出现了从既有背景转向 AI 的经历或判断，证据片段显示：",
-      coreChoice: "把原有软件、医学、产品或行业经验转成 AI 相关岗位的切入点。",
-      suitableFor: ["已有可迁移技能或行业经验的人", "想先验证 AI 岗位是否承接旧经验的人"],
-      prerequisites: ["能说清自己已有经验和 AI 岗位之间的连接", "愿意补齐大模型、产品或技术基础"],
-      benefits: ["不是从零开始，能利用已有业务或技术经验", "更容易形成可展示的转行叙事"],
-      costsOrRisks: ["需要补课和作品验证", "来源片段不能证明所有人都能获得同样结果"]
+      angle: "已有背景和 AI 方向连接的样本"
     };
   }
 
   if (key === "career_ai_skill_validation") {
     return {
-      title: "样本路径：先用学习和作品验证转行",
+      title: "样本方向：学习与项目验证",
       summaryPrefix: "这组来源把学习路径、岗位能力或项目验证放在前面，证据片段显示：",
-      coreChoice: "先用学习、项目或作品判断自己是否能进入 AI 产品/大模型方向。",
-      suitableFor: ["还不确定是否能转 AI 的人", "愿意先做低成本验证的人"],
-      prerequisites: ["能投入固定学习时间", "能产出可展示项目、案例或产品分析"],
-      benefits: ["先暴露能力缺口，再决定是否全力转行", "降低盲目辞职或盲投岗位的风险"],
-      costsOrRisks: ["学习成本和时间成本真实存在", "课程或资源型内容可能带有推广倾向，需要看证据质量"]
+      angle: "学习、项目或岗位能力被提到的样本"
     };
   }
 
   if (key === "career_ai_capital_check") {
     return {
-      title: "样本路径：先判断自己的转行资本",
+      title: "样本方向：年龄与转行基础",
       summaryPrefix: "这组来源强调年龄不是唯一变量，真正要看已有技能、行业经验和可投入资源，证据片段显示：",
-      coreChoice: "先判断已有经验、学习时间和可承受成本，再决定是否转 AI 产品。",
-      suitableFor: ["担心 30 岁是否太晚的人", "还没有确认自己转行资本的人"],
-      prerequisites: ["能盘点可迁移经验、学习时间和作品产出能力", "能接受转行初期的不确定性"],
-      benefits: ["避免只被年龄焦虑驱动", "更容易判断该全力转行还是先小步验证"],
-      costsOrRisks: ["如果转行资本不足，投入成本可能被低估", "公开来源不能保证同样的岗位结果"]
+      angle: "年龄、经验和资源一起出现的样本"
     };
   }
 
   if (key === "no_work_income_substitute") {
     return {
-      title: "样本路径：用替代收入先接住现金流",
+      title: "样本方向：替代收入与现金流",
       summaryPrefix: "这组来源讨论跑车、送货、摆摊、远程接活或自媒体等替代收入，证据片段显示：",
-      coreChoice: "离开原工作结构后，先用临时收入、远程接活或小生意维持现金流。",
-      suitableFor: ["短期不能完全没有收入的人", "愿意接受收入波动和工作形态变化的人"],
-      prerequisites: ["有可立即变现的技能、体力或时间", "能接受收入不稳定和社会评价变化"],
-      benefits: ["给生活留出周转空间", "把不工作后的去处从抽象想象变成具体试运行"],
-      costsOrRisks: ["收入、体力和稳定性都可能不如原工作", "长期职业积累可能中断"]
+      angle: "不上班之后仍提到收入来源的样本"
     };
   }
 
   if (key === "no_work_life_order") {
     return {
-      title: "样本路径：先修复失业后的生活秩序",
+      title: "样本方向：停工后的生活状态",
       summaryPrefix: "这组来源呈现失业或不上班后的状态变化，证据片段显示：",
-      coreChoice: "先把生活节奏、情绪状态和基本行动力接回来，再决定下一站。",
-      suitableFor: ["已经失业或停工，状态被打乱的人", "暂时没有清晰去处的人"],
-      prerequisites: ["基本生活能被短期覆盖", "愿意先恢复日常节奏而不是立刻做大决定"],
-      benefits: ["避免在低能量状态下仓促选择", "更容易看见真实约束和下一步选项"],
-      costsOrRisks: ["如果现金流不足，停留时间会受到限制", "公开片段只能说明状态变化，不能替代专业帮助"]
+      angle: "失业、停工后状态变化相关样本"
     };
   }
 
   if (key === "no_work_safety_net") {
     return {
-      title: "样本路径：先确认安全垫和回撤条件",
+      title: "样本方向：安全垫与现实约束",
       summaryPrefix: "这组来源把不工作后的基本盘、预算和现实约束放在前面，证据片段显示：",
-      coreChoice: "先确认存款、住处、家庭支持和回撤路径，再扩大停工时间。",
-      suitableFor: ["想暂停工作但风险承受力有限的人", "需要先兜住基本生活的人"],
-      prerequisites: ["有可计算的现金流或支持系统", "知道最坏情况下如何回到工作或其他收入来源"],
-      benefits: ["降低停工后的失控感", "让探索有明确边界"],
-      costsOrRisks: ["安全垫不足时选择空间会很小", "长期停工可能影响再就业"]
+      angle: "存款、住处、支持系统或现实限制相关样本"
     };
   }
 
   return {
-    title: "样本路径：围绕一条公开证据做对照",
+    title: "样本方向：围绕一条公开证据做对照",
     summaryPrefix: "这组来源提供了一个可对照的公开片段，证据显示：",
-    coreChoice: "先把公开片段中的选择和约束拿来比较，而不是直接套用结论。",
-    suitableFor: ["和来源处境有相似变量的人"],
-    prerequisites: ["能确认来源片段与自己的问题确实相关"],
-    benefits: ["获得一个有来源的参照点"],
-    costsOrRisks: ["单条公开片段信息有限，不能推断完整经历"]
+    angle: "单条公开证据样本"
   };
 }
 
@@ -556,37 +512,25 @@ function describeEvidenceSpecificPath(
 
   if (/ai|人工智能|大模型|产品|转行|非科班|算法/i.test(text)) {
     return {
-      title: "样本路径：参考已有转行者的实际结果",
+      title: "样本方向：已有转向 AI 的公开样本",
       summaryPrefix: "这组来源出现了已经转向 AI 或人工智能方向的公开样本，证据片段显示：",
-      coreChoice: "把已有转行者的路径和结果作为参照，再判断自己是否可复现。",
-      suitableFor: ["想知道 30 岁后是否仍有转行样本的人", "需要对照真实转行结果的人"],
-      prerequisites: ["能区分来源样本的原背景和自己的差异", "愿意回到原文核对岗位、学习成本和结果边界"],
-      benefits: ["能看到不是只有年龄一个变量", "更容易比较背景、投入和结果之间的关系"],
-      costsOrRisks: ["单个成功或失败样本不能代表普遍结果", "来源片段可能省略了投入成本和行业门槛"]
+      angle: "已有转行结果或岗位经历样本"
     };
   }
 
   if (/异地|恋爱|伴侣|女朋友|男朋友|夫妻/.test(text)) {
     return {
-      title: "样本路径：用亲历片段校准关系选择",
+      title: "样本方向：异地关系中的亲历片段",
       summaryPrefix: "这组来源出现了异地关系中的亲历或强情绪片段，证据显示：",
-      coreChoice: "把异地中的真实感受和关系风险纳入选择，而不是只看工作收益。",
-      suitableFor: ["想知道异地长期消耗的人", "关系和职业都放不下的人"],
-      prerequisites: ["能承认关系感受本身也是决策变量", "愿意比较工作收益和关系损耗"],
-      benefits: ["让情绪成本变得可见", "减少只用单一收益判断关系的偏差"],
-      costsOrRisks: ["关系可能继续消耗", "公开片段不能代表双方完整互动"]
+      angle: "异地关系感受或关系结果样本"
     };
   }
 
   if (/不上班|不工作|失业|裸辞|离职|自由职业/.test(text)) {
     return {
-      title: "样本路径：看停工后的真实状态变化",
+      title: "样本方向：停工后的真实状态变化",
       summaryPrefix: "这组来源出现了失业、不上班或停工后的公开状态片段，证据显示：",
-      coreChoice: "先看停工后的状态、现金流和行动力变化，再判断去哪里。",
-      suitableFor: ["正在想象不工作后生活的人", "已经离开工作结构但方向不清的人"],
-      prerequisites: ["能计算短期生活成本", "愿意面对收入和状态波动"],
-      benefits: ["把不工作后的去处具体化", "提前看到停工后的现实代价"],
-      costsOrRisks: ["现金流和再就业都可能承压", "状态低谷时容易低估恢复成本"]
+      angle: "不上班后的生活状态或去向样本"
     };
   }
 
@@ -681,12 +625,7 @@ function isFinalResultPath(value: unknown): boolean {
     typeof value.summary === "string" &&
     (value.angle === undefined || typeof value.angle === "string") &&
     isStringArray(value.evidenceIds) &&
-    isStringArray(value.candidateIds) &&
-    (value.coreChoice === undefined || typeof value.coreChoice === "string") &&
-    (value.suitableFor === undefined || isStringArray(value.suitableFor)) &&
-    (value.prerequisites === undefined || isStringArray(value.prerequisites)) &&
-    (value.benefits === undefined || isStringArray(value.benefits)) &&
-    (value.costsOrRisks === undefined || isStringArray(value.costsOrRisks))
+    isStringArray(value.candidateIds)
   );
 }
 

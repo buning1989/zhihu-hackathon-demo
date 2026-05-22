@@ -173,11 +173,6 @@ export interface FinalResultPath {
   angle?: string;
   evidenceIds: string[];
   candidateIds: string[];
-  coreChoice?: string;
-  suitableFor?: string[];
-  prerequisites?: string[];
-  benefits?: string[];
-  costsOrRisks?: string[];
 }
 
 export interface FinalResultPerson {

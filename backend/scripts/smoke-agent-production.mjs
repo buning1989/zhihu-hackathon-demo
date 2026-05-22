@@ -18,6 +18,44 @@ const expectRateLimit = readBoolean(
 );
 const minCandidateQualityScore = 0.45;
 const minEvidenceConfidence = 0.35;
+const deprecatedPathFields = [
+  "coreChoice",
+  "suitableFor",
+  "prerequisites",
+  "benefits",
+  "costsOrRisks",
+  "situation",
+  "choice",
+  "process",
+  "outcome",
+  "costOrRisk",
+  "takeaway",
+  "referenceValue",
+  "sourceRefs",
+  "confidence"
+];
+const deprecatedEvidenceItemFields = [
+  "situation",
+  "choice",
+  "process",
+  "outcome",
+  "costOrRisk",
+  "takeaway"
+];
+const deprecatedEvidenceSampleFields = [
+  "sourceCandidateId",
+  "evidenceItemId",
+  "sampleType",
+  "situation",
+  "choice",
+  "keyExperience",
+  "judgment",
+  "referenceValue",
+  "limit",
+  "evidenceText",
+  "supportType",
+  "isExperienceEvidence"
+];
 const queries = [
   "我要不要裸辞？",
   "异地恋到底值不值得坚持？",
@@ -342,7 +380,12 @@ function assertProductionFinalResult(finalResult, label) {
   }
 
   assertDeterministicQualityReport(finalResult.groundingReport, label);
-  const sourceById = new Map(finalResult.sources.map((source) => [source.sourceCandidateId, source]));
+  const sourceById = new Map(
+    finalResult.sources.flatMap((source) => [
+      [source.sourceCandidateId, source],
+      [source.id, source]
+    ])
+  );
   for (const [index, source] of finalResult.sources.entries()) {
     assertProductionSource(source, `${label}: sources[${index}]`);
   }
@@ -352,12 +395,11 @@ function assertProductionFinalResult(finalResult, label) {
   }
 
   for (const [index, path] of finalResult.paths.entries()) {
+    assertFieldsAbsent(path, deprecatedPathFields, `${label}: paths[${index}]`);
     assert(typeof path.title === "string" && path.title, `${label}: paths[${index}].title missing`);
     assert(typeof path.summary === "string" && path.summary, `${label}: paths[${index}].summary missing`);
     assert(typeof path.angle === "string" && path.angle, `${label}: paths[${index}].angle missing`);
-    assertSourceRefs(path.sourceRefs, sourceById, finalResult.evidenceMap, `${label}: paths[${index}]`, {
-      requireExperienceEvidence: false
-    });
+    assertPathReferences(path, sourceById, finalResult.evidenceMap, `${label}: paths[${index}]`);
   }
 
   for (const [index, sample] of finalResult.evidenceSamples.entries()) {
@@ -389,6 +431,7 @@ function assertProductionSource(source, label) {
 }
 
 function assertProductionEvidenceItem(id, evidenceItem, sourceById, label) {
+  assertFieldsAbsent(evidenceItem, deprecatedEvidenceItemFields, label);
   assert(evidenceItem.id === id, `${label}: id mismatch`);
   assert(sourceById.has(evidenceItem.sourceCandidateId), `${label}: sourceCandidateId missing`);
   assert(typeof evidenceItem.supportType === "string" && evidenceItem.supportType, `${label}: supportType missing`);
@@ -402,49 +445,50 @@ function assertProductionEvidenceItem(id, evidenceItem, sourceById, label) {
 }
 
 function assertProductionEvidenceSample(sample, sourceById, evidenceMap, label) {
+  assertFieldsAbsent(sample, deprecatedEvidenceSampleFields, label);
   assert(typeof sample.id === "string" && sample.id, `${label}: id missing`);
-  assert(sourceById.has(sample.sourceCandidateId), `${label}: sourceCandidateId missing`);
-  const evidenceItem = evidenceMap[sample.evidenceItemId];
-  assert(evidenceItem, `${label}: evidenceItemId missing`);
+  assert(sourceById.has(sample.sourceId), `${label}: sourceId missing`);
+  const evidenceItem = evidenceMap[sample.evidenceId];
+  assert(evidenceItem, `${label}: evidenceId missing`);
   assert(
-    evidenceItem.sourceCandidateId === sample.sourceCandidateId,
-    `${label}: evidenceItemId belongs to ${evidenceItem.sourceCandidateId}`
+    evidenceItem.sourceCandidateId === sample.sourceId,
+    `${label}: evidenceId belongs to ${evidenceItem.sourceCandidateId}`
   );
   assert(typeof sample.snippet === "string" && sample.snippet, `${label}: snippet missing`);
   assert(typeof sample.whyRelevant === "string" && sample.whyRelevant, `${label}: whyRelevant missing`);
   assert(
-    ["experience", "decision", "opinion", "context"].includes(sample.sampleType),
-    `${label}: sampleType invalid`
+    ["experience", "decision", "opinion", "context"].includes(sample.evidenceType),
+    `${label}: evidenceType invalid`
   );
+  assert(typeof sample.angle === "string" && sample.angle, `${label}: angle missing`);
   assert(Number.isFinite(sample.confidence), `${label}: confidence missing`);
 }
 
-function assertSourceRefs(sourceRefs, sourceById, evidenceMap, label, options) {
-  assert(Array.isArray(sourceRefs) && sourceRefs.length > 0, `${label}: sourceRefs missing`);
+function assertPathReferences(path, sourceById, evidenceMap, label) {
+  assert(Array.isArray(path.sourceIds) && path.sourceIds.length > 0, `${label}: sourceIds missing`);
+  assert(Array.isArray(path.evidenceIds) && path.evidenceIds.length > 0, `${label}: evidenceIds missing`);
 
-  let hasExperienceEvidence = false;
-  for (const [index, sourceRef] of sourceRefs.entries()) {
-    const source = sourceById.get(sourceRef.sourceCandidateId);
-    assert(source, `${label}: sourceRefs[${index}].sourceCandidateId missing`);
-    assert(source.qualityScore >= minCandidateQualityScore, `${label}: sourceRefs[${index}].candidate low quality`);
-    assert(Array.isArray(sourceRef.evidenceItemIds) && sourceRef.evidenceItemIds.length > 0, `${label}: sourceRefs[${index}].evidenceItemIds missing`);
-
-    for (const evidenceItemId of sourceRef.evidenceItemIds) {
-      const evidenceItem = evidenceMap[evidenceItemId];
-      assert(evidenceItem, `${label}: evidenceItem ${evidenceItemId} missing`);
-      assert(
-        evidenceItem.sourceCandidateId === sourceRef.sourceCandidateId,
-        `${label}: evidenceItem ${evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}`
-      );
-      assert(evidenceItem.confidence >= minEvidenceConfidence, `${label}: evidenceItem ${evidenceItemId} low confidence`);
-      if (evidenceItem.isExperienceEvidence) {
-        hasExperienceEvidence = true;
-      }
-    }
+  const pathSourceIds = new Set(path.sourceIds);
+  for (const [index, sourceId] of path.sourceIds.entries()) {
+    const source = sourceById.get(sourceId);
+    assert(source, `${label}: sourceIds[${index}] missing`);
+    assert(source.qualityScore >= minCandidateQualityScore, `${label}: sourceIds[${index}] candidate low quality`);
   }
 
-  if (options.requireExperienceEvidence) {
-    assert(hasExperienceEvidence, `${label}: persona missing experience evidence`);
+  for (const evidenceId of path.evidenceIds) {
+    const evidenceItem = evidenceMap[evidenceId];
+    assert(evidenceItem, `${label}: evidence ${evidenceId} missing`);
+    assert(
+      pathSourceIds.has(evidenceItem.sourceCandidateId),
+      `${label}: evidence ${evidenceId} belongs to ${evidenceItem.sourceCandidateId}`
+    );
+    assert(evidenceItem.confidence >= minEvidenceConfidence, `${label}: evidence ${evidenceId} low confidence`);
+  }
+}
+
+function assertFieldsAbsent(value, fields, label) {
+  for (const field of fields) {
+    assert(value[field] === undefined, `${label}: deprecated ${field} should not be present`);
   }
 }
 

@@ -62,7 +62,7 @@ export async function runGroundingGuardLlmStage(
       candidates: limitedCandidates.map(toGatewayCandidateMetadata),
       evidenceItems: limitedEvidence.map(toGatewayEvidenceMetadata)
     },
-    maxTokens: 1800,
+    maxTokens: 1400,
     temperature: 0.1,
     onEvent: async (type, payload) => {
       await agentRepository.createEvent({
@@ -104,7 +104,7 @@ function buildGroundingGuardMessages(
     {
       role: "user" as const,
       content: JSON.stringify({
-        task: "校验 final_result 的轻路径、人物索引和追问是否有候选与证据支撑",
+        task: "校验 final_result 的样本方向和人物索引是否有候选与证据支撑",
         outputShape: {
           schemaVersion: "agent.guarded_final_result.v1",
           result: finalResult,
@@ -122,14 +122,14 @@ function buildGroundingGuardMessages(
           "最外层必须直接是 schemaVersion/result/guard/strategy/llmUsed，不要包在 task、outputShape、finalResult、candidates 或 evidenceItems 里",
           "不要回显本条 user JSON，不要复制 candidates/evidenceItems 到输出",
           "result.schemaVersion 必须保持 agent.final_result.v1",
-          "result.paths 只需要保留 title、summary、angle、evidenceIds、candidateIds；不要新增或要求 coreChoice、suitableFor、prerequisites、benefits、costsOrRisks",
+          "result.paths 只需要保留 title、summary、angle、evidenceIds、candidateIds",
           "后端会由 sources/evidenceMap 生成 production evidenceSamples；不要输出 evidenceSamples，也不要因为未看到 evidenceSamples 而删除 paths",
           "如果 paths/people 引用不存在的 evidenceIds 或 candidateIds，应只修复对应局部引用或删除对应条目，并写入 guard.warnings",
           "qualityScore 低于阈值的 candidate 不能作为最终 paths/people 的支撑",
           "people 只是样本索引；缺少真实经历证据时可以删除该 people，不要影响其他 path",
           "低 confidence evidence 不能支撑强结论",
           "如果只是保守措辞、样本归纳表达或证据有限提示，但未删除/修改 paths/people/evidenceIds/candidateIds，则 guard.status 保持 passed，只写 warnings",
-          "只有删除 path、修复 path 的 evidenceIds/candidateIds 或移除不被证据支撑的强结论时，guard.status 才能是 repaired",
+          "只有删除 path、修复 path 的 evidenceIds/candidateIds 或移除明显越界内容时，guard.status 才能是 repaired",
           "不要把“公开样本不能推出唯一答案”这类保守边界句当作 unsupported claim",
           "自我状态、低谷、焦虑、内耗相关内容不得保留心理治疗、诊断、药物、咨询师或医疗建议",
           "必须输出完整 JSON object，不要截断，不要输出 Markdown",
@@ -693,22 +693,7 @@ function normalizeFinalResultPath(value: unknown, fallback?: FinalResultPath): F
       ? { angle: readString(record.angle) || fallback?.angle || "" }
       : {}),
     evidenceIds,
-    candidateIds,
-    ...(readString(record.coreChoice) || fallback?.coreChoice
-      ? { coreChoice: readString(record.coreChoice) || fallback?.coreChoice || "" }
-      : {}),
-    ...(readStringArray(record.suitableFor, fallback?.suitableFor ?? []).length > 0
-      ? { suitableFor: readStringArray(record.suitableFor, fallback?.suitableFor ?? []) }
-      : {}),
-    ...(readStringArray(record.prerequisites, fallback?.prerequisites ?? []).length > 0
-      ? { prerequisites: readStringArray(record.prerequisites, fallback?.prerequisites ?? []) }
-      : {}),
-    ...(readStringArray(record.benefits, fallback?.benefits ?? []).length > 0
-      ? { benefits: readStringArray(record.benefits, fallback?.benefits ?? []) }
-      : {}),
-    ...(readStringArray(record.costsOrRisks, fallback?.costsOrRisks ?? []).length > 0
-      ? { costsOrRisks: readStringArray(record.costsOrRisks, fallback?.costsOrRisks ?? []) }
-      : {})
+    candidateIds
   };
 }
 
@@ -931,12 +916,7 @@ function isFinalResultPath(value: unknown): boolean {
     typeof value.summary === "string" &&
     (value.angle === undefined || typeof value.angle === "string") &&
     isStringArray(value.evidenceIds) &&
-    isStringArray(value.candidateIds) &&
-    (value.coreChoice === undefined || typeof value.coreChoice === "string") &&
-    (value.suitableFor === undefined || isStringArray(value.suitableFor)) &&
-    (value.prerequisites === undefined || isStringArray(value.prerequisites)) &&
-    (value.benefits === undefined || isStringArray(value.benefits)) &&
-    (value.costsOrRisks === undefined || isStringArray(value.costsOrRisks))
+    isStringArray(value.candidateIds)
   );
 }
 

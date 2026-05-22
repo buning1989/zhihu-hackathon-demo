@@ -131,9 +131,9 @@ npm run smoke
 - `GET /api/health` 可访问。
 - `GET /api/search?query=不工作了能去哪儿&count=1` 在没有真实知乎密钥时返回明确 JSON 错误，服务不能崩溃。
 - 前端首页 `/` 可访问。
-- `POST /api/agent/tasks` 可创建持久化 Agent task，5 个固定问题能轮询到 `succeeded`，并通过 `/api/agent/tasks/:taskId/result` 读取带 `sourceRefs` 的 `final_result`。
-- Agent production smoke 还会校验候选质量分、evidence 质量字段、persona 真实经历证据、deterministic quality report 和 bad refs。
-- Agent production final_result 主契约为 `agent.production_final_result.v2`，以 `summary / paths / evidenceSamples / sources / evidenceMap / groundingReport / degraded` 为稳定展示字段；v1 结构化路径字段仍可兼容读取，但不再作为 LLM 必填输出。
+- `POST /api/agent/tasks` 可创建持久化 Agent task，5 个固定问题能轮询到 `succeeded`，并通过 `/api/agent/tasks/:taskId/result` 读取 `agent.production_final_result.v2`。
+- Agent production smoke 还会校验候选质量分、evidence 质量字段、deterministic quality report、path `sourceIds/evidenceIds` 和 evidence sample 绑定关系。
+- Agent production final_result 主契约为 `agent.production_final_result.v2`，定位收敛为真实内容发现与样本导航；稳定展示字段为 `summary / paths / evidenceSamples / sources / evidenceMap / groundingReport / degraded`，v2 不再输出复杂人生路径模型字段。
 - Agent production smoke 还会校验相同 query 的 succeeded/running task 复用、`cacheHit/reused` 标识；任务数量/并发限流默认关闭，只有设置 `AGENT_RATE_LIMIT_ENABLED=true` 时才校验 `RATE_LIMITED`。
 - Agent production smoke 还会校验模糊问题进入 `need_input`、`POST /api/agent/tasks/:taskId/refine` 创建新 task、refined task 成功以及 refined cache key 不复用原始模糊 query。
 

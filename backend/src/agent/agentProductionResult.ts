@@ -7,13 +7,11 @@ import type {
   EvidenceSupportType,
   FinalResultArtifactData,
   FinalResultPath,
-  FinalResultPerson,
   GroundingGuardReport
 } from "./stages/stageTypes.js";
 
 const MIN_FINAL_CANDIDATE_QUALITY_SCORE = 0.45;
 const MIN_FINAL_EVIDENCE_CONFIDENCE = 0.35;
-const MIN_PERSONA_EVIDENCE_CONFIDENCE = 0.45;
 const MIN_DISPLAY_EVIDENCE_SAMPLE_COUNT = 4;
 export const AGENT_PRODUCTION_FINAL_RESULT_SCHEMA_VERSION = "agent.production_final_result.v2";
 
@@ -21,7 +19,7 @@ export type ProductionFinalResultSchemaVersion =
   | "agent.production_final_result.v1"
   | "agent.production_final_result.v2";
 
-export type ProductionEvidenceSampleType =
+export type ProductionEvidenceType =
   | "experience"
   | "decision"
   | "opinion"
@@ -39,22 +37,6 @@ export interface ProductionFinalResultPath {
   angle: string;
   evidenceIds: string[];
   sourceIds: string[];
-  sourceRefs: ProductionSourceRef[];
-  confidence: number;
-  /** @deprecated v1 compatibility only. New v2 consumers should use title/summary/angle/sourceRefs. */
-  coreChoice?: string;
-  /** @deprecated v1 compatibility only. */
-  suitableFor?: string[];
-  /** @deprecated v1 compatibility only. */
-  prerequisites?: string[];
-  /** @deprecated v1 compatibility only. */
-  benefits?: string[];
-  /** @deprecated v1 compatibility only. */
-  costsOrRisks?: string[];
-  /** @deprecated v1 compatibility only. */
-  suitableContext?: string;
-  /** @deprecated v1 compatibility only. */
-  tradeoffs?: string;
 }
 
 export interface ProductionFinalResultPersona {
@@ -100,49 +82,20 @@ export interface ProductionEvidenceItem {
   supportType: EvidenceSupportType;
   isExperienceEvidence: boolean;
   confidence: number;
-  /** @deprecated v1 compatibility only. */
-  situation?: string;
-  /** @deprecated v1 compatibility only. */
-  choice?: string;
-  /** @deprecated v1 compatibility only. */
-  process?: string;
-  /** @deprecated v1 compatibility only. */
-  outcome?: string;
-  /** @deprecated v1 compatibility only. */
-  costOrRisk?: string;
-  /** @deprecated v1 compatibility only. */
-  takeaway?: string;
 }
 
 export interface ProductionEvidenceSample {
   id: string;
-  sourceCandidateId: string;
-  evidenceItemId: string;
+  sourceId: string;
+  evidenceId: string;
   title: string;
   author: string;
   sourceUrl: string;
   snippet: string;
   whyRelevant: string;
-  sampleType: ProductionEvidenceSampleType;
+  evidenceType: ProductionEvidenceType;
+  angle: string;
   confidence: number;
-  /** @deprecated v1 compatibility only. */
-  situation?: string;
-  /** @deprecated v1 compatibility only. */
-  choice?: string;
-  /** @deprecated v1 compatibility only. */
-  keyExperience?: string;
-  /** @deprecated v1 compatibility only. */
-  judgment?: string;
-  /** @deprecated v1 compatibility only. */
-  referenceValue?: string;
-  /** @deprecated v1 compatibility only. */
-  limit?: string;
-  /** @deprecated v1 compatibility only. */
-  evidenceText?: string;
-  /** @deprecated v1 compatibility only. */
-  supportType?: EvidenceSupportType;
-  /** @deprecated v1 compatibility only. */
-  isExperienceEvidence?: boolean;
 }
 
 export interface DeterministicGroundingReport {
@@ -154,7 +107,6 @@ export interface DeterministicGroundingReport {
     checked: true;
     minCandidateQualityScore: number;
     minEvidenceConfidence: number;
-    minPersonaEvidenceConfidence: number;
     minDisplayEvidenceSampleCount: number;
     lowQualityCandidateIds: string[];
     lowConfidenceEvidenceIds: string[];
@@ -230,12 +182,8 @@ export function buildProductionFinalResult(
   const builtPaths = finalPaths.map((path, index) =>
     toProductionPath(path, index, candidateById, evidenceById, evidenceByCandidateId)
   );
-  const builtPersonas = input.finalResult.people.map((person, index) =>
-    toProductionPersona(person, index, candidateById, evidenceById, evidenceByCandidateId)
-  );
   const validation = validateProductionItems({
     paths: builtPaths,
-    personas: builtPersonas,
     evidenceSamples,
     sourceIds: new Set(sources.map((source) => source.sourceCandidateId)),
     candidateById,
@@ -244,7 +192,6 @@ export function buildProductionFinalResult(
   const degradedReasons = uniqueNonEmpty([
     ...(input.degradedReasons ?? []),
     input.finalResult.fallbackReason ?? "",
-    getGroundingGuardDegradedReason(input.guard),
     validation.status === "passed" ? "" : `deterministic_validator_${validation.status}`,
     validation.paths.length === 0 ? "deterministic_validator_no_paths" : "",
     evidenceSamples.length < MIN_DISPLAY_EVIDENCE_SAMPLE_COUNT ? "evidence_samples_insufficient" : ""
@@ -256,7 +203,6 @@ export function buildProductionFinalResult(
     query: input.query ?? "",
     summary: buildProductionSummary(input.finalResult.summary, validation.paths, evidenceSamples),
     paths: validation.paths,
-    personas: validation.personas,
     sources,
     evidenceMap,
     evidenceSamples,
@@ -265,7 +211,7 @@ export function buildProductionFinalResult(
       deterministicValidator: {
         status: validation.status,
         removedPathIds: validation.removedPathIds,
-        removedPersonaIds: validation.removedPersonaIds,
+        removedPersonaIds: [],
         warnings: validation.warnings,
         qualityReport: validation.qualityReport
       }
@@ -283,20 +229,6 @@ export function buildProductionFinalResult(
       originalResultSchemaVersion: input.finalResult.schemaVersion
     }
   };
-}
-
-function getGroundingGuardDegradedReason(guard: GroundingGuardReport): string {
-  if (guard.status === "fallback") {
-    return "grounding_guard_fallback";
-  }
-  if (guard.status === "partial") {
-    return "grounding_guard_partial";
-  }
-  if (guard.status === "repaired" && (guard.hardRepairReasons?.length ?? 0) > 0) {
-    return "grounding_guard_hard_repaired";
-  }
-
-  return "";
 }
 
 export function isProductionFinalResultData(value: unknown): value is ProductionFinalResultData {
@@ -354,36 +286,7 @@ function toProductionPath(
     summary: path.summary,
     angle: readPathString(path.angle) || inferPathAngle(path, sourceRefs, evidenceById),
     evidenceIds: uniqueNonEmpty(sourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds)),
-    sourceIds: uniqueNonEmpty(sourceRefs.map((sourceRef) => sourceRef.sourceCandidateId)),
-    sourceRefs,
-    confidence: calculateConfidence(sourceRefs, candidateById, evidenceById)
-  };
-}
-
-function toProductionPersona(
-  person: FinalResultPerson,
-  index: number,
-  candidateById: Map<string, CandidateItem>,
-  evidenceById: Map<string, EvidenceInputItem>,
-  evidenceByCandidateId: Map<string, EvidenceInputItem[]>
-): ProductionFinalResultPersona {
-  const sourceRefs = buildSourceRefs(
-    [person.candidateId],
-    person.evidenceIds.filter((evidenceId) => evidenceById.get(evidenceId)?.candidateId === person.candidateId),
-    candidateById,
-    evidenceById,
-    evidenceByCandidateId
-  );
-  const displayName = person.name || candidateById.get(person.candidateId)?.author || "Zhihu sample";
-
-  return {
-    id: stableId("persona", `${person.candidateId}:${displayName}:${index}`),
-    displayLabel: `${displayName} public-content sample`,
-    summary: person.reason,
-    chatEnabled: false,
-    sourceRefs,
-    confidence: calculateConfidence(sourceRefs, candidateById, evidenceById),
-    boundary: "Generated from public Zhihu content and evidence; it does not represent the author."
+    sourceIds: uniqueNonEmpty(sourceRefs.map((sourceRef) => sourceRef.sourceCandidateId))
   };
 }
 
@@ -434,8 +337,8 @@ function buildSupplementalFinalPath(
 
   return {
     title,
-    summary: `这条路径来自「${truncateText(candidate.title, 32)}」的证据片段：${claim}。它只提供一个公开样本中的选择线索，不能推断完整人生。`,
-    angle: inferEvidenceChoice(item) || "把来源片段中的选择作为一个对照方向。",
+    summary: `这组样本来自「${truncateText(candidate.title, 32)}」的证据片段：${claim}。它只提供公开内容中的样本线索，不推断完整人生。`,
+    angle: inferEvidenceAngle(item) || "把来源片段作为一个样本方向。",
     evidenceIds: [item.id],
     candidateIds: [candidate.id]
   };
@@ -448,16 +351,16 @@ function buildSupplementalPathTitle(
 ): string {
   const text = `${candidate.title} ${item.evidenceText}`;
   if (/异地|恋爱|伴侣|女朋友|男朋友|夫妻/.test(text)) {
-    return index === 0 ? "样本路径：优先工作但承担关系不确定性" : "样本路径：把异地成本摊开比较";
+    return index === 0 ? "样本方向：工作机会与异地关系" : "样本方向：异地成本与继续条件";
   }
   if (/ai|人工智能|大模型|产品|转行|非科班|算法/i.test(text)) {
-    return index === 0 ? "样本路径：从已有经验切入 AI" : "样本路径：先用学习和项目验证转行";
+    return index === 0 ? "样本方向：已有经验切入 AI" : "样本方向：学习与项目验证";
   }
   if (/不上班|不工作|失业|裸辞|离职|自由职业/.test(text)) {
-    return index === 0 ? "样本路径：用替代收入接住现金流" : "样本路径：先恢复生活秩序和安全垫";
+    return index === 0 ? "样本方向：替代收入与现金流" : "样本方向：生活秩序与安全垫";
   }
 
-  return "样本路径：围绕公开证据做对照";
+  return "样本方向：围绕公开证据做对照";
 }
 
 function buildEvidenceSamples(
@@ -474,14 +377,15 @@ function buildEvidenceSamples(
 
       return {
         id: `sample_${item.id}`,
-        sourceCandidateId: item.candidateId,
-        evidenceItemId: item.id,
+        sourceId: item.candidateId,
+        evidenceId: item.id,
         title: candidate?.title || item.title,
         author: candidate?.author || item.author || "知乎用户",
         sourceUrl: candidate?.url || item.sourceUrl,
         snippet: truncateText(snippet, 180),
         whyRelevant: truncateText(whyRelevant, 160),
-        sampleType: mapEvidenceSampleType(item.supportType),
+        evidenceType: mapEvidenceType(item.supportType),
+        angle: describeEvidenceSampleAngle(item),
         confidence: item.confidence
       };
     });
@@ -526,7 +430,7 @@ function buildSourceRefs(
   });
 }
 
-function mapEvidenceSampleType(supportType: EvidenceSupportType): ProductionEvidenceSampleType {
+function mapEvidenceType(supportType: EvidenceSupportType): ProductionEvidenceType {
   if (supportType === "experience_fact") {
     return "experience";
   }
@@ -537,6 +441,20 @@ function mapEvidenceSampleType(supportType: EvidenceSupportType): ProductionEvid
     return "opinion";
   }
   return "context";
+}
+
+function describeEvidenceSampleAngle(item: EvidenceInputItem): string {
+  const evidenceType = mapEvidenceType(item.supportType);
+  if (evidenceType === "experience") {
+    return "真实经历片段";
+  }
+  if (evidenceType === "decision") {
+    return "选择与结果线索";
+  }
+  if (evidenceType === "opinion") {
+    return "观点判断样本";
+  }
+  return "背景与处境线索";
 }
 
 function buildProductionSummary(
@@ -571,74 +489,38 @@ function inferPathAngle(
     .find(Boolean);
 
   if (firstEvidence) {
-    return inferEvidenceChoice(firstEvidence);
+    return inferEvidenceAngle(firstEvidence);
   }
 
-  return path.summary || "把有证据支撑的公开样本作为一个对照方向。";
+  return path.summary || "把有证据支撑的公开样本作为一个导航方向。";
 }
 
-function inferTradeoff(
-  sourceRefs: ProductionSourceRef[],
-  evidenceById: Map<string, EvidenceInputItem>
-): string {
-  const evidence = sourceRefs
-    .flatMap((sourceRef) => sourceRef.evidenceItemIds)
-    .map((evidenceId) => evidenceById.get(evidenceId))
-    .find(Boolean);
-
-  return evidence ? inferEvidenceCostOrRisk(evidence) : "公开片段有限，不能推断完整经历和长期结果。";
-}
-
-function inferEvidenceChoice(item: EvidenceInputItem): string {
-  const text = `${item.choice || ""} ${item.evidenceText}`;
+function inferEvidenceAngle(item: EvidenceInputItem): string {
+  const text = item.evidenceText;
   if (/异地|恋爱|伴侣|女朋友|男朋友|夫妻/.test(text)) {
     if (/工作|工资|事业|赚钱|前途|机会/.test(text)) {
-      return "在工作机会和关系距离之间，来源样本把职业现实放进优先比较。";
+      return "关系距离与职业机会相关样本";
     }
-    return "围绕异地关系的期限、见面成本和继续条件做取舍。";
+    return "异地关系期限、见面成本与感受样本";
   }
   if (/ai|人工智能|大模型|产品|转行|非科班|算法/i.test(text)) {
     if (/之前|我就是|做软件|医学转|java|经验|摸爬滚打/.test(text)) {
-      return "把已有经历或技能转成进入 AI 相关岗位的切入点。";
+      return "已有经历切入 AI 相关方向样本";
     }
-    return "先通过学习、项目或岗位能力验证 AI 转行可行性。";
+    return "AI 学习、项目与岗位验证样本";
   }
   if (/不上班|不工作|失业|裸辞|离职|自由职业/.test(text)) {
     if (/跑车|送货|摆摊|接项目|远程|自媒体|收入|现金流|挣钱/.test(text)) {
-      return "用替代收入或低成本试运行接住离开工作后的现金流。";
+      return "停工后替代收入与现金流样本";
     }
-    return "先处理失业或停工后的生活秩序，再判断下一站。";
+    return "停工后生活状态与去处样本";
   }
 
-  return item.choice || item.normalizedClaim || "把来源片段中的选择作为对照。";
-}
-
-function inferEvidenceCostOrRisk(item: EvidenceInputItem): string {
-  const text = `${item.costOrRisk || ""} ${item.evidenceText}`;
-  if (/异地|恋爱|伴侣|夫妻|女朋友|男朋友/.test(text)) {
-    return "关系变淡、分手、见面成本和长期不确定性需要实际承担。";
-  }
-  if (/ai|人工智能|大模型|产品|转行|非科班|算法/i.test(text)) {
-    return "学习成本、作品验证成本和岗位匹配不确定性仍然存在。";
-  }
-  if (/不上班|不工作|失业|裸辞|离职|自由职业/.test(text)) {
-    return "现金流、再就业、收入稳定性和生活状态可能承压。";
-  }
-
-  return item.costOrRisk || "公开片段有限，不能推断完整经历和长期结果。";
+  return item.normalizedClaim || "公开来源片段样本";
 }
 
 function readPathString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function readPathStringArray(value: unknown, fallback: string[]): string[] {
-  if (!Array.isArray(value)) {
-    return fallback;
-  }
-
-  const result = uniqueNonEmpty(value.filter((item): item is string => typeof item === "string"));
-  return result.length > 0 ? result : fallback;
 }
 
 function stripTrailingPunctuation(value: string): string {
@@ -647,7 +529,6 @@ function stripTrailingPunctuation(value: string): string {
 
 function validateProductionItems(input: {
   paths: ProductionFinalResultPath[];
-  personas: ProductionFinalResultPersona[];
   evidenceSamples: ProductionEvidenceSample[];
   sourceIds: Set<string>;
   candidateById: Map<string, CandidateItem>;
@@ -655,44 +536,23 @@ function validateProductionItems(input: {
 }): {
   status: DeterministicGroundingReport["status"];
   paths: ProductionFinalResultPath[];
-  personas: ProductionFinalResultPersona[];
   removedPathIds: string[];
-  removedPersonaIds: string[];
   warnings: string[];
   qualityReport: DeterministicGroundingReport["qualityReport"];
 } {
   const pathWarnings: string[] = [];
-  const personaWarnings: string[] = [];
   const sampleWarnings: string[] = [];
   const removedPathIds: string[] = [];
-  const removedPersonaIds: string[] = [];
   const paths = input.paths.filter((path) => {
-    const valid = validateSourceRefs({
-      sourceRefs: path.sourceRefs,
+    const valid = validatePathReferences({
+      path,
       sourceIds: input.sourceIds,
       candidateById: input.candidateById,
       evidenceMap: input.evidenceMap,
-      warnings: pathWarnings,
-      itemLabel: path.id,
-      requireExperienceEvidence: false
+      warnings: pathWarnings
     });
     if (!valid) {
       removedPathIds.push(path.id);
-    }
-    return valid;
-  });
-  const personas = input.personas.filter((persona) => {
-    const valid = validateSourceRefs({
-      sourceRefs: persona.sourceRefs,
-      sourceIds: input.sourceIds,
-      candidateById: input.candidateById,
-      evidenceMap: input.evidenceMap,
-      warnings: personaWarnings,
-      itemLabel: persona.id,
-      requireExperienceEvidence: true
-    });
-    if (!valid) {
-      removedPersonaIds.push(persona.id);
     }
     return valid;
   });
@@ -704,7 +564,6 @@ function validateProductionItems(input: {
   });
   const qualityReport = buildQualityReport({
     paths,
-    personas,
     evidenceSamples: input.evidenceSamples,
     invalidEvidenceSampleIds,
     candidateById: input.candidateById,
@@ -722,10 +581,8 @@ function validateProductionItems(input: {
   return {
     status,
     paths,
-    personas,
     removedPathIds,
-    removedPersonaIds,
-    warnings: uniqueNonEmpty([...pathWarnings, ...personaWarnings, ...sampleWarnings]),
+    warnings: uniqueNonEmpty([...pathWarnings, ...sampleWarnings]),
     qualityReport
   };
 }
@@ -738,20 +595,25 @@ function findInvalidEvidenceSampleIds(input: {
 }): string[] {
   const invalidIds: string[] = [];
   for (const sample of input.evidenceSamples) {
-    const evidenceItem = input.evidenceMap[sample.evidenceItemId];
-    if (!input.sourceIds.has(sample.sourceCandidateId)) {
-      input.warnings.push(`${sample.id}: evidence sample sourceCandidateId missing: ${sample.sourceCandidateId}`);
+    const evidenceItem = input.evidenceMap[sample.evidenceId];
+    if (!input.sourceIds.has(sample.sourceId)) {
+      input.warnings.push(`${sample.id}: evidence sample sourceId missing: ${sample.sourceId}`);
       invalidIds.push(sample.id);
       continue;
     }
     if (!evidenceItem) {
-      input.warnings.push(`${sample.id}: evidence sample evidenceItemId missing: ${sample.evidenceItemId}`);
+      input.warnings.push(`${sample.id}: evidence sample evidenceId missing: ${sample.evidenceId}`);
       invalidIds.push(sample.id);
       continue;
     }
-    if (evidenceItem.sourceCandidateId !== sample.sourceCandidateId) {
+    if (!sample.snippet.trim()) {
+      input.warnings.push(`${sample.id}: evidence sample snippet missing`);
+      invalidIds.push(sample.id);
+      continue;
+    }
+    if (evidenceItem.sourceCandidateId !== sample.sourceId) {
       input.warnings.push(
-        `${sample.id}: evidence sample ${sample.evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}, not ${sample.sourceCandidateId}`
+        `${sample.id}: evidence sample ${sample.evidenceId} belongs to ${evidenceItem.sourceCandidateId}, not ${sample.sourceId}`
       );
       invalidIds.push(sample.id);
     }
@@ -760,79 +622,63 @@ function findInvalidEvidenceSampleIds(input: {
   return uniqueNonEmpty(invalidIds);
 }
 
-function validateSourceRefs(input: {
-  sourceRefs: ProductionSourceRef[];
+function validatePathReferences(input: {
+  path: ProductionFinalResultPath;
   sourceIds: Set<string>;
   candidateById: Map<string, CandidateItem>;
   evidenceMap: Record<string, ProductionEvidenceItem>;
   warnings: string[];
-  itemLabel: string;
-  requireExperienceEvidence: boolean;
 }): boolean {
   const {
-    sourceRefs,
+    path,
     sourceIds,
     candidateById,
     evidenceMap,
-    warnings,
-    itemLabel,
-    requireExperienceEvidence
+    warnings
   } = input;
 
-  if (sourceRefs.length === 0) {
-    warnings.push(`${itemLabel}: sourceRefs missing`);
+  if (path.sourceIds.length === 0) {
+    warnings.push(`${path.id}: sourceIds missing`);
     return false;
   }
 
-  let hasExperienceEvidence = false;
-  for (const sourceRef of sourceRefs) {
-    if (!sourceIds.has(sourceRef.sourceCandidateId)) {
-      warnings.push(`${itemLabel}: sourceCandidateId missing: ${sourceRef.sourceCandidateId}`);
+  if (path.evidenceIds.length === 0) {
+    warnings.push(`${path.id}: evidenceIds missing`);
+    return false;
+  }
+
+  const pathSourceIds = new Set(path.sourceIds);
+  for (const sourceId of path.sourceIds) {
+    if (!sourceIds.has(sourceId)) {
+      warnings.push(`${path.id}: sourceId missing: ${sourceId}`);
       return false;
     }
 
-    const candidate = candidateById.get(sourceRef.sourceCandidateId);
+    const candidate = candidateById.get(sourceId);
     if (!isCandidateAllowedInFinal(candidate)) {
-      warnings.push(`${itemLabel}: candidate below quality threshold: ${sourceRef.sourceCandidateId}`);
+      warnings.push(`${path.id}: candidate below quality threshold: ${sourceId}`);
       return false;
-    }
-
-    if (sourceRef.evidenceItemIds.length === 0) {
-      warnings.push(`${itemLabel}: evidenceItemIds missing for sourceCandidateId: ${sourceRef.sourceCandidateId}`);
-      return false;
-    }
-
-    for (const evidenceItemId of sourceRef.evidenceItemIds) {
-      const evidenceItem = evidenceMap[evidenceItemId];
-      if (!evidenceItem) {
-        warnings.push(`${itemLabel}: evidenceItemId missing: ${evidenceItemId}`);
-        return false;
-      }
-
-      if (evidenceItem.sourceCandidateId !== sourceRef.sourceCandidateId) {
-        warnings.push(
-          `${itemLabel}: evidenceItemId ${evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}, not ${sourceRef.sourceCandidateId}`
-        );
-        return false;
-      }
-
-      if (evidenceItem.confidence < MIN_FINAL_EVIDENCE_CONFIDENCE) {
-        warnings.push(`${itemLabel}: evidenceItemId below confidence threshold: ${evidenceItemId}`);
-        return false;
-      }
-
-      if (
-        evidenceItem.isExperienceEvidence &&
-        evidenceItem.confidence >= MIN_PERSONA_EVIDENCE_CONFIDENCE
-      ) {
-        hasExperienceEvidence = true;
-      }
     }
   }
 
-  if (requireExperienceEvidence && !hasExperienceEvidence) {
-    warnings.push(`${itemLabel}: persona missing experience evidence`);
-    return false;
+  for (const evidenceItemId of path.evidenceIds) {
+    const evidenceItem = evidenceMap[evidenceItemId];
+    if (!evidenceItem) {
+      warnings.push(`${path.id}: evidenceId missing: ${evidenceItemId}`);
+      return false;
+    }
+
+    if (!pathSourceIds.has(evidenceItem.sourceCandidateId)) {
+      warnings.push(
+        `${path.id}: evidenceId ${evidenceItemId} belongs to ${evidenceItem.sourceCandidateId}, not path.sourceIds`
+      );
+      return false;
+    }
+
+    if (evidenceItem.confidence < MIN_FINAL_EVIDENCE_CONFIDENCE) {
+      warnings.push(`${path.id}: evidenceId below confidence threshold: ${evidenceItemId}`);
+      return false;
+    }
   }
 
   return true;
@@ -897,40 +743,21 @@ function toEvidenceInputItem(item: EvidenceItem, index: number): EvidenceInputIt
   };
 }
 
-function calculateConfidence(
-  sourceRefs: ProductionSourceRef[],
-  candidateById: Map<string, CandidateItem>,
-  evidenceById: Map<string, EvidenceInputItem>
-): number {
-  const candidateScores = sourceRefs
-    .map((sourceRef) => candidateById.get(sourceRef.sourceCandidateId)?.qualityScore)
-    .filter(isNumber);
-  const evidenceScores = sourceRefs
-    .flatMap((sourceRef) => sourceRef.evidenceItemIds)
-    .map((evidenceId) => evidenceById.get(evidenceId)?.confidence)
-    .filter(isNumber);
-  const scores = [...candidateScores, ...evidenceScores];
-  if (scores.length === 0) {
-    return 0;
-  }
-
-  return clampScore(scores.reduce((sum, score) => sum + score, 0) / scores.length);
-}
-
 function buildQualityReport(input: {
   paths: ProductionFinalResultPath[];
-  personas: ProductionFinalResultPersona[];
   evidenceSamples: ProductionEvidenceSample[];
   invalidEvidenceSampleIds: string[];
   candidateById: Map<string, CandidateItem>;
   evidenceMap: Record<string, ProductionEvidenceItem>;
 }): DeterministicGroundingReport["qualityReport"] {
-  const referencedSourceRefs = [...input.paths, ...input.personas].flatMap((item) => item.sourceRefs);
-  const referencedCandidateIds = uniqueNonEmpty(referencedSourceRefs.map((sourceRef) => sourceRef.sourceCandidateId));
+  const referencedCandidateIds = uniqueNonEmpty([
+    ...input.paths.flatMap((path) => path.sourceIds),
+    ...input.evidenceSamples.map((sample) => sample.sourceId)
+  ]);
   const referencedEvidenceIds = uniqueNonEmpty(
     [
-      ...referencedSourceRefs.flatMap((sourceRef) => sourceRef.evidenceItemIds),
-      ...input.evidenceSamples.map((sample) => sample.evidenceItemId)
+      ...input.paths.flatMap((path) => path.evidenceIds),
+      ...input.evidenceSamples.map((sample) => sample.evidenceId)
     ]
   );
   const lowQualityCandidateIds = referencedCandidateIds.filter(
@@ -940,39 +767,21 @@ function buildQualityReport(input: {
     const item = input.evidenceMap[evidenceId];
     return !item || item.confidence < MIN_FINAL_EVIDENCE_CONFIDENCE;
   });
-  const personaWithoutExperienceEvidenceIds = input.personas
-    .filter((persona) => !hasExperienceEvidence(persona.sourceRefs, input.evidenceMap))
-    .map((persona) => persona.id);
   const pathWithoutEvidenceIds = input.paths
-    .filter((path) => path.sourceRefs.every((sourceRef) => sourceRef.evidenceItemIds.length === 0))
+    .filter((path) => path.evidenceIds.length === 0)
     .map((path) => path.id);
 
   return {
     checked: true,
     minCandidateQualityScore: MIN_FINAL_CANDIDATE_QUALITY_SCORE,
     minEvidenceConfidence: MIN_FINAL_EVIDENCE_CONFIDENCE,
-    minPersonaEvidenceConfidence: MIN_PERSONA_EVIDENCE_CONFIDENCE,
     minDisplayEvidenceSampleCount: MIN_DISPLAY_EVIDENCE_SAMPLE_COUNT,
     lowQualityCandidateIds,
     lowConfidenceEvidenceIds,
-    personaWithoutExperienceEvidenceIds,
+    personaWithoutExperienceEvidenceIds: [],
     pathWithoutEvidenceIds,
     invalidEvidenceSampleIds: input.invalidEvidenceSampleIds
   };
-}
-
-function hasExperienceEvidence(
-  sourceRefs: ProductionSourceRef[],
-  evidenceMap: Record<string, ProductionEvidenceItem>
-): boolean {
-  return sourceRefs
-    .flatMap((sourceRef) => sourceRef.evidenceItemIds)
-    .some((evidenceId) => {
-      const item = evidenceMap[evidenceId];
-      return Boolean(
-        item?.isExperienceEvidence && item.confidence >= MIN_PERSONA_EVIDENCE_CONFIDENCE
-      );
-    });
 }
 
 function isCandidateAllowedInFinal(candidate: CandidateItem | undefined): boolean {
@@ -1007,14 +816,6 @@ function uniqueNonEmpty(values: string[]): string[] {
   return result;
 }
 
-function clampScore(value: number): number {
-  return Math.min(Math.max(Number(value.toFixed(2)), 0), 1);
-}
-
-function isNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function truncateText(value: string, maxLength: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
@@ -1029,23 +830,17 @@ function isProductionPath(value: unknown): value is ProductionFinalResultPath {
     return false;
   }
 
+  const hasV2References = isStringArray(value.evidenceIds) && isStringArray(value.sourceIds);
+  const hasLegacyReferences =
+    Array.isArray(value.sourceRefs) && value.sourceRefs.every(isProductionSourceRef);
+
   return (
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     typeof value.summary === "string" &&
     (value.angle === undefined || typeof value.angle === "string") &&
-    (value.coreChoice === undefined || typeof value.coreChoice === "string") &&
-    (value.suitableFor === undefined || isStringArray(value.suitableFor)) &&
-    (value.prerequisites === undefined || isStringArray(value.prerequisites)) &&
-    (value.benefits === undefined || isStringArray(value.benefits)) &&
-    (value.costsOrRisks === undefined || isStringArray(value.costsOrRisks)) &&
-    (value.evidenceIds === undefined || isStringArray(value.evidenceIds)) &&
-    (value.sourceIds === undefined || isStringArray(value.sourceIds)) &&
-    (value.suitableContext === undefined || typeof value.suitableContext === "string") &&
-    (value.tradeoffs === undefined || typeof value.tradeoffs === "string") &&
-    Array.isArray(value.sourceRefs) &&
-    value.sourceRefs.every(isProductionSourceRef) &&
-    typeof value.confidence === "number"
+    (hasV2References || hasLegacyReferences) &&
+    (value.confidence === undefined || typeof value.confidence === "number")
   );
 }
 
@@ -1117,13 +912,7 @@ function isProductionEvidenceItem(value: unknown): value is ProductionEvidenceIt
     typeof value.normalizedClaim === "string" &&
     isEvidenceSupportType(value.supportType) &&
     typeof value.isExperienceEvidence === "boolean" &&
-    typeof value.confidence === "number" &&
-    (value.situation === undefined || typeof value.situation === "string") &&
-    (value.choice === undefined || typeof value.choice === "string") &&
-    (value.process === undefined || typeof value.process === "string") &&
-    (value.outcome === undefined || typeof value.outcome === "string") &&
-    (value.costOrRisk === undefined || typeof value.costOrRisk === "string") &&
-    (value.takeaway === undefined || typeof value.takeaway === "string")
+    typeof value.confidence === "number"
   );
 }
 
@@ -1132,34 +921,28 @@ function isProductionEvidenceSample(value: unknown): value is ProductionEvidence
     return false;
   }
 
-  const hasV2Text =
+  const sourceId = typeof value.sourceId === "string" ? value.sourceId : value.sourceCandidateId;
+  const evidenceId = typeof value.evidenceId === "string" ? value.evidenceId : value.evidenceItemId;
+  const evidenceType = value.evidenceType ?? value.sampleType;
+  const hasDisplayText =
     typeof value.snippet === "string" &&
     typeof value.whyRelevant === "string" &&
-    isProductionEvidenceSampleType(value.sampleType);
-  const hasDeprecatedV1Text =
-    typeof value.situation === "string" &&
-    typeof value.choice === "string" &&
-    typeof value.keyExperience === "string" &&
-    typeof value.judgment === "string" &&
-    typeof value.referenceValue === "string" &&
-    typeof value.limit === "string" &&
-    typeof value.evidenceText === "string";
+    isProductionEvidenceType(evidenceType);
 
   return (
     typeof value.id === "string" &&
-    typeof value.sourceCandidateId === "string" &&
-    typeof value.evidenceItemId === "string" &&
+    typeof sourceId === "string" &&
+    typeof evidenceId === "string" &&
     typeof value.title === "string" &&
     typeof value.author === "string" &&
     typeof value.sourceUrl === "string" &&
-    (hasV2Text || hasDeprecatedV1Text) &&
-    (value.supportType === undefined || isEvidenceSupportType(value.supportType)) &&
-    (value.isExperienceEvidence === undefined || typeof value.isExperienceEvidence === "boolean") &&
+    hasDisplayText &&
+    (value.angle === undefined || typeof value.angle === "string") &&
     typeof value.confidence === "number"
   );
 }
 
-function isProductionEvidenceSampleType(value: unknown): value is ProductionEvidenceSampleType {
+function isProductionEvidenceType(value: unknown): value is ProductionEvidenceType {
   return value === "experience" || value === "decision" || value === "opinion" || value === "context";
 }
 

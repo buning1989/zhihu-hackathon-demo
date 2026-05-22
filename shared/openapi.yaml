@@ -630,7 +630,7 @@ paths:
         task. grounding_guard_llm produces a guarded_final_result artifact or
         rule fallback artifact without failing the task. Before completion,
         the worker writes a production_final_result artifact after deterministic
-        sourceRefs validation. It does not run persona build, the demo search
+        source/evidence reference validation. It does not run persona build, the demo search
         orchestrator, WebSocket/SSE, or stream events.
       operationId: createPersistentAgentTask
       x-implementation-status: implemented
@@ -761,8 +761,9 @@ paths:
       description: >
         Phase 1 result endpoint. Returns 202 with task status and pollAfterMs
         while the task is not succeeded. Once succeeded, returns final_result
-        with paths, personas, sources, evidenceMap, groundingReport, degraded
-        flags, and deterministic sourceRefs validation.
+        with sample-navigation paths, evidenceSamples, sources, evidenceMap,
+        groundingReport, degraded flags, and deterministic source/evidence
+        reference validation.
       operationId: getPersistentAgentTaskResult
       x-implementation-status: implemented-phase1
       parameters:
@@ -1773,8 +1774,8 @@ components:
         - title
         - summary
         - angle
-        - sourceRefs
-        - confidence
+        - evidenceIds
+        - sourceIds
       properties:
         id:
           type: string
@@ -1784,29 +1785,6 @@ components:
           type: string
         angle:
           type: string
-        coreChoice:
-          type: string
-          deprecated: true
-        suitableFor:
-          type: array
-          deprecated: true
-          items:
-            type: string
-        prerequisites:
-          type: array
-          deprecated: true
-          items:
-            type: string
-        benefits:
-          type: array
-          deprecated: true
-          items:
-            type: string
-        costsOrRisks:
-          type: array
-          deprecated: true
-          items:
-            type: string
         evidenceIds:
           type: array
           items:
@@ -1815,49 +1793,26 @@ components:
           type: array
           items:
             type: string
-        suitableContext:
-          type: string
-          deprecated: true
-        tradeoffs:
-          type: string
-          deprecated: true
-        sourceRefs:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProductionAgentSourceRef"
-        confidence:
-          type: number
-        situation:
-          type: string
-        choice:
-          type: string
-        process:
-          type: string
-        outcome:
-          type: string
-        costOrRisk:
-          type: string
-        takeaway:
-          type: string
     ProductionAgentEvidenceSample:
       type: object
       required:
         - id
-        - sourceCandidateId
-        - evidenceItemId
+        - sourceId
+        - evidenceId
         - title
         - author
         - sourceUrl
         - snippet
         - whyRelevant
-        - sampleType
+        - evidenceType
+        - angle
         - confidence
       properties:
         id:
           type: string
-        sourceCandidateId:
+        sourceId:
           type: string
-        evidenceItemId:
+        evidenceId:
           type: string
         title:
           type: string
@@ -1869,40 +1824,15 @@ components:
           type: string
         whyRelevant:
           type: string
-        sampleType:
+        evidenceType:
           type: string
           enum:
             - experience
             - decision
             - opinion
             - context
-        situation:
+        angle:
           type: string
-          deprecated: true
-        choice:
-          type: string
-          deprecated: true
-        keyExperience:
-          type: string
-          deprecated: true
-        judgment:
-          type: string
-          deprecated: true
-        referenceValue:
-          type: string
-          deprecated: true
-        limit:
-          type: string
-          deprecated: true
-        evidenceText:
-          type: string
-          deprecated: true
-        supportType:
-          type: string
-          deprecated: true
-        isExperienceEvidence:
-          type: boolean
-          deprecated: true
         confidence:
           type: number
           minimum: 0
@@ -2017,24 +1947,6 @@ components:
           type: boolean
         confidence:
           type: number
-        situation:
-          type: string
-          deprecated: true
-        choice:
-          type: string
-          deprecated: true
-        process:
-          type: string
-          deprecated: true
-        outcome:
-          type: string
-          deprecated: true
-        costOrRisk:
-          type: string
-          deprecated: true
-        takeaway:
-          type: string
-          deprecated: true
     ProductionAgentDeterministicValidator:
       type: object
       required:

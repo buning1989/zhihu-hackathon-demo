@@ -2,16 +2,16 @@
 
 ## 2026-05-23 - Agent production final_result v2 schema slim
 
-本轮目标：基于前端实际消费字段瘦身 `/api/agent/tasks/:taskId/result` 的 production final_result，降低 LLM 结构化输出和 grounding guard schema failure 风险，不改前端视觉、不改召回主链路。
+本轮目标：基于前端实际消费字段瘦身 `/api/agent/tasks/:taskId/result` 的 production final_result，并把 Agent 产品定位收敛为“真实内容发现与样本导航”，降低 LLM 结构化输出和 grounding guard schema failure 风险，不改前端视觉、不改召回主链路。
 
 已完成：
 
 - `production_final_result` 主输出切到 `agent.production_final_result.v2`，稳定字段收敛为 `summary / paths / evidenceSamples / sources / evidenceMap / groundingReport / degraded / warnings`。
-- v2 `paths[]` 只保留 `title / summary / angle / sourceRefs / evidenceIds / sourceIds / confidence`；旧 `coreChoice / suitableFor / prerequisites / benefits / costsOrRisks / suitableContext / tradeoffs` 仅作为 v1 optional/deprecated 兼容字段。
-- v2 `evidenceSamples[]` 改为 `snippet / whyRelevant / sampleType`，由后端从 evidenceItems deterministic 构造，不要求 LLM 输出完整人生路径模型。
-- `response_compose_llm` prompt 改成 3 个左右轻路径角度，降低 maxTokens，并明确 summary 只做证据归纳、不做建议。
-- `grounding_guard_llm` 不再要求复杂路径字段，只校验引用存在、路径摘要边界和证据质量；people 局部问题不会让整体结果 degraded。
-- 前端 adapter 同时支持 v1/v2，v2 优先用 `evidenceSamples` 生成路径卡和证据样本卡，缺失时继续 fallback 到 `personas` 或 `sources + evidenceMap`。
+- v2 `paths[]` 只输出 `id / title / summary / angle / evidenceIds / sourceIds`，表达搜索角度或样本方向，不表达完整人生路径模型。
+- v2 `evidenceSamples[]` 改为 `id / sourceId / evidenceId / title / author / sourceUrl / snippet / whyRelevant / evidenceType / angle / confidence`，由后端从 evidenceItems deterministic 构造，是前端样本卡核心数据。
+- `response_compose_llm` prompt 改成 3 个左右搜索角度/样本方向，降低 maxTokens，并明确 summary 只做证据归纳、不做建议。
+- `grounding_guard_llm` 不再要求复杂路径字段，只做引用存在、低质/低置信证据和明显越界硬校验；非核心问题不触发整体 degraded。
+- 前端 adapter 同时支持 v1/v2，v2 优先用 `evidenceSamples` 生成路径卡和证据样本卡，缺失时继续 fallback 到 `sources + evidenceMap` 或旧 `personas`。
 
 验证建议：
 
@@ -49,7 +49,7 @@
 - 自我状态、低谷、焦虑、内耗类问题只整理公开经历样本；不输出心理治疗、诊断、药物、咨询师或医疗建议。证据弱时减少 paths/personas。
 - `grounding_guard_llm` 区分 `hardRepairReasons` 和 `softWarningReasons`：只有删除 path/person、修复 evidenceIds/candidateIds/source refs、fallback/partial 等硬修复才进入 degraded；普通 warning 不再直接导致 `degraded=true`。
 - debug/eval 输出并汇总 `groundingHardRepairReasonCounts`、`groundingSoftWarningReasonCounts`、`groundingRepairedReasonCounts`，可区分 `path_summary_overgeneralized`、`persona_evidence_insufficient`、`evidence_support_weak`、`source_refs_repaired`、`llm_guard_overconservative`、`self_state_lacks_experience_evidence` 等原因。
-- grounding guard JSON 预算提高到 2600 tokens，并要求完整 JSON，降低 guard fallback 风险；不放松 sourceRefs、persona 真实经历 evidence 或 deterministic validator。
+- grounding guard 只做 source/evidence 引用、低质/低置信证据和明显越界硬校验；不再要求完整人生路径结构，也不因为非核心字段问题整体 degraded。
 - Agent cache `promptVersion` 更新到 Phase 4.2 版本，避免复用 Phase 4.1 的 final result cache。
 
 最新真实 LLM fresh eval 摘要：30/30 succeeded，`avgEvidence=3.9`、`avgPaths=2.2`、`avgPersonas=1.733`、`degradedRate=0.367`、`groundingPassedRate=0.967`、`badRefsCount=0`，evidence chunk failure/repair/retry 均为 0。自我状态类 surface 文案抽查未发现医疗/心理治疗或强建议表达。
