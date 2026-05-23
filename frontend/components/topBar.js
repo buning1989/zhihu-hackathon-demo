@@ -26,7 +26,7 @@
       <header class="top-bar">
         <div class="top-bar-inner">
         <button class="logo" type="button" data-action="open-feed">
-          ${icon("book-open")}人生样本库
+          ${icon("book-open")}真实内容样本库
         </button>
         <form class="top-form" data-form="search">
           <label class="sr-only" for="top-query">输入处境</label>

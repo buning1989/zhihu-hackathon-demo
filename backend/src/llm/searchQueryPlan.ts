@@ -231,7 +231,7 @@ function fallbackPurposeForType(type: DemoSearchQueryType): string {
     case "real_experience":
       return "召回真实经历";
     case "life_path":
-      return "召回人生路径";
+      return "召回样本方向";
     case "failure_review":
       return "召回失败和代价";
     case "decision_conflict":

@@ -8,7 +8,7 @@
     const questions = state.search.clarifyQuestions || [];
     const answers = state.search.clarifyAnswers || {};
     const variant = options.variant || "feed";
-    const description = state.task?.needInput?.reason || "这些信息会帮你找到更像的人，选几项就好。";
+    const description = state.task?.needInput?.reason || "这些补充条件只用于匹配更贴近的经历样本，选几项就好。";
 
     const questionHtml = questions.map((question) => {
       const options = question.options.map((option) => {

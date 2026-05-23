@@ -475,7 +475,7 @@ function buildProductionSummary(
     .join("；");
   const sampleCount = evidenceSamples.length;
 
-  return `这些知乎公开样本呈现了 ${paths.length} 类角度：${pathChoices}。共整理 ${sampleCount} 条可追溯证据样本；这里只做来源归纳，不把样本改写成个人建议或完整人生报告。`;
+  return `这些知乎公开样本呈现了 ${paths.length} 类角度：${pathChoices}。共整理 ${sampleCount} 条可追溯证据样本；这里只做来源归纳，不把样本改写成个人建议或完整传记式判断。`;
 }
 
 function inferPathAngle(

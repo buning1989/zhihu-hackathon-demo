@@ -494,6 +494,7 @@ async function assertDeepSeekResponseFormatFallback(): Promise<void> {
 }
 
 async function assertClarificationPlannerDemoSearch(baseUrl: string): Promise<void> {
+  const forbiddenProductCopyPattern = /人生路径|AI 人物|AI人物|规划人生|人生报告|路径报告/;
   const workResponse = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
     body: {
@@ -504,6 +505,12 @@ async function assertClarificationPlannerDemoSearch(baseUrl: string): Promise<vo
   });
   assertEqual(workResponse.status, 200, "clarification work status");
   assertEqual(workResponse.body.success, true, "clarification work success");
+  assertNoPattern(
+    JSON.stringify(workResponse.body.data),
+    forbiddenProductCopyPattern,
+    "work clarification response avoids old product copy"
+  );
+  assertClarifyingCardPublicShape(workResponse.body.data.clarifyingCard, "work clarification card");
   assertEqual(workResponse.body.data.clarifyingCard.show, true, "work clarification card show");
   assertNonEmptyArray(workResponse.body.data.clarifyingCard.questions, "work clarification questions");
   assertEqual(
@@ -532,6 +539,12 @@ async function assertClarificationPlannerDemoSearch(baseUrl: string): Promise<vo
   });
   assertEqual(relationResponse.status, 200, "relation clarification status");
   assertEqual(relationResponse.body.success, true, "relation clarification success");
+  assertNoPattern(
+    JSON.stringify(relationResponse.body.data),
+    forbiddenProductCopyPattern,
+    "relation clarification response avoids old product copy"
+  );
+  assertClarifyingCardPublicShape(relationResponse.body.data.clarifyingCard, "relation clarification card");
   assertEqual(relationResponse.body.data.clarifyingCard.show, true, "relation clarification card show");
   const relationLabels = relationResponse.body.data.clarifyingCard.questions
     .map((item: { label: string }) => item.label)
@@ -553,6 +566,12 @@ async function assertClarificationPlannerDemoSearch(baseUrl: string): Promise<vo
   });
   assertEqual(answeredResponse.status, 200, "answered clarification status");
   assertEqual(answeredResponse.body.success, true, "answered clarification success");
+  assertNoPattern(
+    JSON.stringify(answeredResponse.body.data),
+    forbiddenProductCopyPattern,
+    "answered clarification response avoids old product copy"
+  );
+  assertClarifyingCardPublicShape(answeredResponse.body.data.clarifyingCard, "answered clarification card");
   assertEqual(answeredResponse.body.data.clarifyingCard.show, false, "answered hides clarification card");
   assertNonEmptyArray(answeredResponse.body.data.paths, "answered clarification paths");
   assertNonEmptyArray(answeredResponse.body.data.people, "answered clarification people");
@@ -567,6 +586,34 @@ async function assertClarificationPlannerDemoSearch(baseUrl: string): Promise<vo
     true,
     "answered clarification search hints used internally"
   );
+}
+
+function assertClarifyingCardPublicShape(value: unknown, label: string): void {
+  if (!isRecord(value)) {
+    throw new Error(`${label}: expected object`);
+  }
+
+  const allowedKeys = [
+    "description",
+    "primaryActionText",
+    "questions",
+    "show",
+    "skipActionText",
+    "title"
+  ];
+  const keys = Object.keys(value).sort();
+  assertEqual(keys.join("|"), allowedKeys.join("|"), `${label} public keys`);
+  assertNoPattern(
+    JSON.stringify(value),
+    /searchHints?|fallbackReason|debug|reason/i,
+    `${label} does not expose internal fields`
+  );
+}
+
+function assertNoPattern(value: string, pattern: RegExp, label: string): void {
+  if (pattern.test(value)) {
+    throw new Error(`${label}: matched ${pattern}`);
+  }
 }
 
 async function assertLoggedInUserContextInRealComposer(): Promise<void> {

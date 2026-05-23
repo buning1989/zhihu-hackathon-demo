@@ -23,7 +23,7 @@
       <header class="entry-top">
         <div class="entry-top-inner">
           <button class="logo" type="button" data-action="open-feed">
-            ${icon("book-open")}人生样本库
+            ${icon("book-open")}真实内容样本库
           </button>
           <div class="entry-account">${accountMenu}</div>
         </div>

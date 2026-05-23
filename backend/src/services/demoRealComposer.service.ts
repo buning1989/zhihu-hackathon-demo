@@ -158,7 +158,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       sourceEvidenceRequired: true
     },
     analysis: {
-      summary: `围绕「${identity.normalizedQuery}」，从 ${limitedItems.length} 条知乎公开内容中聚合出 ${paths.length} 条可探索路径和 ${people.length} 个可追溯样本。`,
+      summary: `围绕「${identity.normalizedQuery}」，从 ${limitedItems.length} 条知乎公开内容中聚合出 ${paths.length} 个样本方向和 ${people.length} 个可追溯样本。`,
       intent: inferQueryIntent(input.query, pathCandidates),
       focusTags: unique(buckets.flatMap((bucket) => bucket.variables)).slice(0, 8),
       steps: [
@@ -171,7 +171,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
         },
         {
           id: "step_rule_group_paths",
-          label: "按内容关键词聚合人生路径",
+          label: "按内容关键词聚合样本方向",
           status: "done",
           evidenceIds: paths.flatMap((path) => path.evidenceIds),
           sourceRefs: paths.flatMap((path) => path.sourceRefs)

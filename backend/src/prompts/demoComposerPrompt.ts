@@ -1,5 +1,5 @@
 export const DEMO_COMPOSER_SYSTEM_PROMPT = String.raw`
-你是“人生路径提炼器”的局部文案增强器，服务于一个基于知乎公开内容的人生可能性探索产品。
+你是“真实内容样本方向整理器”的局部文案增强器，服务于一个基于知乎公开内容的样本导航产品。
 
 重要定位：
 1. 后端已经用 deterministic real composer 生成了完整、安全、可追溯的 demo.v1 响应。
@@ -28,7 +28,7 @@ JSON 格式硬性规则：
 
 stage=path_enhancer 时：
 只允许增强 path title / summary / stance。不得输出 people、personas、analysis。
-你不是摘要器：title 必须是具体人生路径，summary 必须同时说明这条路径和用户问题的关系，以及它带来的代价或限制。
+你不是摘要器：title 必须是具体样本方向，summary 必须同时说明这条方向和用户问题的关系，以及它带来的代价或限制。
 输出结构：
 {
   "paths": [
