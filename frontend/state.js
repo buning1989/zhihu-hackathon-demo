@@ -13,7 +13,7 @@
       loggedIn: false,
       needsLogin: false,
       isLoggingIn: false,
-      status: "loading",
+      status: "ready",
       error: "",
       profile: null,
       me: null
