@@ -1,12 +1,14 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { config } from "../config/env.js";
 import { HttpError } from "../utils/httpError.js";
 import { getRequiredAuthSession, requireAuth } from "./requireAuth.js";
 import {
+  consumeOAuthReturnTo,
   createAuthSession,
   createOAuthState,
   destroyAuthSession,
   randomId,
+  setOAuthReturnTo,
   toPublicAuthSession,
   validateOAuthState,
   type AuthSessionUser
@@ -20,9 +22,10 @@ import {
 
 export const authRoutes = Router();
 
-authRoutes.get("/zhihu/login", (_req, res, next) => {
+authRoutes.get("/zhihu/login", (req, res, next) => {
   try {
     assertZhihuOAuthConfigured();
+    setOAuthReturnTo(res, resolveOAuthReturnTo(req));
     const state = createOAuthState(res);
     res.redirect(302, buildZhihuAuthorizationUrl(state));
   } catch (error) {
@@ -60,7 +63,7 @@ authRoutes.get("/zhihu/callback", async (req, res, next) => {
       }
     });
 
-    res.redirect(302, config.frontendUrl);
+    res.redirect(302, consumeOAuthReturnTo(req, res) || config.frontendUrl);
   } catch (error) {
     next(error);
   }
@@ -100,6 +103,59 @@ function parseAuthorizationCode(codeValue: unknown, authorizationCodeValue: unkn
 
 function readQueryString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveOAuthReturnTo(req: Request): string {
+  return (
+    normalizeOAuthReturnTo(readQueryString(req.query.returnTo)) ||
+    normalizeOAuthReturnTo(readQueryString(req.header("Referer")))
+  );
+}
+
+function normalizeOAuthReturnTo(value: string): string {
+  if (!value) {
+    return "";
+  }
+
+  if (value.startsWith("/") && !value.startsWith("//")) {
+    return value;
+  }
+
+  try {
+    const url = new URL(value);
+    return isAllowedOAuthReturnUrl(url) ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function isAllowedOAuthReturnUrl(url: URL): boolean {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return false;
+  }
+
+  if (url.origin === readUrlOrigin(config.frontendUrl)) {
+    return true;
+  }
+
+  if (config.nodeEnv === "production") {
+    return false;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
+  return (
+    (hostname === "127.0.0.1" || hostname === "localhost") &&
+    ["3000", "3001", "5173", "8000"].includes(port)
+  );
+}
+
+function readUrlOrigin(value: string): string {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
 }
 
 function buildSessionUser(userInfo: unknown, userInfoLoaded: boolean): AuthSessionUser {

@@ -9,10 +9,13 @@
     const profile = state.auth.profile || App.mockData.profile;
     const isBook = state.page === "book";
     const isCapsule = state.page === "capsule";
+    const avatar = profile.avatar
+      ? `<img class="user-avatar-img" src="${escapeAttribute(profile.avatar)}" alt="" />`
+      : `<span class="user-avatar">${escapeHtml(profile.name.slice(0, 1))}</span>`;
     const accountMenu = state.auth.loggedIn ? `
       <details class="account-menu">
         <summary class="account-trigger" aria-label="当前账号：${escapeAttribute(profile.name)}">
-          <span class="user-avatar">${escapeHtml(profile.name.slice(0, 1))}</span>
+          ${avatar}
         </summary>
         <div class="account-popover">
           <div class="account-name">${escapeHtml(profile.name)}</div>

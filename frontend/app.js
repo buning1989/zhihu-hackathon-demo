@@ -359,6 +359,55 @@
     };
   }
 
+  function normalizeAuthProfile(session) {
+    const user = session?.user || {};
+    const displayName = user.displayName || session?.name || "知乎用户";
+    return {
+      id: user.id || session?.id || "",
+      name: displayName,
+      displayName,
+      avatar: user.avatar || session?.avatar || "",
+      headline: user.headline || "",
+      userInfoLoaded: Boolean(user.userInfoLoaded ?? session?.userInfoLoaded),
+      isTemporary: Boolean(user.isTemporary)
+    };
+  }
+
+  async function hydrateAuthSession() {
+    try {
+      const response = await App.Api.getAuthMe();
+      const profile = response.loggedIn ? normalizeAuthProfile(response.session) : null;
+      App.store.update((draft) => {
+        draft.auth.status = "ready";
+        draft.auth.error = "";
+        draft.auth.loggedIn = Boolean(response.loggedIn);
+        draft.auth.needsLogin = false;
+        draft.auth.isLoggingIn = false;
+        draft.auth.profile = profile;
+        draft.auth.me = profile;
+        return draft;
+      });
+    } catch (error) {
+      App.store.update((draft) => {
+        draft.auth.status = "error";
+        draft.auth.error = error?.message || "登录态读取失败";
+        draft.auth.loggedIn = false;
+        draft.auth.isLoggingIn = false;
+        draft.auth.profile = null;
+        draft.auth.me = null;
+        return draft;
+      });
+    }
+  }
+
+  function startZhihuLogin() {
+    App.store.update((draft) => {
+      draft.auth.isLoggingIn = true;
+      return draft;
+    });
+    window.location.assign(App.Api.zhihuLoginUrl(window.location.href));
+  }
+
   function emptyTaskState() {
     return {
       taskId: "",
@@ -1156,7 +1205,10 @@
       draft.auth.loggedIn = true;
       draft.auth.needsLogin = false;
       draft.auth.isLoggingIn = false;
+      draft.auth.status = "ready";
+      draft.auth.error = "";
       draft.auth.profile = response.profile;
+      draft.auth.me = response.profile;
       return draft;
     });
 
@@ -1166,7 +1218,15 @@
     }
   }
 
-  function mockLogout() {
+  async function mockLogout() {
+    if (!App.Api.isMockMode()) {
+      try {
+        await App.Api.logout();
+      } catch {
+        // Client-side reset is still useful if the server session already expired.
+      }
+    }
+
     cancelPolling();
     stopLoadingStageTicker();
     App.store.update((draft) => {
@@ -1176,7 +1236,10 @@
       draft.auth.loggedIn = false;
       draft.auth.needsLogin = false;
       draft.auth.isLoggingIn = false;
+      draft.auth.status = "ready";
+      draft.auth.error = "";
       draft.auth.profile = null;
+      draft.auth.me = null;
       draft.search.status = "idle";
       draft.search.message = "";
       draft.search.loadingStageIndex = 0;
@@ -1624,10 +1687,12 @@
         draft.auth.needsLogin = true;
         return draft;
       });
+    } else if (action === "zhihu-login") {
+      startZhihuLogin();
     } else if (action === "mock-login") {
       await mockLogin();
     } else if (action === "mock-logout") {
-      mockLogout();
+      await mockLogout();
     } else if (action === "answer-clarify") {
       answerClarify(target.dataset.questionId, target.dataset.optionId);
     } else if (action === "continue-after-clarify") {
@@ -1692,5 +1757,6 @@
   root.addEventListener("submit", handleSubmit);
   root.addEventListener("keydown", handleKeyDown);
   root.addEventListener("click", handleClick);
+  hydrateAuthSession();
   render();
 })();

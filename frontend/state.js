@@ -13,7 +13,10 @@
       loggedIn: false,
       needsLogin: false,
       isLoggingIn: false,
-      profile: null
+      status: "loading",
+      error: "",
+      profile: null,
+      me: null
     },
     search: {
       status: "idle",

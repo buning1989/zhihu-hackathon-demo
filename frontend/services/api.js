@@ -54,6 +54,7 @@
     try {
       response = await window.fetch(buildUrl(path), {
         ...options,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(options.headers || {})
@@ -166,6 +167,43 @@
     });
   }
 
+  async function getAuthMe(options = {}) {
+    try {
+      const session = await requestJson("/auth/me", {
+        method: "GET",
+        signal: options.signal
+      });
+      return {
+        loggedIn: true,
+        session
+      };
+    } catch (error) {
+      if (error instanceof AgentApiError && error.status === 401) {
+        return {
+          loggedIn: false,
+          session: null
+        };
+      }
+      throw error;
+    }
+  }
+
+  function logout(options = {}) {
+    return requestJson("/auth/logout", {
+      method: "POST",
+      signal: options.signal
+    });
+  }
+
+  function zhihuLoginUrl(returnTo = "/") {
+    const params = new URLSearchParams();
+    if (returnTo) {
+      params.set("returnTo", returnTo);
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return buildUrl(`/auth/zhihu/login${suffix}`);
+  }
+
   async function readAgentResult(taskId, taskStatus, options = {}) {
     let resultError = null;
     let normalizedResult = null;
@@ -223,12 +261,17 @@
     getTaskView,
     getTaskResult,
     refineTask,
+    getAuthMe,
+    logout,
     readAgentResult
   };
 
   App.Api = {
     isMockMode: () => mockMode,
     login: (...args) => App.MockApi.login(...args),
+    getAuthMe,
+    logout,
+    zhihuLoginUrl,
     prepareSearch: (...args) => mockMode
       ? App.MockApi.prepareSearch(...args)
       : Promise.resolve({ status: "ready" }),
