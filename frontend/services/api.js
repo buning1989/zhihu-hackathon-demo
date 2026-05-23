@@ -14,6 +14,7 @@
 
   const mockMode = resolveApiMode() === "mock";
   const apiBaseUrl = resolveApiBaseUrl();
+  const localApiBaseUrl = resolveLocalApiBaseUrl();
   const localZhihuRedirectUri = "http://127.0.0.1:3001/auth/zhihu/callback";
 
   function resolveApiMode() {
@@ -44,16 +45,51 @@
     return "";
   }
 
-  function buildUrl(path) {
+  function resolveLocalApiBaseUrl() {
+    if (
+      window.location.protocol === "file:" ||
+      ["3000", "3001", "5173"].includes(window.location.port)
+    ) {
+      return "http://localhost:8000";
+    }
+
+    return "";
+  }
+
+  function buildUrl(path, baseUrl = apiBaseUrl) {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    return `${apiBaseUrl}${normalizedPath}`;
+    return `${baseUrl}${normalizedPath}`;
   }
 
   async function requestJson(path, options = {}) {
+    try {
+      return await requestJsonOnce(path, options, apiBaseUrl);
+    } catch (error) {
+      if (!shouldRetryLocalApi(error)) {
+        throw error;
+      }
+
+      const data = await requestJsonOnce(path, options, localApiBaseUrl);
+      window.localStorage.removeItem("lifeSampleApiBaseUrl");
+      return data;
+    }
+  }
+
+  function shouldRetryLocalApi(error) {
+    const code = String(error?.code || error?.errorCode || "");
+    return Boolean(
+      localApiBaseUrl &&
+      apiBaseUrl &&
+      localApiBaseUrl !== apiBaseUrl &&
+      (code === "AGENT_DATABASE_UNCONFIGURED" || code === "AGENT_QUEUE_UNCONFIGURED")
+    );
+  }
+
+  async function requestJsonOnce(path, options = {}, baseUrl = apiBaseUrl) {
     let response;
     let body;
     try {
-      response = await window.fetch(buildUrl(path), {
+      response = await window.fetch(buildUrl(path, baseUrl), {
         ...options,
         credentials: "include",
         headers: {
