@@ -36,12 +36,12 @@
       <section class="clarify-wrap clarify-${escapeAttribute(variant)}">
         <div class="clarify-card">
           <div class="clarify-panel">
-            <h2 class="clarify-title">再补充一点你的处境</h2>
+            <h2 class="clarify-title">补充条件，让样本更贴近</h2>
             <p class="clarify-desc">${escapeHtml(description)}</p>
             ${questionHtml}
             <div class="clarify-actions">
-              <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}先直接看</button>
-              <button class="btn-p" type="button" data-action="continue-after-clarify">${icon("search")}开始看看</button>
+              <button class="btn-s" type="button" data-action="skip-clarify">${icon("book-open")}跳过，先看样本</button>
+              <button class="btn-p" type="button" data-action="continue-after-clarify">${icon("search")}用补充条件匹配</button>
             </div>
           </div>
         </div>

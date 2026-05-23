@@ -28,7 +28,7 @@
     {
       id: "search",
       label: "寻找样本",
-      message: "正在寻找相关样本"
+      message: "正在寻找真实内容样本"
     },
     {
       id: "evidence",
@@ -37,13 +37,13 @@
     },
     {
       id: "paths",
-      label: "整理方向",
+      label: "整理样本",
       message: "正在整理样本方向"
     },
     {
       id: "people",
-      label: "生成结果",
-      message: "正在生成结果"
+      label: "组织片段",
+      message: "正在整理可展示内容样本"
     }
   ];
 

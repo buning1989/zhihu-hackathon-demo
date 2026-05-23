@@ -86,7 +86,7 @@
                 ${clarifyPanel}
               ` : `
                 <textarea class="entry-input" id="entry-query" name="query">${query}</textarea>
-                <button class="btn-p entry-submit" type="submit" aria-label="开始看看">${icon("search")}</button>
+                <button class="btn-p entry-submit" type="submit" aria-label="开始找样本">${icon("search")}</button>
               `}
             </div>
           </form>

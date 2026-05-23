@@ -7,10 +7,10 @@
     const result = state.result || App.store.getResult();
     const loadingStages = App.loadingStages || [
       { label: "理解处境", message: "正在理解你的处境" },
-      { label: "寻找样本", message: "正在寻找相关样本" },
+      { label: "寻找样本", message: "正在寻找真实内容样本" },
       { label: "整理片段", message: "正在整理公开内容片段" },
-      { label: "整理方向", message: "正在整理样本方向" },
-      { label: "生成结果", message: "正在生成结果" }
+      { label: "整理样本", message: "正在整理样本方向" },
+      { label: "组织片段", message: "正在整理可展示内容样本" }
     ];
     const currentStageIndex = Math.min(
       Math.max(Number(state.search.loadingStageIndex) || 0, 0),
@@ -117,7 +117,7 @@
     const error = state.task.error || {};
     const code = error.errorCode || "";
     const message = state.search.error || error.errorMessage || "后端暂时不可用，请稍后再试。";
-    const title = code === "RATE_LIMITED" ? "今天的任务有点多" : "暂时没能生成结果";
+    const title = code === "RATE_LIMITED" ? "今天的任务有点多" : "暂时没能整理出样本";
 
     return `
       <section class="empty-panel result-empty">
