@@ -13,6 +13,7 @@ export type AgentTaskType = "demo_search";
 export type AgentTaskStatus = "running" | "completed" | "failed";
 export type AgentStageName =
   | "intent_expand"
+  | "clarification_planner"
   | "content_search"
   | "candidate_rank"
   | "evidence_extract"

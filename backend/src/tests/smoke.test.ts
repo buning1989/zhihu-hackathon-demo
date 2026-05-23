@@ -123,6 +123,7 @@ try {
     "GET /auth/me does not expose token"
   );
   await assertQueryAwareDemoPaths(baseUrl);
+  await assertClarificationPlannerDemoSearch(baseUrl);
 
   const personaId = demoSearch.body.data.personas[0].id;
   const queryId = demoSearch.body.data.queryId;
@@ -492,6 +493,82 @@ async function assertDeepSeekResponseFormatFallback(): Promise<void> {
   }
 }
 
+async function assertClarificationPlannerDemoSearch(baseUrl: string): Promise<void> {
+  const workResponse = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    body: {
+      query: "不工作了能去哪儿？",
+      count: 3,
+      dataMode: "mock"
+    }
+  });
+  assertEqual(workResponse.status, 200, "clarification work status");
+  assertEqual(workResponse.body.success, true, "clarification work success");
+  assertEqual(workResponse.body.data.clarifyingCard.show, true, "work clarification card show");
+  assertNonEmptyArray(workResponse.body.data.clarifyingCard.questions, "work clarification questions");
+  assertEqual(
+    workResponse.body.data.clarifyingCard.questions.length <= 3,
+    true,
+    "work clarification question max"
+  );
+  assertEqual(
+    Boolean(JSON.stringify(workResponse.body.data.clarifyingCard).includes("searchHint")),
+    false,
+    "clarifyingCard does not expose searchHint"
+  );
+  assertEqual(
+    workResponse.body.data.clarificationStage.needClarification,
+    true,
+    "work clarification stage need"
+  );
+
+  const relationResponse = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    body: {
+      query: "为了工作能追求自己想做的事，长期异地恋真的值得吗？",
+      count: 3,
+      dataMode: "mock"
+    }
+  });
+  assertEqual(relationResponse.status, 200, "relation clarification status");
+  assertEqual(relationResponse.body.success, true, "relation clarification success");
+  assertEqual(relationResponse.body.data.clarifyingCard.show, true, "relation clarification card show");
+  const relationLabels = relationResponse.body.data.clarifyingCard.questions
+    .map((item: { label: string }) => item.label)
+    .join("|");
+  assertIncludes(relationLabels, "阶段", "relation clarification asks stage");
+  assertIncludes(relationLabels, "约束", "relation clarification asks constraint");
+
+  const answeredResponse = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    body: {
+      query: "不工作了能去哪儿？",
+      count: 3,
+      dataMode: "mock",
+      clarificationAnswers: {
+        current_state: "burnout",
+        main_constraint: "cashflow"
+      }
+    }
+  });
+  assertEqual(answeredResponse.status, 200, "answered clarification status");
+  assertEqual(answeredResponse.body.success, true, "answered clarification success");
+  assertEqual(answeredResponse.body.data.clarifyingCard.show, false, "answered hides clarification card");
+  assertNonEmptyArray(answeredResponse.body.data.paths, "answered clarification paths");
+  assertNonEmptyArray(answeredResponse.body.data.people, "answered clarification people");
+  assertNonEmptyArray(answeredResponse.body.data.personas, "answered clarification personas");
+  assertEqual(
+    answeredResponse.body.data.debug.clarificationContext.applied,
+    true,
+    "answered clarification context applied"
+  );
+  assertEqual(
+    answeredResponse.body.data.debug.clarificationContext.searchHintCount > 0,
+    true,
+    "answered clarification search hints used internally"
+  );
+}
+
 async function assertLoggedInUserContextInRealComposer(): Promise<void> {
   const userContext: UserContext = {
     provider: "zhihu",
@@ -581,22 +658,31 @@ function assertAgentCandidateFiltersAnswerAndScore(): void {
 
   const result = runNormalizeCandidatesStage(rawSources).data;
 
-  assertEqual(result.candidateCount, 2, "agent candidate filter count");
-  assertEqual(result.filteredOutCount, 2, "agent candidate filteredOutCount");
+  assertEqual(result.candidateCount, 4, "agent candidate filter count");
+  assertEqual(result.filteredOutCount, 0, "agent candidate filteredOutCount");
   assertEqual(
     result.candidates[0].sourceId,
     "high_answer",
     "agent candidate keeps Answer score > 0.5"
   );
   assertEqual(
-    result.candidates[1].sourceId,
+    result.candidates[3].sourceId,
     "mock_answer",
     "agent candidate keeps mock answer fallback"
   );
-  assertEqual(result.candidates.every((candidate) => candidate.score > 0.5), true, "agent candidates score gate");
+  assertEqual(
+    result.candidates.some((candidate) => candidate.sourceId === "high_article"),
+    true,
+    "agent candidate keeps Article sources"
+  );
+  assertEqual(
+    result.candidates.every((candidate) => candidate.selectedForEvidence === false),
+    true,
+    "agent candidates keep rejected evidence items for debug"
+  );
   assertEqual(
     result.candidates.every((candidate) =>
-      ["answer", "mock_answer"].includes((candidate.type ?? "").toLowerCase())
+      ["answer", "article", "mock_answer"].includes((candidate.type ?? "").toLowerCase())
     ),
     true,
     "agent candidates type gate"

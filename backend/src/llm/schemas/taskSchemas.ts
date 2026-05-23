@@ -7,6 +7,7 @@ import { normalizeSearchQueryPlans } from "../searchQueryPlan.js";
 
 export type LlmTaskSchemaName =
   | "intent_expand"
+  | "clarification_planner"
   | "candidate_rerank"
   | "evidence_extract"
   | "demo_response_compose"

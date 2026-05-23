@@ -24,6 +24,7 @@ cleanupTimer.unref?.();
 
 const STAGE_LABELS: Record<AgentStageName, string> = {
   intent_expand: "理解问题与扩展检索方向",
+  clarification_planner: "判断是否需要补充信息",
   content_search: "搜索知乎公开内容",
   candidate_rank: "筛选相似人生样本",
   evidence_extract: "抽取关键经历和证据",

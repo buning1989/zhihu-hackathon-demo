@@ -32,12 +32,16 @@ export type DemoDebugFallbackKind =
   | "partial_llm_fallback"
   | "all_llm_failed";
 export type DemoDebugPathSource = "llm" | "rule" | "fallback";
+export type ClarificationQuestionType = "single_select" | "multi_select" | "free_text";
+export type ClarificationAnswer = string | string[] | number | boolean | null;
+export type ClarificationAmbiguityLevel = "low" | "medium" | "high";
 
 export interface DemoSearchRequestBody {
   query?: unknown;
   count?: unknown;
   mode?: unknown;
   dataMode?: unknown;
+  clarificationAnswers?: unknown;
 }
 
 export interface DemoSearchResponse {
@@ -52,8 +56,57 @@ export interface DemoSearchResponse {
   people: DemoPerson[];
   personas: DemoPersona[];
   sections: DemoSection[];
+  clarifyingCard?: ClarifyingCard;
+  clarificationStage?: ClarificationStage;
   meta: DemoMeta;
   debug: DemoDebug;
+}
+
+export interface ClarificationOption {
+  id: string;
+  label: string;
+}
+
+export interface ClarificationQuestion {
+  id: string;
+  label: string;
+  type: ClarificationQuestionType;
+  required: boolean;
+  options?: ClarificationOption[];
+}
+
+export interface ClarifyingCard {
+  show: boolean;
+  title: string;
+  description: string;
+  questions: ClarificationQuestion[];
+  primaryActionText: string;
+  skipActionText: string;
+}
+
+export interface ClarificationStage {
+  needClarification: boolean;
+  ambiguityLevel: ClarificationAmbiguityLevel;
+  llmUsed: boolean;
+  provider?: string;
+  model?: string;
+  fallbackReason?: string;
+}
+
+export interface ClarificationContext {
+  originalQuery: string;
+  answers: Record<string, ClarificationAnswer>;
+  answerSummary: string;
+  searchHints: string[];
+  applied: boolean;
+}
+
+export interface DemoDebugClarificationContext {
+  originalQuery: string;
+  answers: Record<string, ClarificationAnswer>;
+  answerSummary: string;
+  applied: boolean;
+  searchHintCount: number;
 }
 
 export interface DemoFeatures {
@@ -307,6 +360,7 @@ export interface DemoDebug {
   fallbackKind: DemoDebugFallbackKind;
   fallbackReason: string;
   guardWarnings: string[];
+  clarificationContext?: DemoDebugClarificationContext;
   userCoreQuestion?: string;
   topicSignals?: string[];
   searchQueries?: DemoSearchQueryPlan[];
@@ -418,6 +472,7 @@ export interface DemoDroppedCandidateDebug {
 export interface DemoDebugTiming {
   stageName:
     | "intent_expand"
+    | "clarification_planner"
     | "candidate_rerank"
     | "evidence_extract"
     | "demo_response_compose"
@@ -446,6 +501,7 @@ export interface DemoDebugIntentStage {
 export interface DemoDebugLlmStageResult {
   stage:
     | "intent_expand"
+    | "clarification_planner"
     | "candidate_rerank"
     | "evidence_extract"
     | "demo_response_compose"

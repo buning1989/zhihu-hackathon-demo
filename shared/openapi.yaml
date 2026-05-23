@@ -3020,6 +3020,17 @@ components:
             - real
           default: mock
           description: Data mode. P0 must work in mock mode without Zhihu or LLM keys.
+        dataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+          description: Alias of mode used by the implemented backend.
+        clarificationAnswers:
+          type: object
+          additionalProperties: true
+          description: Optional answers from a previous clarifyingCard submit.
         sessionId:
           type: string
           description: Optional client-provided session id for local demo continuity.
@@ -3076,10 +3087,96 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DemoSection"
+        clarifyingCard:
+          $ref: "#/components/schemas/ClarifyingCard"
+        clarificationStage:
+          $ref: "#/components/schemas/ClarificationStage"
         meta:
           $ref: "#/components/schemas/ResponseMeta"
         debug:
           $ref: "#/components/schemas/DemoDebug"
+    ClarifyingCard:
+      type: object
+      required:
+        - show
+        - title
+        - description
+        - questions
+        - primaryActionText
+        - skipActionText
+      properties:
+        show:
+          type: boolean
+        title:
+          type: string
+        description:
+          type: string
+        questions:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ClarificationQuestion"
+        primaryActionText:
+          type: string
+        skipActionText:
+          type: string
+    ClarificationQuestion:
+      type: object
+      required:
+        - id
+        - label
+        - type
+        - required
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+          enum:
+            - single_select
+            - multi_select
+            - free_text
+        required:
+          type: boolean
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClarificationOption"
+    ClarificationOption:
+      type: object
+      required:
+        - id
+        - label
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+    ClarificationStage:
+      type: object
+      required:
+        - needClarification
+        - ambiguityLevel
+        - llmUsed
+      properties:
+        needClarification:
+          type: boolean
+        ambiguityLevel:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        llmUsed:
+          type: boolean
+        provider:
+          type: string
+        model:
+          type: string
+        fallbackReason:
+          type: string
     DemoContextUsed:
       type: object
       description: >

@@ -1,4 +1,9 @@
 import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
+import {
+  buildRuleClarificationOutput,
+  runClarificationPlannerLlmStage,
+  type ClarificationPlannerOutput
+} from "../agent/stages/clarificationPlannerLlmStage.js";
 import { composeRealDemoSearchResponse } from "../services/demoRealComposer.service.js";
 import { searchService } from "../services/search.service.js";
 import {
@@ -21,6 +26,8 @@ import {
 } from "../services/demoCandidateQuality.service.js";
 import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
+  type ClarificationAnswer,
+  type ClarificationContext,
   type DemoDataMode,
   type DemoCandidateQuality,
   type DemoContentRole,
@@ -81,11 +88,13 @@ interface ComposeMultiLlmDemoSearchInput {
   searchQueryLimit?: number;
   searchConcurrency?: number;
   userContext?: UserContext;
+  clarificationAnswers?: Record<string, ClarificationAnswer>;
   callbacks?: DemoSearchPipelineCallbacks;
 }
 
 export type DemoSearchPipelineStageName =
   | "intent_expand"
+  | "clarification_planner"
   | "content_search"
   | "candidate_rank"
   | "evidence_extract"
@@ -372,13 +381,37 @@ export async function composeMultiLlmDemoSearchResponse(
     expandedQueries: intentStage.output.searchQueries
   });
 
+  callbacks?.onStageStart?.("clarification_planner");
+  const clarificationStage = await runTimedStage(() =>
+    runClarificationPlannerStage(
+      input.query,
+      intentStage.output,
+      input.clarificationAnswers,
+      input.userContext,
+      budget
+    )
+  );
+  stageResults.push(clarificationStage.stageResult);
+  timings.push(createStageTiming(clarificationStage));
+  emitStageResult(callbacks, "clarification_planner", clarificationStage.stageResult, {
+    durationMs: clarificationStage.durationMs,
+    needClarification: clarificationStage.output.stage.needClarification,
+    ambiguityLevel: clarificationStage.output.stage.ambiguityLevel
+  });
+
+  const clarifiedIntent = applyClarificationToIntent(
+    intentStage.output,
+    clarificationStage.output.context,
+    clarificationStage.output.searchHints
+  );
+
   callbacks?.onStageStart?.("content_search");
   let recalledSearch: SearchByExpandedQueriesResult;
   try {
     recalledSearch = await withPipelineStageTimeout(
       searchByExpandedQueries(
         input.query,
-        intentStage.output,
+        clarifiedIntent,
         input.count,
         input.userContext,
         {
@@ -427,7 +460,7 @@ export async function composeMultiLlmDemoSearchResponse(
   callbacks?.onStageStart?.("candidate_rank");
   const candidatePipeline = await runCandidatePipeline(
     input.query,
-    intentStage.output,
+    clarifiedIntent,
     recalledSearch,
     input.count,
     input.userContext,
@@ -488,7 +521,13 @@ export async function composeMultiLlmDemoSearchResponse(
   const candidates = buildCleanedCandidatesFromResponse(response);
   callbacks?.onStageStart?.("evidence_extract");
   const evidenceStage = await runTimedStage(() =>
-    runEvidenceExtractStage(input.query, intentStage.output, candidates, budget)
+    runEvidenceExtractStage(
+      input.query,
+      clarifiedIntent,
+      candidates,
+      budget,
+      clarificationStage.output.context
+    )
   );
   stageResults.push(evidenceStage.stageResult);
   timings.push(createStageTiming(evidenceStage));
@@ -509,12 +548,13 @@ export async function composeMultiLlmDemoSearchResponse(
   const composeStage = await runTimedStage(() =>
     runDemoResponseComposeStage(
       input.query,
-      intentStage.output,
+      clarifiedIntent,
       evidenceStage.output,
       response,
       candidates,
       input.userContext,
-      budget
+      budget,
+      clarificationStage.output.context
     )
   );
   stageResults.push(composeStage.stageResult);
@@ -628,8 +668,9 @@ export async function composeMultiLlmDemoSearchResponse(
     fallbackKind: fallbackSummary.kind,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
-    userCoreQuestion: intentStage.output.userCoreQuestion,
-    topicSignals: intentStage.output.topicSignals,
+    clarificationContext: toDebugClarificationContext(clarificationStage.output.context),
+    userCoreQuestion: clarifiedIntent.userCoreQuestion,
+    topicSignals: clarifiedIntent.topicSignals,
     searchQueries: recalledSearch.searchQueries,
     searchQueryResults: recalledSearch.searchQueryResults,
     rawCandidateCount: recalledSearch.rawCandidateCount,
@@ -669,6 +710,8 @@ export async function composeMultiLlmDemoSearchResponse(
             "deterministic rule composer used; no successful LLM stage"
           ]
   };
+  response.clarifyingCard = clarificationStage.output.card;
+  response.clarificationStage = clarificationStage.output.stage;
 
   return response;
 }
@@ -1041,11 +1084,124 @@ async function runIntentExpandStage(
   }
 }
 
+async function runClarificationPlannerStage(
+  query: string,
+  intent: IntentExpandOutput,
+  clarificationAnswers: Record<string, ClarificationAnswer> | undefined,
+  userContext: UserContext | undefined,
+  budget?: PipelineBudget
+): Promise<StageRunResult<ClarificationPlannerOutput>> {
+  const budgetDecision = getLlmStageBudgetDecision("clarification_planner", budget);
+  if (!budgetDecision.shouldRun) {
+    const output = buildRuleClarificationOutput({
+      query,
+      clarificationAnswers
+    });
+    return {
+      output: {
+        ...output,
+        stage: {
+          ...output.stage,
+          llmUsed: false,
+          fallbackReason: budgetDecision.reason
+        }
+      },
+      stageResult: createBudgetSkippedStage("clarification_planner", budgetDecision)
+    };
+  }
+
+  const output = await runClarificationPlannerLlmStage({
+    query,
+    intent,
+    clarificationAnswers,
+    userContext,
+    timeoutMs: budgetDecision.effectiveTimeoutMs,
+    maxRetry: budgetDecision.maxRetry
+  });
+
+  const stageResult = output.stage.llmUsed
+    ? createSuccessStage("clarification_planner")
+    : output.stage.fallbackReason
+      ? createSkippedStage("clarification_planner", output.stage.fallbackReason)
+      : createSkippedStage("clarification_planner", "rule clarification planner used");
+
+  return {
+    output,
+    stageResult: attachStageBudgetDebug(stageResult, budgetDecision)
+  };
+}
+
+function applyClarificationToIntent(
+  intent: IntentExpandOutput,
+  context: ClarificationContext | null,
+  searchHints: string[]
+): IntentExpandOutput {
+  const hints = unique([...searchHints, ...(context?.searchHints ?? [])]).slice(0, 4);
+  if (hints.length === 0) {
+    return intent;
+  }
+
+  const existingQueries = new Set(intent.searchQueries.map((item) => normalizeText(item.query)));
+  const hintQueries = hints
+    .map((hint, index): DemoSearchQueryPlan => ({
+      query: hint,
+      type: index % 2 === 0 ? "real_experience" : "decision_conflict",
+      purpose: "基于用户补充信息调整真实经历检索",
+      priority: 2 + index
+    }))
+    .filter((item) => {
+      const key = normalizeText(item.query);
+      if (!key || existingQueries.has(key)) {
+        return false;
+      }
+      existingQueries.add(key);
+      return true;
+    });
+
+  return {
+    ...intent,
+    focusTags: unique([
+      ...intent.focusTags,
+      ...(context ? Object.values(context.answers).map(formatClarificationAnswerForIntent) : [])
+    ]).filter(Boolean).slice(0, 12),
+    topicSignals: unique([
+      ...intent.topicSignals,
+      ...(context ? Object.values(context.answers).map(formatClarificationAnswerForIntent) : [])
+    ]).filter(Boolean).slice(0, 12),
+    searchQueries: sortSearchQueryPlans([...hintQueries, ...intent.searchQueries])
+  };
+}
+
+function toDebugClarificationContext(
+  context: ClarificationContext | null
+): DemoSearchResponse["debug"]["clarificationContext"] {
+  if (!context) {
+    return undefined;
+  }
+
+  return {
+    originalQuery: context.originalQuery,
+    answers: context.answers,
+    answerSummary: context.answerSummary,
+    applied: context.applied,
+    searchHintCount: context.searchHints.length
+  };
+}
+
+function formatClarificationAnswerForIntent(value: ClarificationAnswer): string {
+  if (Array.isArray(value)) {
+    return value.join(" ");
+  }
+
+  return value === null ? "" : String(value);
+}
+
 async function runEvidenceExtractStage(
   query: string,
   intent: IntentExpandOutput,
   candidates: CleanedCandidate[],
-  budget?: PipelineBudget
+  budget?: PipelineBudget,
+  clarificationContext?: ClarificationContext | null
 ): Promise<StageRunResult<EvidenceExtractOutput>> {
   const fallback = createFallbackEvidenceExtract(candidates);
   if (candidates.length === 0) {
@@ -1089,6 +1245,12 @@ async function runEvidenceExtractStage(
           content: JSON.stringify({
             query: truncateText(query, 120),
             intent,
+            clarificationContext: clarificationContext
+              ? {
+                  answerSummary: clarificationContext.answerSummary,
+                  applied: clarificationContext.applied
+                }
+              : null,
             promptBudget: {
               model: "moonshot-v1-8k",
               maxContextTokens: 6500,
@@ -1126,7 +1288,8 @@ async function runDemoResponseComposeStage(
   response: DemoSearchResponse,
   candidates: CleanedCandidate[],
   userContext?: UserContext,
-  budget?: PipelineBudget
+  budget?: PipelineBudget,
+  clarificationContext?: ClarificationContext | null
 ): Promise<StageRunResult<DemoResponseComposeOutput>> {
   const fallback = createEmptyDemoComposeOutput();
   const budgetDecision = getLlmStageBudgetDecision("demo_response_compose", budget);
@@ -1168,6 +1331,12 @@ async function runDemoResponseComposeStage(
             focusTags: intent.focusTags,
             topicSignals: intent.topicSignals,
             userContext: buildPromptUserContext(userContext),
+            clarificationContext: clarificationContext
+              ? {
+                  answerSummary: clarificationContext.answerSummary,
+                  applied: clarificationContext.applied
+                }
+              : null,
             intent,
             evidenceExtract: evidence,
             allowedIds: {

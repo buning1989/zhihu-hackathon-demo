@@ -1,5 +1,6 @@
 import { config } from "../config/env.js";
 import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
+import { buildRuleClarificationOutput } from "../agent/stages/clarificationPlannerLlmStage.js";
 import {
   composeMultiLlmDemoSearchResponse,
   type DemoSearchPipelineCallbacks,
@@ -14,7 +15,11 @@ import {
 import { demoSessionCacheService } from "./demoSessionCache.service.js";
 import { createDemoContextUsed } from "./userContext.service.js";
 import type { UserContext } from "../auth/session.js";
-import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
+import {
+  type ClarificationAnswer,
+  type DemoDataMode,
+  type DemoSearchResponse
+} from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
 import {
   isRequestBudgetTimeoutError,
@@ -25,6 +30,7 @@ export interface DemoSearchRequest {
   query: string;
   count: number;
   dataMode: DemoDataMode;
+  clarificationAnswers?: Record<string, ClarificationAnswer>;
 }
 
 export interface DemoSearchOptions {
@@ -93,6 +99,7 @@ export class DemoSearchService {
             searchQueryLimit: options.searchQueryLimit,
             searchConcurrency: options.searchConcurrency,
             userContext,
+            clarificationAnswers: request.clarificationAnswers,
             callbacks: options.pipelineCallbacks
           }),
           requestBudgetMs,
@@ -143,6 +150,7 @@ export class DemoSearchService {
               }
             ];
         response.debug.timings = [];
+        applyRuleClarificationToResponse(response, request);
         assertDemoSearchGrounding(response);
         const finalResponse = cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
         options.pipelineCallbacks?.onFinalResult?.(finalResponse);
@@ -158,6 +166,7 @@ export class DemoSearchService {
       pathSource: "fallback"
     });
     response.contextUsed = createDemoContextUsed(userContext);
+    applyRuleClarificationToResponse(response, request);
     finalizeDemoMeta(response, startedAt);
     assertDemoSearchGrounding(response);
     const finalResponse = cacheDemoResponse(writeCachedDemoResponse(cacheKey, response, false));
@@ -180,7 +189,8 @@ export function parseDemoSearchRequest(body: unknown): DemoSearchRequest {
   return {
     query,
     count: parseCount(record.count),
-    dataMode: parseDataMode(dataMode)
+    dataMode: parseDataMode(dataMode),
+    clarificationAnswers: parseClarificationAnswers(record.clarificationAnswers)
   };
 }
 
@@ -217,6 +227,42 @@ function readString(value: unknown): string {
   }
 
   return "";
+}
+
+function parseClarificationAnswers(value: unknown): Record<string, ClarificationAnswer> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const answers: Record<string, ClarificationAnswer> = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) {
+      continue;
+    }
+
+    if (Array.isArray(rawValue)) {
+      const items = rawValue.map(readString).filter(Boolean).slice(0, 5);
+      if (items.length > 0) {
+        answers[normalizedKey] = items;
+      }
+      continue;
+    }
+
+    if (
+      typeof rawValue === "string" ||
+      typeof rawValue === "number" ||
+      typeof rawValue === "boolean" ||
+      rawValue === null
+    ) {
+      const answer = rawValue === null ? null : readString(rawValue);
+      if (answer !== "") {
+        answers[normalizedKey] = answer;
+      }
+    }
+  }
+
+  return Object.keys(answers).length > 0 ? answers : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -287,6 +333,27 @@ function cacheDemoResponse(response: DemoSearchResponse): DemoSearchResponse {
   return response;
 }
 
+function applyRuleClarificationToResponse(
+  response: DemoSearchResponse,
+  request: DemoSearchRequest
+): void {
+  const clarification = buildRuleClarificationOutput({
+    query: request.query,
+    clarificationAnswers: request.clarificationAnswers
+  });
+  response.clarifyingCard = clarification.card;
+  response.clarificationStage = clarification.stage;
+  if (clarification.context) {
+    response.debug.clarificationContext = {
+      originalQuery: clarification.context.originalQuery,
+      answers: clarification.context.answers,
+      answerSummary: clarification.context.answerSummary,
+      applied: clarification.context.applied,
+      searchHintCount: clarification.context.searchHints.length
+    };
+  }
+}
+
 function readCachedDemoResponse(
   cacheKey: string,
   identity: DemoSearchIdentity,
@@ -352,6 +419,7 @@ function buildDemoSearchCacheKey(
     `dataMode=${request.dataMode}`,
     `normalizedQuery=${identity.normalizedQuery.toLowerCase()}`,
     `count=${request.count}`,
+    `clarification=${hashString(JSON.stringify(request.clarificationAnswers ?? {}))}`,
     `context=${hashString(toUserContextCacheSeed(userContext))}`
   ].join("|");
 }

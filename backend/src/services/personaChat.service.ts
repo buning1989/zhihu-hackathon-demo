@@ -407,7 +407,9 @@ function createMockFallback(
   grounding?: ChatGroundingContext,
   person?: DemoPerson
 ): PersonaChatResponse {
-  const sourceRefs = deriveFallbackSourceRefs(grounding, person);
+  const sourceRefs = fallbackReason.startsWith("PERSONA_DISABLED")
+    ? []
+    : deriveFallbackSourceRefs(grounding, person);
   return {
     schemaVersion: PERSONA_CHAT_SCHEMA_VERSION,
     personaId: person?.aiPersona.personaId ?? request.personaId,

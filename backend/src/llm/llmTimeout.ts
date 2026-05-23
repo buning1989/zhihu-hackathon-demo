@@ -2,6 +2,7 @@ import type { LlmTaskType } from "./llmRouter.js";
 
 export const LLM_TASK_TIMEOUT_MS: Record<LlmTaskType, number> = {
   intent_expand: 3000,
+  clarification_planner: 3000,
   candidate_rerank: 5000,
   evidence_extract: 5000,
   demo_response_compose: 5000,

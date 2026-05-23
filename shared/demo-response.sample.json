@@ -541,6 +541,36 @@
         ]
       }
     ],
+    "clarifyingCard": {
+      "show": true,
+      "title": "补充当前约束，匹配更准",
+      "description": "不同现金流、城市和状态会对应很不同的真实经历。",
+      "questions": [
+        {
+          "id": "current_state",
+          "label": "你现在更接近哪种状态？",
+          "type": "single_select",
+          "required": true,
+          "options": [
+            {
+              "id": "burnout",
+              "label": "想休息"
+            },
+            {
+              "id": "unemployed",
+              "label": "已失业"
+            }
+          ]
+        }
+      ],
+      "primaryActionText": "用这些信息重新匹配",
+      "skipActionText": "先跳过"
+    },
+    "clarificationStage": {
+      "needClarification": true,
+      "ambiguityLevel": "high",
+      "llmUsed": false
+    },
     "meta": {
       "mode": "mock",
       "generatedAt": "2026-05-13T00:00:00.000Z",
