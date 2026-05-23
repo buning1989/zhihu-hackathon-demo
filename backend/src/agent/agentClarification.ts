@@ -17,8 +17,23 @@ export interface AgentNeedInputFreeText {
   maxLength: number;
 }
 
+export interface AgentNeedInputCardOption {
+  id: string;
+  label: string;
+  refineHint: string;
+}
+
+export interface AgentNeedInputCard {
+  id: string;
+  title: string;
+  question: string;
+  type: "single_choice" | "multi_choice" | "free_text";
+  options: AgentNeedInputCardOption[];
+}
+
 export interface AgentNeedInputPayload {
   reason: string;
+  cards: AgentNeedInputCard[];
   questions: AgentNeedInputQuestion[];
   optionalFreeText?: AgentNeedInputFreeText;
 }
@@ -89,11 +104,13 @@ export function buildAgentRefineContext(input: {
 
 export function isAgentNeedInputPayload(value: unknown): value is AgentNeedInputPayload {
   const record = asRecord(value);
+  const cards = record?.cards;
   return Boolean(
     record &&
       typeof record.reason === "string" &&
       Array.isArray(record.questions) &&
-      record.questions.every(isAgentNeedInputQuestion)
+      record.questions.every(isAgentNeedInputQuestion) &&
+      (!Array.isArray(cards) || cards.every(isAgentNeedInputCard))
   );
 }
 
@@ -107,7 +124,7 @@ function buildNeedInput(profile: AmbiguousProfile): AgentNeedInputPayload {
   };
 
   if (profile === "career_exit") {
-    return {
+    return withNeedInputCards({
       reason: "问题里还缺少当前工作状态、时间压力和风险承受度，补充后能匹配更接近的真实经历样本。",
       questions: [
         {
@@ -131,11 +148,11 @@ function buildNeedInput(profile: AmbiguousProfile): AgentNeedInputPayload {
         }
       ],
       optionalFreeText: sharedFreeText
-    };
+    });
   }
 
   if (profile === "relationship_breakup") {
-    return {
+    return withNeedInputCards({
       reason: "分手类问题需要关系阶段、主要冲突和决策压力，否则容易召回到过泛的建议。",
       questions: [
         {
@@ -158,11 +175,11 @@ function buildNeedInput(profile: AmbiguousProfile): AgentNeedInputPayload {
         }
       ],
       optionalFreeText: sharedFreeText
-    };
+    });
   }
 
   if (profile === "hometown") {
-    return {
+    return withNeedInputCards({
       reason: "回老家选择需要城市阶段、牵引因素和风险偏好，才能匹配到更具体的迁移经历。",
       questions: [
         {
@@ -185,11 +202,11 @@ function buildNeedInput(profile: AmbiguousProfile): AgentNeedInputPayload {
         }
       ],
       optionalFreeText: sharedFreeText
-    };
+    });
   }
 
   if (profile === "postgraduate_exam") {
-    return {
+    return withNeedInputCards({
       reason: "考研选择需要阶段、约束和目标，否则很难区分一战、二战、在职或跨专业样本。",
       questions: [
         {
@@ -212,10 +229,10 @@ function buildNeedInput(profile: AmbiguousProfile): AgentNeedInputPayload {
         }
       ],
       optionalFreeText: sharedFreeText
-    };
+    });
   }
 
-  return {
+  return withNeedInputCards({
     reason: "问题目前比较开放，先补一个生活/职业/学业场景，能减少泛泛建议并优先匹配真实经历样本。",
     questions: [
       {
@@ -239,11 +256,16 @@ function buildNeedInput(profile: AmbiguousProfile): AgentNeedInputPayload {
       }
     ],
     optionalFreeText: sharedFreeText
-  };
+  });
 }
 
 function matchAmbiguousProfile(normalizedQuery: string): AmbiguousProfile | null {
   const exactProfiles: Record<string, AmbiguousProfile> = {
+    "我该怎么办": "self_state",
+    "还来得及吗": "self_state",
+    "值不值得": "self_state",
+    "我该怎么选": "self_state",
+    "不知道怎么办": "self_state",
     "我要不要离职": "career_exit",
     "要不要离职": "career_exit",
     "我要不要辞职": "career_exit",
@@ -357,6 +379,55 @@ function isAgentNeedInputQuestion(value: unknown): value is AgentNeedInputQuesti
       Array.isArray(record.options) &&
       record.options.every((item) => typeof item === "string") &&
       record.options.length <= 5
+  );
+}
+
+function withNeedInputCards(
+  payload: Omit<AgentNeedInputPayload, "cards">
+): AgentNeedInputPayload {
+  return {
+    ...payload,
+    cards: payload.questions.map(toNeedInputCard)
+  };
+}
+
+function toNeedInputCard(question: AgentNeedInputQuestion): AgentNeedInputCard {
+  return {
+    id: question.key,
+    title: question.label,
+    question: question.label,
+    type: "single_choice",
+    options: question.options.slice(0, 5).map((option) => ({
+      id: option,
+      label: option,
+      refineHint: `${question.label}：${option}`
+    }))
+  };
+}
+
+function isAgentNeedInputCard(value: unknown): value is AgentNeedInputCard {
+  const record = asRecord(value);
+  return Boolean(
+    record &&
+      typeof record.id === "string" &&
+      typeof record.title === "string" &&
+      typeof record.question === "string" &&
+      (record.type === "single_choice" ||
+        record.type === "multi_choice" ||
+        record.type === "free_text") &&
+      Array.isArray(record.options) &&
+      record.options.length <= 5 &&
+      record.options.every(isAgentNeedInputCardOption)
+  );
+}
+
+function isAgentNeedInputCardOption(value: unknown): value is AgentNeedInputCardOption {
+  const record = asRecord(value);
+  return Boolean(
+    record &&
+      typeof record.id === "string" &&
+      typeof record.label === "string" &&
+      typeof record.refineHint === "string"
   );
 }
 

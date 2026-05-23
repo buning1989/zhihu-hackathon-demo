@@ -8,21 +8,40 @@
   ]);
 
   function normalizeNeedInput(needInput) {
-    if (!needInput || !Array.isArray(needInput.questions)) {
+    if (!needInput) {
       return null;
     }
 
-    return {
-      reason: String(needInput.reason || ""),
-      questions: needInput.questions.slice(0, 3).map((question) => {
+    const cards = normalizeNeedInputCards(needInput.cards);
+    const legacyQuestions = Array.isArray(needInput.questions) ? needInput.questions : [];
+    const questions = cards.length
+      ? cards.map((card) => ({
+        id: card.id,
+        key: card.id,
+        title: card.title,
+        text: card.question || card.title || "补充一点信息",
+        type: card.type,
+        options: card.options
+      }))
+      : legacyQuestions.slice(0, 3).map((question) => {
         const key = String(question.key || question.id || "");
         return {
           id: key,
           key,
           text: String(question.label || question.text || key || "补充一点信息"),
+          type: String(question.type || "single_select"),
           options: normalizeOptions(question.options).slice(0, 5)
         };
-      }).filter((question) => question.id && question.options.length > 0)
+      }).filter((question) => question.id && question.options.length > 0);
+
+    if (questions.length === 0) {
+      return null;
+    }
+
+    return {
+      reason: String(needInput.reason || ""),
+      cards,
+      questions
     };
   }
 
@@ -623,16 +642,47 @@
         const id = stringOf(option.id || option.value || option.label);
         return {
           id,
-          label: stringOf(option.label || option.text || id)
+          label: stringOf(option.label || option.text || id),
+          refineHint: stringOf(option.refineHint || option.hint || option.label || id)
         };
       }
 
       const text = stringOf(option);
       return {
         id: text,
-        label: text
+        label: text,
+        refineHint: text
       };
     }).filter((option) => option.id && option.label);
+  }
+
+  function normalizeNeedInputCards(cards) {
+    if (!Array.isArray(cards)) {
+      return [];
+    }
+
+    return cards.slice(0, 3).map((card) => {
+      if (!isRecord(card)) {
+        return null;
+      }
+
+      const id = stringOf(card.id || card.key || card.title);
+      const title = stringOf(card.title || card.question || "补充一点信息");
+      const question = stringOf(card.question || card.label || title);
+      const type = stringOf(card.type || "single_choice");
+      const options = normalizeOptions(card.options).map((option) => ({
+        ...option,
+        refineHint: stringOf(option.refineHint || option.label)
+      }));
+
+      return {
+        id,
+        title,
+        question,
+        type,
+        options
+      };
+    }).filter((card) => card && card.id && card.options.length > 0);
   }
 
   function groupEvidenceByCandidateId(evidenceMap) {

@@ -519,6 +519,24 @@ function assertDeterministicQualityReport(groundingReport, label) {
 function assertNeedInputPayload(needInput, label) {
   assert(isNeedInputPayload(needInput), `${label}: needInput missing`);
   assert(typeof needInput.reason === "string" && needInput.reason, `${label}: needInput reason missing`);
+  assert(Array.isArray(needInput.cards), `${label}: needInput cards missing`);
+  assert(needInput.cards.length > 0 && needInput.cards.length <= 3, `${label}: card count invalid`);
+  for (const [index, card] of needInput.cards.entries()) {
+    assert(typeof card.id === "string" && card.id, `${label}: card[${index}].id missing`);
+    assert(typeof card.title === "string" && card.title, `${label}: card[${index}].title missing`);
+    assert(typeof card.question === "string" && card.question, `${label}: card[${index}].question missing`);
+    assert(["single_choice", "multi_choice", "free_text"].includes(card.type), `${label}: card[${index}].type invalid`);
+    assert(Array.isArray(card.options), `${label}: card[${index}].options missing`);
+    assert(card.options.length > 0 && card.options.length <= 5, `${label}: card[${index}].options count invalid`);
+    for (const [optionIndex, option] of card.options.entries()) {
+      assert(typeof option.id === "string" && option.id, `${label}: card[${index}].option[${optionIndex}].id missing`);
+      assert(typeof option.label === "string" && option.label, `${label}: card[${index}].option[${optionIndex}].label missing`);
+      assert(
+        typeof option.refineHint === "string" && option.refineHint,
+        `${label}: card[${index}].option[${optionIndex}].refineHint missing`
+      );
+    }
+  }
   assert(needInput.questions.length > 0 && needInput.questions.length <= 3, `${label}: question count invalid`);
   for (const [index, question] of needInput.questions.entries()) {
     assert(typeof question.key === "string" && question.key, `${label}: question[${index}].key missing`);
@@ -530,7 +548,10 @@ function assertNeedInputPayload(needInput, label) {
 }
 
 function isNeedInputPayload(value) {
-  return isRecord(value) && typeof value.reason === "string" && Array.isArray(value.questions);
+  return isRecord(value) &&
+    typeof value.reason === "string" &&
+    Array.isArray(value.cards) &&
+    Array.isArray(value.questions);
 }
 
 function hasSensitiveMetadataKey(value) {

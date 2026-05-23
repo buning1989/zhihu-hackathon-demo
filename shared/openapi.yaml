@@ -1508,17 +1508,63 @@ components:
       type: object
       required:
         - reason
+        - cards
         - questions
       properties:
         reason:
           type: string
+        cards:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/PersistentAgentNeedInputCard"
         questions:
+          description: Legacy compatibility field. New clients should prefer cards.
           type: array
           maxItems: 3
           items:
             $ref: "#/components/schemas/PersistentAgentNeedInputQuestion"
         optionalFreeText:
           $ref: "#/components/schemas/PersistentAgentNeedInputFreeText"
+    PersistentAgentNeedInputCard:
+      type: object
+      required:
+        - id
+        - title
+        - question
+        - type
+        - options
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        question:
+          type: string
+        type:
+          type: string
+          enum:
+            - single_choice
+            - multi_choice
+            - free_text
+        options:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/PersistentAgentNeedInputCardOption"
+    PersistentAgentNeedInputCardOption:
+      type: object
+      required:
+        - id
+        - label
+        - refineHint
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        refineHint:
+          type: string
     PersistentAgentNeedInputQuestion:
       type: object
       required:
