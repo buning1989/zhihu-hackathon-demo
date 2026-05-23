@@ -6,8 +6,8 @@
     const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
     const cards = people.map((person) => App.components.renderPersonCard(person, state)).join("");
     const sampleLabel = path.isEvidenceFallbackPath || people.some((person) => person.isProductionSample)
-      ? "段公开片段"
-      : "段代表经历";
+      ? "条公开片段"
+      : "条相关样本";
     const avatars = people.slice(0, 4).map((person) => `
       <span class="mini-avatar" aria-hidden="true">${person.avatar ? `<img src="${escapeAttribute(person.avatar)}" alt="" />` : `<span class="avatar-fallback">${escapeHtml((person.name || "样").slice(0, 1))}</span>`}</span>
     `).join("");

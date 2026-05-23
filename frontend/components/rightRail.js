@@ -18,7 +18,7 @@
         return "";
       }
       const path = App.store.findPath(person.pathId);
-      const meta = publicUiLabel(person.article?.title || path?.title, "刚看过的经历");
+      const meta = publicUiLabel(person.article?.title || path?.title, "刚看过的样本");
       return `
         <div class="activity-item">
           <div class="activity-name">${escapeHtml(person.name)}</div>
@@ -49,7 +49,7 @@
         <div class="activity-item">
           <div class="activity-name">${escapeHtml(person.name)}</div>
           <div class="activity-snippet">${escapeHtml(item.reply || item.content)}</div>
-          <button class="btn-text" type="button" data-action="continue-interaction" data-person-id="${escapeAttribute(person.id)}">${icon("reply")}继续听听</button>
+          <button class="btn-text" type="button" data-action="continue-interaction" data-person-id="${escapeAttribute(person.id)}">${icon("reply")}继续查看</button>
         </div>
       `;
     }).join("");
@@ -60,7 +60,7 @@
       return `
         <aside class="right-rail">
           <section class="rail-card rail-empty">
-            <p class="rail-text">看过的人会留在这里，方便回头看。</p>
+            <p class="rail-text">看过的样本会留在这里，方便回头看。</p>
           </section>
         </aside>
       `;
@@ -77,7 +77,7 @@
         ` : ""}
         ${hasInteractions ? `
           <section class="rail-card">
-            <h3 class="rail-title">刚聊过</h3>
+            <h3 class="rail-title">最近互动</h3>
             <div class="activity-list ${interactionsExpanded ? "is-expanded" : ""}">${interactionsHtml}</div>
             ${interactions.length > 3 ? `<button class="btn-text rail-more" type="button" data-action="toggle-rail" data-section="interactions">${interactionsExpanded ? "收起" : "查看更多"}</button>` : ""}
           </section>

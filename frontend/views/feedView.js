@@ -7,9 +7,9 @@
     const result = state.result || App.store.getResult();
     const loadingStages = App.loadingStages || [
       { label: "理解处境", message: "正在理解你的处境" },
-      { label: "寻找经历", message: "正在寻找相似经历" },
+      { label: "寻找样本", message: "正在寻找相关样本" },
       { label: "整理片段", message: "正在整理公开内容片段" },
-      { label: "整理走法", message: "正在整理几种走法" },
+      { label: "整理方向", message: "正在整理样本方向" },
       { label: "生成结果", message: "正在生成结果" }
     ];
     const currentStageIndex = Math.min(
@@ -72,7 +72,7 @@
         <button class="path-nav-item ${state.activePathId === path.id ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="${escapeAttribute(path.id)}">
           <span class="path-nav-copy">
             ${escapeHtml(publicUiLabel(path.shortTitle || path.title, "公开片段"))}
-            <span class="path-nav-count">${peopleCount} 人</span>
+            <span class="path-nav-count">${peopleCount} 条</span>
           </span>
         </button>
       `;
@@ -80,7 +80,7 @@
 
     return `
       <nav class="left-rail">
-        <p class="rail-label">相似经历</p>
+        <p class="rail-label">样本方向</p>
         <button class="path-nav-item ${allActive ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="all">
           <span class="path-nav-copy">全部</span>
         </button>
@@ -93,8 +93,8 @@
     const { escapeHtml } = App.utils;
     const notices = [];
     const summaryText = result.meta?.evidenceOnly
-      ? `先看 ${result.people.length} 段贴近的公开内容片段。`
-      : `先从 ${result.paths.length} 种走法里，看几段最接近的经历。`;
+      ? `先看 ${result.people.length} 条贴近的公开内容片段。`
+      : `先从 ${result.paths.length} 个样本方向里，看几条相关样本。`;
     if (result.meta?.cacheHit || result.meta?.reused) {
       notices.push("已使用近期相似结果");
     }
@@ -132,7 +132,7 @@
     const { escapeHtml } = App.utils;
     return `
       <section class="empty-panel result-empty">
-        <h2>暂时没找到足够贴近的公开经历</h2>
+        <h2>暂时没找到足够贴近的公开内容样本</h2>
         <p>${escapeHtml("可以补充一点处境，再重新看看。")}</p>
       </section>
     `;

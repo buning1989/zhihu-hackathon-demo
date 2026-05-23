@@ -30,7 +30,7 @@
       <div class="modal-overlay" role="presentation" data-action="close-modal"></div>
         <section class="people-modal" role="dialog" aria-modal="true" aria-labelledby="people-modal-title" data-stop-close>
           <header class="modal-header">
-            <span id="people-modal-title">${escapeHtml(publicUiLabel(path?.title, "公开内容片段"))} · ${people.length} 人</span>
+            <span id="people-modal-title">${escapeHtml(publicUiLabel(path?.title, "公开内容片段"))} · ${people.length} 条样本</span>
             <button class="btn-text" type="button" data-action="close-modal">${icon("x")}关闭</button>
           </header>
           <div class="drawer-list">

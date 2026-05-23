@@ -27,8 +27,8 @@
     },
     {
       id: "search",
-      label: "寻找经历",
-      message: "正在寻找相似经历"
+      label: "寻找样本",
+      message: "正在寻找相关样本"
     },
     {
       id: "evidence",
@@ -37,8 +37,8 @@
     },
     {
       id: "paths",
-      label: "整理走法",
-      message: "正在整理几种走法"
+      label: "整理方向",
+      message: "正在整理样本方向"
     },
     {
       id: "people",
@@ -807,7 +807,7 @@
     if (!context.loadingStartedAt) {
       context.loadingStartedAt = await startLoadingView(
         requestId,
-        taskData.frontendStatus || "正在从真实经历里找相似的人",
+        taskData.frontendStatus || "正在从公开内容里找相关样本",
         taskStatus,
         {
           polling: true,
@@ -892,7 +892,7 @@
       if (!context.loadingStartedAt) {
         context.loadingStartedAt = await startLoadingView(
           requestId,
-          taskStatus.frontendStatus || "正在从真实经历里找相似的人",
+          taskStatus.frontendStatus || "正在从公开内容里找相关样本",
           taskStatus,
           {
             polling: false,
@@ -1237,7 +1237,7 @@
   }
 
   function canChatWithPerson(person) {
-    return Boolean(
+    return !person?.isProductionSample && Boolean(
       person?.displayCanChat
       || person?.aiPersona?.canChat
       || (person?.aiPersona?.enabled && person?.aiPersona?.personaId)
@@ -1248,7 +1248,7 @@
     return {
       id: `assistant-${Date.now()}`,
       role: "assistant",
-      text: `我只能沿着${person.name}留下的这段公开经历说说看。你可以问这段路是怎么开始、怎么收尾，或中间最难的地方。`
+      text: `我只能沿着${person.name}留下的这段公开内容说说看。你可以问它是怎么开始、怎么收尾，或中间最难的地方。`
     };
   }
 
@@ -1257,8 +1257,8 @@
       id: `interaction-${Date.now()}`,
       type: "chat",
       personId,
-      content: "你打开了这段经验回声",
-      reply: "经验回声：可以继续问这个选择背后的细节。",
+      content: "你打开了这段内容对话",
+      reply: "可以继续问这段内容背后的细节。",
       createdAt: "刚刚"
     });
     draft.interactions = draft.interactions.slice(0, 10);

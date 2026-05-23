@@ -30,7 +30,7 @@
         clarifyAnswers: answers
       },
       analysis: {
-        title: "已整理出 3 条可比较的人生路径"
+        title: "已整理出 3 个可比较的样本方向"
       },
       paths: clone(data.paths),
       people: clone(data.people),
@@ -76,7 +76,7 @@
       return delay({
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        text: `${text} 你的问题是「${message}」，我会把回答限制在这段公开经历能支持的范围里。`
+        text: `${text} 你的问题是「${message}」，我会把回答限制在这段公开内容能支持的范围里。`
       }, 520);
     }
   };

@@ -12,7 +12,7 @@
       labels: ["动作", "阻力", "调整", "结果"]
     },
     default: {
-      title: "时间线拆解",
+      title: "内容结构",
       labels: ["开始", "转折", "后来", "结果"]
     }
   };
@@ -107,7 +107,7 @@
     const structure = normalizeStructureNodes(person);
 
     return `
-      <section class="experience-inline" aria-label="经历结构">
+      <section class="experience-inline" aria-label="内容结构">
         <p class="experience-structure-title">${escapeHtml(structure.title)}</p>
         <ol class="experience-structure-list">
           ${structure.nodes.map((item, index) => `
@@ -129,10 +129,10 @@
     const icon = App.components.renderIcon;
     const saved = App.store.isInBook(person.id);
     const experienceExpanded = state.expandedExperiencePersonId === person.id;
-    const brief = person.article?.title || person.source?.title || "知乎公开经历样本";
+    const brief = person.article?.title || person.source?.title || "知乎公开内容样本";
     const path = App.store.findPath(person.pathId);
-    const pathLabel = publicUiLabel(path?.shortTitle || path?.title, "相似处境");
-    const meta = `${publicUiLabel(brief, "知乎公开经历样本")} · ${pathLabel}`;
+    const pathLabel = publicUiLabel(path?.shortTitle || path?.title, "样本方向");
+    const meta = `${publicUiLabel(brief, "知乎公开内容样本")} · ${pathLabel}`;
     const snippet = keySnippet(person).map((paragraph) => escapeHtml(paragraph)).join("<br />");
     const avatar = renderAvatar(person, escapeHtml, escapeAttribute);
 
@@ -148,8 +148,8 @@
         <div class="original-snippet">${snippet}</div>
         ${renderExperience(person, path, state)}
         <footer class="person-actions">
-          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "file-text")}${experienceExpanded ? "收起结构" : "看经历结构"}</button>
-          <button class="btn-text read-link" type="button" data-action="open-original" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}阅读原文</button>
+          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "file-text")}${experienceExpanded ? "收起结构" : "看内容结构"}</button>
+          <button class="btn-text read-link" type="button" data-action="open-original" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}查看片段</button>
           <button class="btn-text ${saved ? "is-active" : ""} ml-auto" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
         </footer>
       </article>

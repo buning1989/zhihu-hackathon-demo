@@ -16,7 +16,7 @@
               <div class="capsule-end ${state.capsule.typingDone ? "is-visible" : ""}">三年后再来看看。</div>
             </div>
             <div class="capsule-actions ${state.capsule.typingDone ? "is-visible" : ""}">
-              <button class="btn-s" type="button" data-action="open-feed">${icon("arrow-left")}回到相似的人</button>
+              <button class="btn-s" type="button" data-action="open-feed">${icon("arrow-left")}回到相关样本</button>
             </div>
           </section>
         </main>
@@ -26,7 +26,7 @@
     return `
       <main class="capsule-view">
         <section class="capsule-main">
-          <p class="capsule-prompt">如果三年后的你，<br />回来看今天——<br />你想让 TA 知道什么？</p>
+          <p class="capsule-prompt">如果三年后的你，<br />回来看今天——<br />你想留下些什么？</p>
           <form data-form="capsule">
             <label class="sr-only" for="capsule-message">写给未来的自己</label>
             <textarea class="capsule-input" id="capsule-message" name="message" placeholder="${escapeAttribute(state.capsule.selectedPrompt)}"></textarea>

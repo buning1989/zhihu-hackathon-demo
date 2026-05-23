@@ -189,7 +189,7 @@
       meta: {
         taskId: finalResult.taskId,
         generatedAt: finalResult.meta?.generatedAt || new Date().toISOString(),
-        sourcePolicy: "AI 只负责组织公开内容与证据，不作为事实来源。",
+        sourcePolicy: "系统只负责组织公开内容与证据，不作为事实来源。",
         resultShape: "production_final_result",
         groundingReport: finalResult.groundingReport || null,
         suggestedQuestions: Array.isArray(finalResult.suggestedQuestions) ? finalResult.suggestedQuestions : [],
@@ -273,7 +273,7 @@
       isProductionSample: true,
       pathId: findPathIdForCandidate(input.rawPaths, candidateId),
       avatar: "",
-      role: "知乎公开样本",
+      role: "知乎公开内容样本",
       badge: title,
       displayTier: input.index < 3 ? "core" : "supplement",
       evidenceStatus: "llm_extracted",
@@ -309,7 +309,7 @@
         suggestions: []
       },
       displayCanChat: false,
-      chatDisabledReason: "当前证据不足，暂不开放追问。"
+      chatDisabledReason: "当前只展示来源片段，不开放对话。"
     };
   }
 
@@ -335,7 +335,7 @@
       isProductionSample: true,
       pathId: findPathIdForSourceRefs(input.rawPaths, sourceRefs),
       avatar: "",
-      role: "知乎公开样本",
+      role: "知乎公开内容样本",
       badge: title,
       displayTier: "core",
       evidenceStatus: "llm_extracted",
@@ -371,7 +371,7 @@
         suggestions: []
       },
       displayCanChat: false,
-      chatDisabledReason: "当前证据不足，暂不开放追问。"
+      chatDisabledReason: "当前只展示来源片段，不开放对话。"
     };
   }
 
@@ -397,7 +397,7 @@
       isProductionSample: true,
       pathId: findPathIdForCandidate(input.rawPaths, candidateId),
       avatar: "",
-      role: "知乎公开样本",
+      role: "知乎公开内容样本",
       badge: title,
       displayTier: "supplement",
       evidenceStatus: "llm_extracted",
@@ -405,7 +405,7 @@
       sourceRefs,
       confidence: numberOr(firstEvidence.confidence, numberOr(input.source.qualityScore, 0)),
       representativeQuote: quote,
-      experienceSummary: summary || "这条来源只有片段证据，建议查看来源后再判断。",
+      experienceSummary: summary || "这条来源只有片段证据，适合回到来源核对。",
       oneLine: summary || quote,
       source: {
         title,
@@ -432,17 +432,17 @@
         suggestions: []
       },
       displayCanChat: false,
-      chatDisabledReason: "当前证据不足，暂不开放追问。"
+      chatDisabledReason: "当前只展示来源片段，不开放对话。"
     };
   }
 
   function buildEvidenceFallbackPath(input) {
     const sourceRefs = input.people.flatMap((person) => person.sourceRefs || []);
     const quote = firstEvidenceText(sourceRefs, input.evidenceMap);
-    const title = input.hasBackendPaths ? "其他可追溯来源片段" : "来源片段（暂未形成路径）";
+    const title = input.hasBackendPaths ? "其他可追溯来源片段" : "来源片段（暂未形成样本方向）";
     const summary = input.hasBackendPaths
-      ? "这些来源有可追溯证据，但没有被后端归入某条路径。"
-      : "证据不足，暂时没有可展示路径；下面只展示可追溯的来源片段。";
+      ? "这些来源有可追溯证据，但没有被归入某个样本方向。"
+      : "证据不足，暂时没有可展示样本方向；下面只展示可追溯的来源片段。";
 
     return {
       id: input.hasBackendPaths ? "production_extra_evidence_samples" : "production_evidence_samples",
@@ -493,7 +493,7 @@
     const linkedPeople = people.filter((person) => person.pathId === id || personRefs.includes(person.id));
     const sourceRefs = Array.isArray(path.sourceRefs) ? path.sourceRefs : [];
     const evidenceIds = normalizeStringArray(path.evidenceIds);
-    const title = stringOf(path.title || path.name || `路径 ${index + 1}`);
+    const title = stringOf(path.title || path.name || `样本方向 ${index + 1}`);
     const summary = stringOf(path.summary || path.desc || path.short || "");
     const quote = stringOf(
       path.representativeQuote ||
@@ -529,7 +529,7 @@
       person.lesson ||
       article.lead ||
       source.evidence ||
-      "这条样本目前只有较短公开内容，建议先查看来源片段。"
+      "这条样本目前只有较短公开内容，适合先查看来源片段。"
     );
     const aiPersona = normalizePersona(person.aiPersona, id);
 
@@ -544,7 +544,7 @@
       article,
       aiPersona,
       displayCanChat: Boolean(aiPersona.enabled && aiPersona.canChat),
-      chatDisabledReason: aiPersona.enabled ? "" : "当前证据不足，暂不开放追问。"
+      chatDisabledReason: aiPersona.enabled ? "" : "当前只展示来源片段，不开放对话。"
     };
   }
 
@@ -561,7 +561,7 @@
       author: stringOf(raw.author || "知乎用户"),
       avatar: stringOf(raw.avatar || ""),
       lead: stringOf(raw.lead || raw.summary || raw.text || firstEvidence?.text || paragraphs[0] || ""),
-      paragraphs: paragraphs.length ? paragraphs : [stringOf(raw.summary || firstEvidence?.text || "暂无更完整原文，只展示当前公开内容片段。")],
+      paragraphs: paragraphs.length ? paragraphs : [stringOf(raw.summary || firstEvidence?.text || "当前只展示可追溯公开内容片段。")],
       sourceUrl: stringOf(raw.sourceUrl || raw.url || firstEvidence?.sourceUrl || ""),
       evidence
     };
