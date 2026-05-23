@@ -362,6 +362,7 @@
   function emptyTaskState() {
     return {
       taskId: "",
+      readToken: "",
       status: "",
       frontendStatus: "",
       progressPercent: 0,
@@ -391,6 +392,7 @@
   function normalizeTaskData(data) {
     return {
       taskId: data?.taskId || "",
+      readToken: data?.readToken || "",
       status: data?.status || "",
       frontendStatus: data?.frontendStatus || "",
       progressPercent: Number.isFinite(data?.progressPercent) ? data.progressPercent : 0,
@@ -407,9 +409,11 @@
   }
 
   function applyTaskState(draft, data, overrides = {}) {
+    const normalized = normalizeTaskData(data);
     draft.task = {
       ...draft.task,
-      ...normalizeTaskData(data),
+      ...normalized,
+      readToken: normalized.readToken || draft.task.readToken || "",
       ...overrides
     };
   }
@@ -749,7 +753,8 @@
         query,
         answers: options.answers || {},
         skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput || options.metadata?.hasShownInitialClarify),
-        start: started
+        start: started,
+        readToken: started.readToken || ""
       });
     } catch (error) {
       if (shouldUseMockFallback(error)) {
@@ -850,7 +855,8 @@
     pollController = new AbortController();
     try {
       const status = await App.Api.getAgentTaskStatus(taskId, {
-        signal: pollController.signal
+        signal: pollController.signal,
+        readToken: context.readToken || App.store.getState().task.readToken
       });
       pollController = null;
 
@@ -898,6 +904,8 @@
         ...taskStatus,
         cacheHit: Boolean(taskStatus.cacheHit || context.start?.cacheHit),
         reused: Boolean(taskStatus.reused || context.start?.reused)
+      }, {
+        readToken: context.readToken || taskStatus.readToken || App.store.getState().task.readToken
       });
 
       if (!isCurrentRequest(requestId)) {
@@ -1043,7 +1051,6 @@
     const isInitialClarify = clarifySource === "local";
     const clarifyMetadata = {
       clarifySource,
-      clarifyAnswers: nextAnswers,
       initialClarifySkipped: isInitialClarify ? Boolean(options.skip) : Boolean(state.search.initialClarifySkipped),
       hasShownInitialClarify: Boolean(state.search.hasShownInitialClarify || isInitialClarify)
     };
@@ -1083,6 +1090,7 @@
         const refined = await App.Api.refineAgentTask(state.task.taskId, {
           answers: nextAnswers,
           refineQuery: "",
+          readToken: state.task.readToken,
           metadata: buildTaskMetadata({
             source: "frontend_agent_refine",
             ...clarifyMetadata
@@ -1098,7 +1106,8 @@
           query: state.query || state.pendingQuery,
           answers: nextAnswers,
           skipClarify: true,
-          start: refined
+          start: refined,
+          readToken: refined.readToken || ""
         });
       } catch (error) {
         if (shouldUseMockFallback(error)) {

@@ -581,10 +581,12 @@ paths:
         - Agent
       summary: List recent persistent Agent tasks
       description: >
-        Read-only debug helper for the internal Agent Runtime debug page.
-        Returns recent Postgres-backed Agent tasks ordered by createdAt
-        descending. Does not include artifacts or events; use
-        /api/agent/tasks/{taskId} for the full snapshot.
+        Internal/admin-only debug helper for the Agent Runtime debug page.
+        Requires an admin debug token unless running from localhost in local
+        development with no debug token configured. Returns recent
+        Postgres-backed Agent tasks ordered by createdAt descending. Does not
+        include artifacts or events; use /api/agent/tasks/{taskId}/debug for
+        the internal safe summary.
       operationId: listPersistentAgentTasks
       x-implementation-status: implemented-debug
       parameters:
@@ -596,6 +598,12 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: X-Agent-Debug-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Internal/admin debug token. `ADMIN_DEBUG_TOKEN` or `AGENT_DEBUG_TOKEN` on the server.
       responses:
         "200":
           description: Recent persistent Agent tasks.
@@ -631,7 +639,11 @@ paths:
         rule fallback artifact without failing the task. Before completion,
         the worker writes a production_final_result artifact after deterministic
         source/evidence reference validation. It does not run persona build, the demo search
-        orchestrator, WebSocket/SSE, or stream events.
+        orchestrator, WebSocket/SSE, or stream events. The response includes a
+        per-task readToken; taskId is not an authorization credential. Client
+        metadata is stored through a low-risk allowlist and must not include
+        raw anonymousId, tokens, cookies, authorization headers, raw
+        clarifyAnswers, or raw free text.
       operationId: createPersistentAgentTask
       x-implementation-status: implemented
       requestBody:
@@ -674,7 +686,9 @@ paths:
         /api/agent/search. If no in-memory task exists, checks the Phase 1
         persistent Postgres task store and returns product-facing task status,
         stage progress, partial/result availability, degraded flags, and
-        structured error information.
+        structured error information. taskId is only a locator and is not an
+        authorization credential; persistent tasks require
+        X-Agent-Read-Token unless the current logged-in user owns the task.
       operationId: getDemoSearchAgentTask
       x-implementation-status: implemented
       parameters:
@@ -683,6 +697,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: X-Agent-Read-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Per-task read token returned by create/refine. Required for anonymous persistent tasks.
       responses:
         "200":
           description: Current in-memory Agent task or persistent Agent task status.
@@ -706,7 +726,9 @@ paths:
         a parent task in need_input state by merging the original query,
         structured clarification answers, and an optional refineQuery. The
         parent task is not overwritten. The new task runs the normal Agent
-        workflow, and its cache key includes the refined context.
+        workflow, and its cache key includes the refined context. taskId is not
+        an authorization credential; the parent task requires
+        X-Agent-Read-Token unless the current logged-in user owns it.
       operationId: refinePersistentAgentTask
       x-implementation-status: implemented-phase5-minimal
       parameters:
@@ -715,6 +737,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: X-Agent-Read-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Parent task read token returned by create. Required for anonymous parent tasks.
       requestBody:
         required: true
         content:
@@ -763,7 +791,9 @@ paths:
         while the task is not succeeded. Once succeeded, returns final_result
         with sample-navigation paths, evidenceSamples, sources, evidenceMap,
         groundingReport, degraded flags, and deterministic source/evidence
-        reference validation.
+        reference validation. taskId is only a locator and is not an
+        authorization credential; persistent tasks require
+        X-Agent-Read-Token unless the current logged-in user owns the task.
       operationId: getPersistentAgentTaskResult
       x-implementation-status: implemented-phase1
       parameters:
@@ -772,6 +802,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: X-Agent-Read-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Per-task read token returned by create/refine. Required for anonymous persistent tasks.
       responses:
         "200":
           description: Final result is available.
@@ -808,7 +844,10 @@ paths:
         candidates and evidence artifacts into a frontend-friendly task view.
         The result field reuses the demo display shape with analysis, paths,
         people, personas, sections and meta. This endpoint does not check the
-        legacy in-memory task store and does not mutate task state.
+        legacy in-memory task store and does not mutate task state. taskId is
+        only a locator and is not an authorization credential; persistent tasks
+        require X-Agent-Read-Token unless the current logged-in user owns the
+        task.
       operationId: getPersistentAgentTaskView
       x-implementation-status: implemented-phase8
       parameters:
@@ -817,6 +856,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: X-Agent-Read-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Per-task read token returned by create/refine. Required for anonymous persistent tasks.
       responses:
         "200":
           description: Frontend-friendly persistent Agent task view.
@@ -834,12 +879,13 @@ paths:
     get:
       tags:
         - Agent
-      summary: Get internal Agent task debug summary
+      summary: Get internal/admin Agent task debug summary
       description: >
-        Phase 4 internal/local debug endpoint. Returns structured task,
-        stage, event and artifact summaries for bad-case diagnosis without
-        returning full source bodies or sensitive metadata. Disabled when
-        NODE_ENV/APP_ENV is production.
+        Phase 4 internal/admin debug endpoint. Requires an admin debug token
+        unless running from localhost in local development with no debug token
+        configured. Returns structured task, stage, event and artifact
+        summaries for bad-case diagnosis without returning full source bodies
+        or sensitive metadata. Disabled when NODE_ENV/APP_ENV is production.
       operationId: getPersistentAgentTaskDebug
       x-implementation-status: implemented-phase4
       parameters:
@@ -848,6 +894,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: X-Agent-Debug-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Internal/admin debug token. `ADMIN_DEBUG_TOKEN` or `AGENT_DEBUG_TOKEN` on the server.
       responses:
         "200":
           description: Internal debug summary for a persistent Agent task.
@@ -1339,11 +1391,16 @@ components:
           type: object
           required:
             - taskId
+            - readToken
             - status
             - createdAt
           properties:
             taskId:
               type: string
+              description: Task locator. Not an authorization credential.
+            readToken:
+              type: string
+              description: Per-task read token for polling this legacy in-memory task.
             status:
               type: string
               const: running
@@ -1393,6 +1450,7 @@ components:
           type: object
           required:
             - taskId
+            - readToken
             - status
             - frontendStatus
             - pollAfterMs
@@ -1400,6 +1458,10 @@ components:
           properties:
             taskId:
               type: string
+              description: Task locator. Not an authorization credential.
+            readToken:
+              type: string
+              description: Per-task read token. Store client-side only for the current task flow and send as `X-Agent-Read-Token` for status/result/view/refine.
             status:
               type: string
               enum:

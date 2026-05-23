@@ -163,14 +163,16 @@
   function getTaskStatus(taskId, options = {}) {
     return requestJson(`/api/agent/tasks/${encodeURIComponent(taskId)}`, {
       method: "GET",
-      signal: options.signal
+      signal: options.signal,
+      headers: agentReadTokenHeaders(options.readToken)
     });
   }
 
   function getTaskView(taskId, options = {}) {
     return requestJson(`/api/agent/tasks/${encodeURIComponent(taskId)}/view`, {
       method: "GET",
-      signal: options.signal
+      signal: options.signal,
+      headers: agentReadTokenHeaders(options.readToken)
     });
   }
 
@@ -178,7 +180,8 @@
     try {
       return await requestJson(`/api/agent/tasks/${encodeURIComponent(taskId)}/result`, {
         method: "GET",
-        signal: options.signal
+        signal: options.signal,
+        headers: agentReadTokenHeaders(options.readToken)
       });
     } catch (error) {
       if (error instanceof AgentApiError && error.status === 202) {
@@ -192,16 +195,22 @@
     }
   }
 
-  function refineTask(taskId, { answers = {}, refineQuery = "", metadata = {}, signal } = {}) {
+  function refineTask(taskId, { answers = {}, refineQuery = "", metadata = {}, readToken = "", signal } = {}) {
     return requestJson(`/api/agent/tasks/${encodeURIComponent(taskId)}/refine`, {
       method: "POST",
       signal,
+      headers: agentReadTokenHeaders(readToken),
       body: JSON.stringify({
         answers,
         refineQuery,
         metadata
       })
     });
+  }
+
+  function agentReadTokenHeaders(readToken) {
+    const token = String(readToken || "").trim();
+    return token ? { "X-Agent-Read-Token": token } : {};
   }
 
   async function getAuthMe(options = {}) {

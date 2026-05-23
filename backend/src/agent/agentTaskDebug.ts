@@ -473,7 +473,8 @@ function sanitizeCacheIdentity(value: unknown): Record<string, unknown> | null {
 
   return {
     normalizedQueryPreview: previewString(readString(value.normalizedQuery)),
-    normalizedQueryHash: hashString(readString(value.normalizedQuery)),
+    normalizedQueryHash:
+      readNullableString(value.normalizedQueryHash) ?? hashString(readString(value.normalizedQuery)),
     metadataHash: readNullableString(value.metadataHash),
     dataMode: readNullableString(value.dataMode),
     provider: readNullableString(value.provider),

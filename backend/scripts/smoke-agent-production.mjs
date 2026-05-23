@@ -70,10 +70,20 @@ try {
   for (const [index, query] of queries.entries()) {
     const anonymousId = `agent_production_smoke_${index + 1}`;
     const started = await createTask(query, {
-      anonymousId
+      anonymousId,
+      ...(index === 0
+        ? {
+            metadata: {
+              clarifyAnswers: { raw: "should_not_be_stored" },
+              token: "should_not_be_stored",
+              cookie: "should_not_be_stored",
+              authorization: "should_not_be_stored"
+            }
+          }
+        : {})
     });
     startedByQuery.set(query, { ...started, anonymousId });
-    const status = await waitForTerminalStatus(started.taskId, query);
+    const status = await waitForTerminalStatus(started.taskId, query, started.readToken);
 
     if (status.status === "failed") {
       assert(status.error?.errorCode, `${query}: failed task missing errorCode`);
@@ -83,7 +93,13 @@ try {
 
     assert(status.status === "succeeded", `${query}: task did not succeed`);
     assert(status.resultAvailable === true, `${query}: resultAvailable was not true`);
-    const result = await readTaskResult(started.resultUrl || `/api/agent/tasks/${encodeURIComponent(started.taskId)}/result`);
+    if (index === 0) {
+      await assertReadTokenAccessControls(started, query);
+    }
+    const result = await readTaskResult(
+      started.resultUrl || `/api/agent/tasks/${encodeURIComponent(started.taskId)}/result`,
+      started.readToken
+    );
     assertProductionFinalResult(result.final_result, query);
     await assertTaskDebug(started.taskId, query);
     console.log(`agent production smoke ok: ${query} taskId=${started.taskId}`);
@@ -107,7 +123,8 @@ async function createTask(query, options = {}) {
   const response = await fetch(`${apiBaseUrl}/api/agent/tasks`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...agentReadTokenHeaders(options.readToken)
     },
     body: JSON.stringify({
       query,
@@ -139,6 +156,7 @@ async function createTask(query, options = {}) {
   }
 
   assert(typeof body.data?.taskId === "string" && body.data.taskId, `${query}: taskId missing`);
+  assert(typeof body.data?.readToken === "string" && body.data.readToken, `${query}: readToken missing`);
   const allowedStatuses = options.expectNeedInput
     ? ["need_input"]
     : ["queued", "running", "succeeded"];
@@ -150,11 +168,12 @@ async function createTask(query, options = {}) {
   return body.data;
 }
 
-async function refineTask(taskId, body) {
+async function refineTask(taskId, body, readToken) {
   const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/refine`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...agentReadTokenHeaders(readToken)
     },
     body: JSON.stringify(body)
   });
@@ -164,6 +183,7 @@ async function refineTask(taskId, body) {
   }
 
   assert(typeof responseBody.data?.taskId === "string" && responseBody.data.taskId, "refine: taskId missing");
+  assert(typeof responseBody.data?.readToken === "string" && responseBody.data.readToken, "refine: readToken missing");
   assert(responseBody.data.taskId !== taskId, "refine: reused original taskId");
   assert(["queued", "running", "succeeded"].includes(responseBody.data.status), "refine: status invalid");
   assert(responseBody.data.refinedFromTaskId === taskId, "refine: refinedFromTaskId missing");
@@ -186,7 +206,15 @@ async function assertClarifyRefineFlow() {
   assert(isNeedInputPayload(needInputStarted.needInput), "clarify: create response needInput missing");
   assertNeedInputPayload(needInputStarted.needInput, "clarify create");
 
-  const needInputStatus = await getTaskStatus(needInputStarted.taskId);
+  await assertRequestForbidden(
+    () => getTaskStatus(needInputStarted.taskId),
+    "clarify: status without readToken should fail"
+  );
+  await assertRequestForbidden(
+    () => getTaskStatus(needInputStarted.taskId, "wrong-token"),
+    "clarify: status with wrong readToken should fail"
+  );
+  const needInputStatus = await getTaskStatus(needInputStarted.taskId, needInputStarted.readToken);
   assert(needInputStatus.status === "need_input", "clarify: status endpoint did not return need_input");
   assert(needInputStatus.pollAfterMs === 0, "clarify: need_input should not ask polling");
   assertNeedInputPayload(needInputStatus.needInput, "clarify status");
@@ -196,6 +224,29 @@ async function assertClarifyRefineFlow() {
   assert(typeof originalCacheKey === "string" && originalCacheKey, "clarify: original cache key missing");
 
   const sensitiveFreeText = "我不想在 debug 里暴露这段补充文本";
+  await assertRequestForbidden(
+    () => refineTask(needInputStarted.taskId, {
+      answers: {
+        currentSituation: "工作痛苦"
+      },
+      metadata: {
+        anonymousId
+      }
+    }),
+    "clarify: refine without readToken should fail"
+  );
+  await assertRequestForbidden(
+    () => refineTask(needInputStarted.taskId, {
+      answers: {
+        currentSituation: "工作痛苦"
+      },
+      metadata: {
+        anonymousId
+      }
+    }, "wrong-token"),
+    "clarify: refine with wrong readToken should fail"
+  );
+
   const refined = await refineTask(needInputStarted.taskId, {
     answers: {
       currentSituation: "工作痛苦",
@@ -209,11 +260,14 @@ async function assertClarifyRefineFlow() {
       source: "agent_production_smoke",
       phase: "phase5_refine"
     }
-  });
-  const refinedStatus = await waitForTerminalStatus(refined.taskId, "phase5 refined task");
+  }, needInputStarted.readToken);
+  const refinedStatus = await waitForTerminalStatus(refined.taskId, "phase5 refined task", refined.readToken);
   assert(refinedStatus.status === "succeeded", "refine: refined task did not succeed");
   assert(refinedStatus.resultAvailable === true, "refine: resultAvailable was not true");
-  const result = await readTaskResult(refined.resultUrl || `/api/agent/tasks/${encodeURIComponent(refined.taskId)}/result`);
+  const result = await readTaskResult(
+    refined.resultUrl || `/api/agent/tasks/${encodeURIComponent(refined.taskId)}/result`,
+    refined.readToken
+  );
   assertProductionFinalResult(result.final_result, "phase5 refined task");
 
   const refinedDebug = await readTaskDebug(refined.taskId);
@@ -230,7 +284,8 @@ async function assertClarifyRefineFlow() {
 async function assertSucceededTaskReuse(query, originalTask) {
   assert(originalTask?.taskId, `${query}: original task missing for reuse check`);
   const reused = await createTask(query, {
-    anonymousId: originalTask.anonymousId
+    anonymousId: originalTask.anonymousId,
+    readToken: originalTask.readToken
   });
 
   assert(reused.taskId === originalTask.taskId, `${query}: succeeded cache did not reuse taskId`);
@@ -240,6 +295,26 @@ async function assertSucceededTaskReuse(query, originalTask) {
 
   const debug = await readTaskDebug(originalTask.taskId);
   assert(debug.cache?.reusedEventCount >= 1, `${query}: reused event missing from debug`);
+
+  const copied = await createTask(query, {
+    anonymousId: `${originalTask.anonymousId}_other_actor`
+  });
+  assert(copied.taskId !== originalTask.taskId, `${query}: cross-actor cache returned original taskId`);
+  assert(copied.status === "succeeded", `${query}: cross-actor cache copy did not return succeeded`);
+  assert(copied.cacheHit === true, `${query}: cross-actor cache copy missing cacheHit`);
+  assert(copied.reused === true, `${query}: cross-actor cache copy missing reused`);
+  const copiedResult = await readTaskResult(
+    copied.resultUrl || `/api/agent/tasks/${encodeURIComponent(copied.taskId)}/result`,
+    copied.readToken
+  );
+  assertProductionFinalResult(copiedResult.final_result, `${query}: copied cache result`);
+  await assertRequestForbidden(
+    () => readTaskResult(
+      originalTask.resultUrl || `/api/agent/tasks/${encodeURIComponent(originalTask.taskId)}/result`,
+      copied.readToken
+    ),
+    `${query}: copied readToken should not read original task`
+  );
 }
 
 async function assertRunningTaskReuseAndRateLimit() {
@@ -247,7 +322,9 @@ async function assertRunningTaskReuseAndRateLimit() {
   const anonymousId = `agent_phase3_limit_${suffix}`;
   const query = `Phase 3 running reuse ${suffix}`;
   const started = await createTask(query, { anonymousId });
-  const reused = await createTask(query, { anonymousId });
+  const crossActor = await createTask(query, { anonymousId: `${anonymousId}_other` });
+  assert(crossActor.taskId !== started.taskId, "cross-actor running task reused original taskId");
+  const reused = await createTask(query, { anonymousId, readToken: started.readToken });
 
   assert(reused.taskId === started.taskId, "running task reuse did not return existing taskId");
   assert(reused.reused === true, "running task reuse missing reused flag");
@@ -262,7 +339,7 @@ async function assertRunningTaskReuseAndRateLimit() {
     console.log("agent production rate limit smoke skipped: AGENT_RATE_LIMIT_ENABLED is not true");
   }
 
-  const status = await waitForTerminalStatus(started.taskId, query);
+  const status = await waitForTerminalStatus(started.taskId, query, started.readToken);
   assert(status.status === "succeeded", "running reuse seed task did not succeed");
 }
 
@@ -286,12 +363,12 @@ async function assertRateLimited(query, anonymousId) {
   assert(body?.error?.code === "RATE_LIMITED", `${query}: expected RATE_LIMITED error code`);
 }
 
-async function waitForTerminalStatus(taskId, query) {
+async function waitForTerminalStatus(taskId, query, readToken) {
   const startedAt = Date.now();
   let lastStatus;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const status = await getTaskStatus(taskId);
+    const status = await getTaskStatus(taskId, readToken);
     lastStatus = status;
 
     assert(status.taskId === taskId, `${query}: status taskId mismatch`);
@@ -310,8 +387,10 @@ async function waitForTerminalStatus(taskId, query) {
   throw new Error(`${query}: timed out waiting for terminal status; last=${lastStatus?.status ?? "missing"}`);
 }
 
-async function getTaskStatus(taskId) {
-  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`);
+async function getTaskStatus(taskId, readToken) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`, {
+    headers: agentReadTokenHeaders(readToken)
+  });
   const body = await readJsonResponse(response);
   if (!response.ok || !body?.success) {
     throw new Error(`GET /api/agent/tasks/${taskId} failed: ${response.status} ${JSON.stringify(body)}`);
@@ -320,9 +399,11 @@ async function getTaskStatus(taskId) {
   return body.data;
 }
 
-async function readTaskResult(resultUrl) {
+async function readTaskResult(resultUrl, readToken) {
   const url = resultUrl.startsWith("http") ? resultUrl : `${apiBaseUrl}${resultUrl}`;
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: agentReadTokenHeaders(readToken)
+  });
   const body = await readJsonResponse(response);
   if (!response.ok || !body?.success) {
     throw new Error(`GET ${url} failed: ${response.status} ${JSON.stringify(body)}`);
@@ -331,8 +412,61 @@ async function readTaskResult(resultUrl) {
   return body.data;
 }
 
+async function assertReadTokenAccessControls(started, label) {
+  await assertRequestForbidden(
+    () => getTaskStatus(started.taskId),
+    `${label}: status without readToken should fail`
+  );
+  await assertRequestForbidden(
+    () => getTaskStatus(started.taskId, "wrong-token"),
+    `${label}: status with wrong readToken should fail`
+  );
+  const status = await getTaskStatus(started.taskId, started.readToken);
+  assert(status.taskId === started.taskId, `${label}: status with readToken taskId mismatch`);
+
+  await assertRequestForbidden(
+    () => readTaskResult(started.resultUrl || `/api/agent/tasks/${encodeURIComponent(started.taskId)}/result`),
+    `${label}: result without readToken should fail`
+  );
+  await assertRequestForbidden(
+    () => readTaskResult(
+      started.resultUrl || `/api/agent/tasks/${encodeURIComponent(started.taskId)}/result`,
+      "wrong-token"
+    ),
+    `${label}: result with wrong readToken should fail`
+  );
+  await readTaskResult(
+    started.resultUrl || `/api/agent/tasks/${encodeURIComponent(started.taskId)}/result`,
+    started.readToken
+  );
+
+  await assertRequestForbidden(
+    () => readTaskView(started.taskId),
+    `${label}: view without readToken should fail`
+  );
+  await assertRequestForbidden(
+    () => readTaskView(started.taskId, "wrong-token"),
+    `${label}: view with wrong readToken should fail`
+  );
+  await readTaskView(started.taskId, started.readToken);
+}
+
+async function readTaskView(taskId, readToken) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/view`, {
+    headers: agentReadTokenHeaders(readToken)
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok || !body?.success) {
+    throw new Error(`GET /api/agent/tasks/${taskId}/view failed: ${response.status} ${JSON.stringify(body)}`);
+  }
+
+  return body.data;
+}
+
 async function readTaskDebug(taskId) {
-  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/debug`);
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/debug`, {
+    headers: agentDebugTokenHeaders()
+  });
   const body = await readJsonResponse(response);
   if (!response.ok || !body?.success) {
     throw new Error(`GET /api/agent/tasks/${taskId}/debug failed: ${response.status} ${JSON.stringify(body)}`);
@@ -358,6 +492,20 @@ async function assertTaskDebug(taskId, label) {
   const metadataText = JSON.stringify(debug.task.metadata ?? {});
   assert(!hasSensitiveMetadataKey(debug.task.metadata ?? {}), `${label}: debug leaked sensitive metadata key`);
   assert(!/agent_production_smoke_[0-9]+/i.test(metadataText), `${label}: debug leaked raw anonymousId`);
+  assert(!/clarifyAnswers/i.test(metadataText), `${label}: debug leaked clarifyAnswers metadata`);
+  assert(!/authorization|cookie|token/i.test(metadataText), `${label}: debug leaked auth metadata`);
+}
+
+async function assertRequestForbidden(action, label) {
+  try {
+    await action();
+  } catch (error) {
+    const message = String(error?.message || error);
+    assert(/ 403 /.test(message) || /AGENT_TASK_FORBIDDEN/.test(message), label);
+    return;
+  }
+
+  throw new Error(label);
 }
 
 function assertProductionFinalResult(finalResult, label) {
@@ -616,6 +764,16 @@ function readBoolean(value, fallback) {
 
 function normalizeApiBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function agentReadTokenHeaders(readToken) {
+  const token = String(readToken || "").trim();
+  return token ? { "X-Agent-Read-Token": token } : {};
+}
+
+function agentDebugTokenHeaders() {
+  const token = String(process.env.ADMIN_DEBUG_TOKEN || process.env.AGENT_DEBUG_TOKEN || "").trim();
+  return token ? { "X-Agent-Debug-Token": token } : {};
 }
 
 function isRecord(value) {

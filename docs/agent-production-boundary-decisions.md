@@ -13,6 +13,8 @@
 
 ## P0 代码修改清单
 
+执行备注：2026-05-23 第一轮已完成 task read token、list/debug guard、metadata allowlist、running reuse ownership、cross-actor succeeded copy-result 和 OpenAPI/smoke 更新；真实 source/LLM production guard 与 UI badge 留到后续轮次。
+
 1. 确认本分支对外定位，并在 API/UI 中明确展示 demo/mock/degraded 文案。
 2. 增加 task read credential：create/refine 签发 server-side read token，只存 hash，status/result/view/refine 必须校验。
 3. 为 `GET /api/agent/tasks` 和 `/debug` 增加 internal/admin guard；production 禁用 `/debug` 作为第二道保护。

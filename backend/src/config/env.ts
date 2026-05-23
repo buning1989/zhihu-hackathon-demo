@@ -57,6 +57,7 @@ export const config = {
   agent: {
     taskTtlHours: parsePositiveInteger(process.env.AGENT_TASK_TTL_HOURS, 24),
     queueName: firstNonEmpty(process.env.AGENT_QUEUE_NAME) || "agent-tasks",
+    debugToken: firstNonEmpty(process.env.ADMIN_DEBUG_TOKEN, process.env.AGENT_DEBUG_TOKEN),
     llm: {
       enabled: parseBoolean(process.env.AGENT_LLM_ENABLED, false),
       provider: parseAgentLlmProvider(process.env.AGENT_LLM_PROVIDER),

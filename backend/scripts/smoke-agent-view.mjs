@@ -14,8 +14,8 @@ const timeoutMs = readPositiveInteger(process.env.SMOKE_AGENT_VIEW_TIMEOUT_MS, 3
 
 let exitCode = 0;
 try {
-  const taskId = await createPersistentTask();
-  const view = await waitForCompletedView(taskId);
+  const { taskId, readToken } = await createPersistentTask();
+  const view = await waitForCompletedView(taskId, readToken);
   const result = view.result;
 
   assert(view.status === "succeeded" || view.status === "completed", "task view did not complete");
@@ -70,15 +70,17 @@ async function createPersistentTask() {
   assert(body.data?.queueStatus === "enqueued", "POST /api/agent/tasks did not enqueue task");
   assert(body.data?.status === "queued", "POST /api/agent/tasks did not return queued status");
   assert(body.data?.resultUrl, "POST /api/agent/tasks did not return resultUrl");
-  return taskId;
+  const readToken = typeof body.data?.readToken === "string" ? body.data.readToken : "";
+  assert(readToken, "POST /api/agent/tasks did not return readToken");
+  return { taskId, readToken };
 }
 
-async function waitForCompletedView(taskId) {
+async function waitForCompletedView(taskId, readToken) {
   const startedAt = Date.now();
   let lastView;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const view = await getTaskView(taskId);
+    const view = await getTaskView(taskId, readToken);
     lastView = view;
 
     if (view.status === "succeeded" || view.status === "completed") {
@@ -95,14 +97,21 @@ async function waitForCompletedView(taskId) {
   throw new Error(`timed out waiting for task view; last status=${lastView?.status ?? "missing"}`);
 }
 
-async function getTaskView(taskId) {
-  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/view`);
+async function getTaskView(taskId, readToken) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/view`, {
+    headers: agentReadTokenHeaders(readToken)
+  });
   const body = await readJsonResponse(response);
   if (!response.ok || !body?.success) {
     throw new Error(`GET /api/agent/tasks/${taskId}/view failed: ${response.status} ${JSON.stringify(body)}`);
   }
 
   return body.data;
+}
+
+function agentReadTokenHeaders(readToken) {
+  const token = String(readToken || "").trim();
+  return token ? { "X-Agent-Read-Token": token } : {};
 }
 
 function assert(condition, message) {

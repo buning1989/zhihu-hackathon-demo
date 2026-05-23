@@ -1,5 +1,32 @@
 # AI Handoff
 
+## 2026-05-23 - Agent P0 access boundary hardening
+
+本轮目标：按 `docs/agent-production-boundary-decisions.md` 执行第一轮 P0 安全边界修复，只做 task 访问控制、debug/list guard、metadata allowlist 和 cache reuse ownership，不改产品 UI、不做检索质量或队列可靠性重构。
+
+已完成：
+
+- `POST /api/agent/tasks` 和 `POST /api/agent/tasks/:taskId/refine` 会签发 per-task `readToken`，DB metadata 只保存 `readTokenHash`；匿名读取 status/result/view/refine 必须带 `X-Agent-Read-Token`，登录用户可用 `userId` ownership。
+- `GET /api/agent/tasks` 和 `/debug` 改为 internal/admin guard；配置 `ADMIN_DEBUG_TOKEN` 或 `AGENT_DEBUG_TOKEN` 时必须带 debug token，未配置 token 时仅允许非 production 的 localhost；production 继续直接关闭 `/debug`。
+- client metadata 改为 allowlist，丢弃 raw `anonymousId`、token/cookie/authorization、`clarifyAnswers`、raw free text；refine optional free text 只保留 hash/length，raw `refineQuery` 不再拼入 refined task query。
+- running task reuse 只有同 actor 且有 ownership/read token 时才返回原 taskId；succeeded cache 跨 actor 命中时创建新的 succeeded task，并复制 `production_final_result` artifact 到新 task，不返回原 taskId。
+- 前端仅在当前任务链路内保存 `readToken`，轮询、result/view fallback 和 refine 都通过 header 传 token；视觉和页面流程未改。
+- OpenAPI 已补 `readToken`、`X-Agent-Read-Token`、internal/admin-only list/debug 和“taskId 不是授权凭证”说明。
+- `backend/scripts/smoke-agent-production.mjs` 增加无 token/错 token 失败、正确 token 成功、running reuse ownership、跨 actor succeeded copy-result、metadata 脱敏断言；相关 eval/view/worker/spotcheck 脚本同步传 read token。
+
+验证记录：
+
+- `npm run build -w backend` 通过。
+- `node --check frontend/app.js frontend/services/api.js backend/scripts/smoke-agent-production.mjs backend/scripts/smoke-agent-view.mjs backend/scripts/smoke-agent-worker.mjs backend/scripts/eval-agent-production.mjs backend/scripts/spotcheck-agent-production-real.mjs` 等价逐个检查通过。
+- `git diff --check` 通过。
+- `npm run smoke` 已尝试，当前环境 `localhost:8000` 无后端服务，`curl: (7) Failed to connect to localhost port 8000`，因此未进入 Agent smoke；完整 compose/backend/frontend/worker 可访问后重跑即可。smoke 脚本已按新权限模型更新。
+
+剩余风险：
+
+- `readTokenHash` 暂存在 task metadata；后续如做正式生产，应迁移到独立访问表或加密/轮换策略。
+- copied cache task 只复制 final result，不复制原 stages/raw artifacts；这符合 P0 防泄露目标，但 debug 对 copied task 的阶段诊断信息会少于真实执行 task。
+- 匿名 actor 仍可用前端 `anonymousId` 做成本/复用分组，但不能作为读取授权；匿名任务历史仍未实现。
+
 ## 2026-05-23 - Agent production final_result v2 schema slim
 
 本轮目标：基于前端实际消费字段瘦身 `/api/agent/tasks/:taskId/result` 的 production final_result，并把 Agent 产品定位收敛为“真实内容发现与样本导航”，降低 LLM 结构化输出和 grounding guard schema failure 风险，不改前端视觉、不改召回主链路。

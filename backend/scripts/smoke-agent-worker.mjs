@@ -33,11 +33,11 @@ const apiBaseUrl = normalizeApiBaseUrl(process.env.AGENT_API_BASE_URL);
 let closeQueue = async () => undefined;
 let exitCode = 0;
 try {
-  const { taskId, getSnapshot } = apiBaseUrl
+  const { taskId, readToken, getSnapshot } = apiBaseUrl
     ? await createTaskViaHttp(apiBaseUrl)
     : await createTaskViaRepository();
 
-  const completedSnapshot = await waitForCompletedSnapshot(taskId, getSnapshot);
+  const completedSnapshot = await waitForCompletedSnapshot(taskId, getSnapshot, readToken);
 
   assert(
     completedSnapshot.task.status === "succeeded" || completedSnapshot.task.status === "completed",
@@ -226,19 +226,24 @@ async function createTaskViaHttp(baseUrl) {
   }
 
   const taskId = typeof body.data?.taskId === "string" ? body.data.taskId : "";
+  const readToken = typeof body.data?.readToken === "string" ? body.data.readToken : "";
   assert(taskId, "POST /api/agent/tasks did not return taskId");
+  assert(readToken, "POST /api/agent/tasks did not return readToken");
   assert(body.data?.queueStatus === "enqueued", "POST /api/agent/tasks did not enqueue task");
   assert(body.data?.status === "queued", "POST /api/agent/tasks did not return queued status");
   assert(body.data?.resultUrl, "POST /api/agent/tasks did not return resultUrl");
 
   return {
     taskId,
-    getSnapshot: (taskId) => getTaskSnapshotViaHttp(baseUrl, taskId)
+    readToken,
+    getSnapshot: (taskId, readToken) => getTaskSnapshotViaHttp(baseUrl, taskId, readToken)
   };
 }
 
-async function getTaskSnapshotViaHttp(baseUrl, taskId) {
-  const response = await fetch(`${baseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`);
+async function getTaskSnapshotViaHttp(baseUrl, taskId, readToken) {
+  const response = await fetch(`${baseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`, {
+    headers: agentReadTokenHeaders(readToken)
+  });
   if (response.status === 404) {
     return undefined;
   }
@@ -251,12 +256,12 @@ async function getTaskSnapshotViaHttp(baseUrl, taskId) {
   return body.data;
 }
 
-async function waitForCompletedSnapshot(taskId, getSnapshot) {
+async function waitForCompletedSnapshot(taskId, getSnapshot, readToken) {
   const startedAt = Date.now();
   let lastSnapshot;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const snapshot = await getSnapshot(taskId);
+    const snapshot = await getSnapshot(taskId, readToken);
     if (snapshot) {
       lastSnapshot = snapshot;
       if (snapshot.task?.status === "succeeded" || snapshot.task?.status === "completed") {
@@ -300,6 +305,11 @@ function readPositiveInteger(value, fallback) {
 function normalizeApiBaseUrl(value) {
   const normalized = value?.trim();
   return normalized ? normalized.replace(/\/+$/, "") : "";
+}
+
+function agentReadTokenHeaders(readToken) {
+  const token = String(readToken || "").trim();
+  return token ? { "X-Agent-Read-Token": token } : {};
 }
 
 async function readJsonResponse(response) {

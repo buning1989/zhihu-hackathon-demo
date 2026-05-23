@@ -91,7 +91,7 @@ async function runEvalQuery(item, index, startedAt) {
 
   let status;
   try {
-    status = await waitForTerminalStatus(started.taskId, item.query);
+    status = await waitForTerminalStatus(started.taskId, item.query, started.readToken);
   } catch (error) {
     return {
       ...buildBaseRow(item, started),
@@ -156,12 +156,12 @@ async function createTask(query, index) {
   return body.data;
 }
 
-async function waitForTerminalStatus(taskId, query) {
+async function waitForTerminalStatus(taskId, query, readToken) {
   const startedAt = Date.now();
   let lastStatus;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const status = await getTaskStatus(taskId);
+    const status = await getTaskStatus(taskId, readToken);
     lastStatus = status;
 
     if (status.status === "succeeded" || status.status === "failed") {
@@ -174,8 +174,10 @@ async function waitForTerminalStatus(taskId, query) {
   throw new Error(`${query}: timed out waiting for terminal status; last=${lastStatus?.status ?? "missing"}`);
 }
 
-async function getTaskStatus(taskId) {
-  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`);
+async function getTaskStatus(taskId, readToken) {
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`, {
+    headers: agentReadTokenHeaders(readToken)
+  });
   const body = await readJsonResponse(response);
   if (!response.ok || !body?.success) {
     throw new Error(`GET /api/agent/tasks/${taskId} failed: ${response.status} ${JSON.stringify(body)}`);
@@ -185,7 +187,9 @@ async function getTaskStatus(taskId) {
 }
 
 async function readTaskDebug(taskId) {
-  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/debug`);
+  const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}/debug`, {
+    headers: agentDebugTokenHeaders()
+  });
   const body = await readJsonResponse(response);
   if (!response.ok || !body?.success) {
     throw new Error(`GET /api/agent/tasks/${taskId}/debug failed: ${response.status} ${JSON.stringify(body)}`);
@@ -559,6 +563,16 @@ function readPositiveInteger(value, fallback) {
 
 function normalizeApiBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function agentReadTokenHeaders(readToken) {
+  const token = String(readToken || "").trim();
+  return token ? { "X-Agent-Read-Token": token } : {};
+}
+
+function agentDebugTokenHeaders() {
+  const token = String(process.env.ADMIN_DEBUG_TOKEN || process.env.AGENT_DEBUG_TOKEN || "").trim();
+  return token ? { "X-Agent-Debug-Token": token } : {};
 }
 
 function toErrorMessage(error) {

@@ -37,7 +37,7 @@ try {
   await db.connect();
   for (const [index, query] of queries.entries()) {
     const started = await createTask(query, index);
-    const status = await waitForTerminalStatus(started.taskId, query);
+    const status = await waitForTerminalStatus(started.taskId, query, started.readToken);
     if (status.status !== "succeeded") {
       throw new Error(`${query}: task did not succeed: ${JSON.stringify(status.error ?? status)}`);
     }
@@ -81,12 +81,14 @@ async function createTask(query, index) {
   return body.data;
 }
 
-async function waitForTerminalStatus(taskId, query) {
+async function waitForTerminalStatus(taskId, query, readToken) {
   const startedAt = Date.now();
   let lastStatus;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`);
+    const response = await fetch(`${apiBaseUrl}/api/agent/tasks/${encodeURIComponent(taskId)}`, {
+      headers: agentReadTokenHeaders(readToken)
+    });
     const body = await readJsonResponse(response);
     if (!response.ok || !body?.success) {
       throw new Error(`GET /api/agent/tasks/${taskId} failed: ${response.status} ${JSON.stringify(body)}`);
@@ -194,6 +196,11 @@ function readPositiveInteger(value, fallback) {
 
 function normalizeApiBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function agentReadTokenHeaders(readToken) {
+  const token = String(readToken || "").trim();
+  return token ? { "X-Agent-Read-Token": token } : {};
 }
 
 async function readJsonResponse(response) {

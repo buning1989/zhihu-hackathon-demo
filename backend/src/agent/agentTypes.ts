@@ -120,6 +120,7 @@ export type RunDemoSearchAgent = (
 
 export interface AgentSearchTaskStartResponse {
   taskId: string;
+  readToken: string;
   status: "running";
   createdAt: string;
 }

@@ -57,6 +57,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 export interface PersistentAgentTaskStartData {
   taskId: string;
+  readToken: string;
   status: "queued" | "running" | "need_input" | "succeeded";
   frontendStatus: string;
   pollAfterMs: number;
@@ -124,10 +125,12 @@ export function buildPersistentAgentTaskStartData(
     cacheHit?: boolean;
     reused?: boolean;
     reusedReason?: PersistentAgentTaskStartData["reusedReason"];
+    readToken?: string;
   } = {}
 ): PersistentAgentTaskStartData {
   return {
     taskId: task.id,
+    readToken: options.readToken ?? "",
     status: options.status ?? "queued",
     frontendStatus: readString(task.metadata.frontendStatus) || "正在理解你的问题",
     pollAfterMs: options.status === "succeeded" || options.status === "need_input" ? 0 : POLL_AFTER_MS,

@@ -89,10 +89,6 @@ export function buildAgentRefineContext(input: {
     refinedQueryParts.push(`补充信息：${answerContext.queryParts.join("；")}`);
   }
 
-  if (refineQuery) {
-    refinedQueryParts.push(`进一步关注：${refineQuery}`);
-  }
-
   return {
     refinedQuery: refinedQueryParts.join("\n"),
     sanitizedAnswers: answerContext.sanitizedAnswers,
