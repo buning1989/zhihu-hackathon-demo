@@ -5,6 +5,7 @@ import { config } from "../config/env.js";
 export const SESSION_COOKIE_NAME = "zhihu_demo_session";
 export const OAUTH_STATE_COOKIE_NAME = "zhihu_oauth_state";
 export const OAUTH_RETURN_TO_COOKIE_NAME = "zhihu_oauth_return_to";
+export const OAUTH_REDIRECT_URI_COOKIE_NAME = "zhihu_oauth_redirect_uri";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -112,6 +113,27 @@ export function consumeOAuthReturnTo(req: Request, res: Response): string {
   const returnTo = readSignedCookie(req, OAUTH_RETURN_TO_COOKIE_NAME) || "";
   clearCookie(res, OAUTH_RETURN_TO_COOKIE_NAME, { path: "/auth/zhihu/callback" });
   return returnTo;
+}
+
+export function setOAuthRedirectUri(res: Response, redirectUri: string): void {
+  if (!redirectUri) {
+    clearCookie(res, OAUTH_REDIRECT_URI_COOKIE_NAME, { path: "/auth/zhihu/callback" });
+    return;
+  }
+
+  setCookie(res, OAUTH_REDIRECT_URI_COOKIE_NAME, signCookieValue(redirectUri), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction(),
+    maxAgeSeconds: OAUTH_STATE_TTL_MS / 1000,
+    path: "/auth/zhihu/callback"
+  });
+}
+
+export function consumeOAuthRedirectUri(req: Request, res: Response): string {
+  const redirectUri = readSignedCookie(req, OAUTH_REDIRECT_URI_COOKIE_NAME) || "";
+  clearCookie(res, OAUTH_REDIRECT_URI_COOKIE_NAME, { path: "/auth/zhihu/callback" });
+  return redirectUri;
 }
 
 export function validateOAuthState(req: Request, res: Response, state: string): boolean {

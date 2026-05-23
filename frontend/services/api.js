@@ -14,6 +14,7 @@
 
   const mockMode = resolveApiMode() === "mock";
   const apiBaseUrl = resolveApiBaseUrl();
+  const localZhihuRedirectUri = "http://127.0.0.1:3001/auth/zhihu/callback";
 
   function resolveApiMode() {
     const params = new URLSearchParams(window.location.search);
@@ -200,8 +201,32 @@
     if (returnTo) {
       params.set("returnTo", returnTo);
     }
+    const redirectUri = resolveZhihuRedirectUri();
+    if (redirectUri) {
+      params.set("redirectUri", redirectUri);
+    }
     const suffix = params.toString() ? `?${params.toString()}` : "";
     return buildUrl(`/auth/zhihu/login${suffix}`);
+  }
+
+  function resolveZhihuRedirectUri() {
+    const configured =
+      window.LifeSampleAppConfig?.zhihuRedirectUri ||
+      window.localStorage.getItem("lifeSampleZhihuRedirectUri");
+    if (configured) {
+      return String(configured);
+    }
+
+    const host = window.location.hostname.toLowerCase();
+    if (
+      window.location.protocol === "http:" &&
+      window.location.port === "8000" &&
+      (host === "127.0.0.1" || host === "localhost")
+    ) {
+      return localZhihuRedirectUri;
+    }
+
+    return "";
   }
 
   async function readAgentResult(taskId, taskStatus, options = {}) {

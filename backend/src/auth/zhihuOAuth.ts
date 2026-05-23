@@ -20,11 +20,14 @@ interface ZhihuJsonResponse {
   body: unknown;
 }
 
-export function buildZhihuAuthorizationUrl(state: string): string {
+export function buildZhihuAuthorizationUrl(
+  state: string,
+  redirectUri = config.zhihu.redirectUri
+): string {
   assertZhihuOAuthConfigured();
 
   const url = new URL("/authorize", config.zhihu.openapiBase);
-  url.searchParams.set("redirect_uri", config.zhihu.redirectUri);
+  url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("app_id", config.zhihu.appId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);
@@ -32,19 +35,22 @@ export function buildZhihuAuthorizationUrl(state: string): string {
   return url.toString();
 }
 
-export async function exchangeCodeForToken(code: string): Promise<ZhihuAccessToken> {
+export async function exchangeCodeForToken(
+  code: string,
+  redirectUri = config.zhihu.redirectUri
+): Promise<ZhihuAccessToken> {
   assertZhihuOAuthConfigured();
 
   const body = new URLSearchParams({
     app_id: config.zhihu.appId,
     app_key: config.zhihu.appKey,
     grant_type: "authorization_code",
-    redirect_uri: config.zhihu.redirectUri,
+    redirect_uri: redirectUri,
     code
   });
 
   const tokenExchangeLogContext: TokenExchangeLogContext = {
-    redirectUri: config.zhihu.redirectUri,
+    redirectUri,
     appId: config.zhihu.appId,
     grantType: "authorization_code",
     hasCode: Boolean(code)

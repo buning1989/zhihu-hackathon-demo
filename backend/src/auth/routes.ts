@@ -3,11 +3,13 @@ import { config } from "../config/env.js";
 import { HttpError } from "../utils/httpError.js";
 import { getRequiredAuthSession, requireAuth } from "./requireAuth.js";
 import {
+  consumeOAuthRedirectUri,
   consumeOAuthReturnTo,
   createAuthSession,
   createOAuthState,
   destroyAuthSession,
   randomId,
+  setOAuthRedirectUri,
   setOAuthReturnTo,
   toPublicAuthSession,
   validateOAuthState,
@@ -25,9 +27,11 @@ export const authRoutes = Router();
 authRoutes.get("/zhihu/login", (req, res, next) => {
   try {
     assertZhihuOAuthConfigured();
+    const redirectUri = resolveOAuthRedirectUri(req);
+    setOAuthRedirectUri(res, redirectUri);
     setOAuthReturnTo(res, resolveOAuthReturnTo(req));
     const state = createOAuthState(res);
-    res.redirect(302, buildZhihuAuthorizationUrl(state));
+    res.redirect(302, buildZhihuAuthorizationUrl(state, redirectUri));
   } catch (error) {
     next(error);
   }
@@ -44,7 +48,8 @@ authRoutes.get("/zhihu/callback", async (req, res, next) => {
       throw new HttpError(400, "INVALID_OAUTH_STATE", "知乎 OAuth state 校验失败");
     }
 
-    const token = await exchangeCodeForToken(code);
+    const redirectUri = consumeOAuthRedirectUri(req, res) || config.zhihu.redirectUri;
+    const token = await exchangeCodeForToken(code, redirectUri);
     const userInfo = await fetchZhihuUserInfo(token);
     const userInfoLoaded = userInfo !== null;
 
@@ -103,6 +108,35 @@ function parseAuthorizationCode(codeValue: unknown, authorizationCodeValue: unkn
 
 function readQueryString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveOAuthRedirectUri(req: Request): string {
+  return normalizeLocalOAuthRedirectUri(readQueryString(req.query.redirectUri)) || config.zhihu.redirectUri;
+}
+
+function normalizeLocalOAuthRedirectUri(value: string): string {
+  if (!value || config.nodeEnv === "production") {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    const isLocalHost = hostname === "127.0.0.1" || hostname === "localhost";
+    if (
+      url.protocol === "http:" &&
+      isLocalHost &&
+      ["3000", "3001", "5173", "8000"].includes(port) &&
+      url.pathname === "/auth/zhihu/callback"
+    ) {
+      return url.toString();
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
 }
 
 function resolveOAuthReturnTo(req: Request): string {
