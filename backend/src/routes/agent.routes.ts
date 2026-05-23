@@ -887,24 +887,31 @@ function assertAgentDebugAccess(req: Request): void {
 }
 
 function assertAgentInternalAdminAccess(req: Request): void {
-  const configuredToken = config.agent.debugToken;
+  if (canAccessAgentInternalAdmin(req)) {
+    return;
+  }
+
+  throw new HttpError(403, "AGENT_ADMIN_REQUIRED", "Agent internal debug access is required");
+}
+
+export function canAccessAgentInternalAdmin(
+  req: Request,
+  options: {
+    debugToken?: string;
+    nodeEnv?: string;
+  } = {}
+): boolean {
+  const configuredToken = options.debugToken ?? config.agent.debugToken;
   if (configuredToken) {
     const suppliedToken =
       readHeader(req, "x-agent-debug-token") ||
       readHeader(req, "x-admin-debug-token") ||
       readBearerToken(req);
-    if (safeEqual(configuredToken, suppliedToken)) {
-      return;
-    }
-
-    throw new HttpError(403, "AGENT_ADMIN_REQUIRED", "Agent internal debug access is required");
+    return safeEqual(configuredToken, suppliedToken);
   }
 
-  if (config.nodeEnv !== "production" && isLocalRequest(req)) {
-    return;
-  }
-
-  throw new HttpError(403, "AGENT_ADMIN_REQUIRED", "Agent internal debug access is required");
+  const nodeEnv = options.nodeEnv ?? config.nodeEnv;
+  return nodeEnv !== "production" && isLocalRequest(req);
 }
 
 async function getReusableProductionFinalResultSnapshot(taskId: string): Promise<{
@@ -1047,19 +1054,20 @@ function safeEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function isLocalRequest(req: Request): boolean {
+export function isLocalRequest(req: Request): boolean {
   const candidates = [
     req.ip,
-    req.socket.remoteAddress,
-    readHeader(req, "host").split(":")[0]
-  ].filter(Boolean);
+    req.socket.remoteAddress
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
-  return candidates.some((value) =>
-    value === "127.0.0.1" ||
-    value === "::1" ||
-    value === "::ffff:127.0.0.1" ||
-    value === "localhost"
-  );
+  return candidates.some(isLoopbackAddress);
+}
+
+function isLoopbackAddress(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "::ffff:127.0.0.1";
 }
 
 function toErrorMessage(error: unknown): string {
