@@ -1723,6 +1723,9 @@
     const formType = form.dataset.form;
 
     if (formType === "search") {
+      if (App.store.getState().search.status === "preparing") {
+        return;
+      }
       await submitSearch(formData.get("query"));
     }
 

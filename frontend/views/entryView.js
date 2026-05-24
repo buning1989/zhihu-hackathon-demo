@@ -39,6 +39,7 @@
     const icon = App.components.renderIcon;
     const query = escapeAttribute(state.query || "");
     const isClarifying = state.search.clarifyOpen || state.search.status === "clarify";
+    const isPreparing = state.search.status === "preparing";
     const isClarifyEntering = state.transitionPhase === "clarifyEntering";
     const isExiting = state.transitionPhase === "entryExiting";
     const clarifyPanel = isClarifying
@@ -51,9 +52,21 @@
     ].filter(Boolean).join(" ");
     const shellClass = [
       isClarifying ? "is-expanded" : "",
-      isClarifyEntering ? "is-entering" : ""
+      isClarifyEntering ? "is-entering" : "",
+      isPreparing ? "is-preparing" : ""
     ].filter(Boolean).join(" ");
     const queryPreview = escapeHtml(state.query || state.pendingQuery || "");
+    const intentLoading = isPreparing && !isClarifying
+      ? `
+        <div class="entry-intent-loading" role="status" aria-live="polite">
+          <span class="entry-intent-dot" aria-hidden="true"></span>
+          <span class="entry-intent-copy">
+            <strong>正在识别你的意图</strong>
+            <span>我们在判断需要补充哪些背景，方便找到更像你的人</span>
+          </span>
+        </div>
+      `
+      : "";
 
     return `
       <main class="entry-view">
@@ -68,8 +81,11 @@
                 <div class="composer-divider" aria-hidden="true"></div>
                 ${clarifyPanel}
               ` : `
-                <textarea class="entry-input" id="entry-query" name="query">${query}</textarea>
-                <button class="btn-p entry-submit" type="submit" aria-label="开始找样本">${icon("search")}</button>
+                <textarea class="entry-input" id="entry-query" name="query" ${isPreparing ? "readonly aria-disabled=\"true\"" : ""}>${query}</textarea>
+                <button class="btn-p entry-submit ${isPreparing ? "is-loading" : ""}" type="submit" aria-label="${isPreparing ? "正在识别你的意图" : "开始找样本"}" ${isPreparing ? "disabled aria-busy=\"true\"" : ""}>
+                  ${isPreparing ? "<span class=\"entry-submit-spinner\" aria-hidden=\"true\"></span>" : icon("search")}
+                </button>
+                ${intentLoading}
               `}
             </div>
           </form>
