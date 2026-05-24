@@ -15,7 +15,7 @@
     "people[].experienceSummary is the primary author/sample experience summary and should be displayed only when source=llm and status=ready.",
     "Debug fallbackSummary may exist for troubleshooting, but it is not a frontend primary display field.",
     "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape.",
-    "When clarificationAnswers is present, POST /api/demo/search returns only intent/searchPlan/debug and skips the full result-page shape."
+    "When clarificationAnswers is present, POST /api/demo/search returns the full result-page shape and includes debug.clarificationContext."
   ],
   "field_levels": {
     "P0_required": [

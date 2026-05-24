@@ -70,8 +70,14 @@ try {
   assertNonEmptyArray(demoSearch.body.data.paths, "demo paths");
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
   assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
+  assertClarifyingCard(demoSearch.body.data.clarifyingCard, "demo clarifyingCard");
+  assertEqual(
+    demoSearch.body.data.clarificationStage.needClarification,
+    true,
+    "demo clarificationStage.needClarification"
+  );
 
-  const clarifiedIntentPlan = await requestJson(`${baseUrl}/api/demo/search`, {
+  const clarifiedDemoSearch = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
     body: {
       query: "为了工作能追求自己想做的事，长期异地恋真的值得吗？",
@@ -86,9 +92,27 @@ try {
     }
   });
 
-  assertEqual(clarifiedIntentPlan.status, 200, "clarified intent plan status");
-  assertEqual(clarifiedIntentPlan.body.success, true, "clarified intent plan success");
-  assertClarifiedIntentPlan(clarifiedIntentPlan.body.data);
+  assertEqual(clarifiedDemoSearch.status, 200, "clarified demo search status");
+  assertEqual(clarifiedDemoSearch.body.success, true, "clarified demo search success");
+  assertEqual(clarifiedDemoSearch.body.data.schemaVersion, "demo.v1", "clarified demo schemaVersion");
+  assertNonEmptyArray(clarifiedDemoSearch.body.data.paths, "clarified demo paths");
+  assertNonEmptyArray(clarifiedDemoSearch.body.data.people, "clarified demo people");
+  assertNonEmptyArray(clarifiedDemoSearch.body.data.personas, "clarified demo personas");
+  assertEqual(
+    clarifiedDemoSearch.body.data.clarifyingCard.show,
+    false,
+    "clarified demo hides clarifyingCard"
+  );
+  assertEqual(
+    clarifiedDemoSearch.body.data.clarificationStage.needClarification,
+    false,
+    "clarified demo clarificationStage.needClarification"
+  );
+  assertEqual(
+    clarifiedDemoSearch.body.data.debug.clarificationContext.applied,
+    true,
+    "clarified demo clarificationContext.applied"
+  );
 
   const loggedInDemoSearch = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
@@ -296,6 +320,29 @@ function assertPersonaChatExperienceReply(value: unknown, label: string): void {
     boundaryNotice !== PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE
   ) {
     throw new Error(`${label} boundaryNotice used unexpected copy`);
+  }
+}
+
+function assertClarifyingCard(value: unknown, label: string): void {
+  if (!isRecord(value)) {
+    throw new Error(`${label}: expected clarifying card object`);
+  }
+
+  assertEqual(value.show, true, `${label}.show`);
+  assertNonEmptyString(value.title, `${label}.title`);
+  assertMinArrayLength(value.questions, 3, `${label}.questions`);
+
+  const questions = value.questions as unknown[];
+  for (const [index, question] of questions.entries()) {
+    if (!isRecord(question)) {
+      throw new Error(`${label}.questions[${index}]: expected object`);
+    }
+    assertNonEmptyString(question.id, `${label}.questions[${index}].id`);
+    assertNonEmptyString(question.label, `${label}.questions[${index}].label`);
+    assertNonEmptyArray(question.options, `${label}.questions[${index}].options`);
+    if (Array.isArray(question.options) && question.options.length > 6) {
+      throw new Error(`${label}.questions[${index}].options: expected <= 6 options`);
+    }
   }
 }
 

@@ -45,6 +45,38 @@ export interface DemoClarificationAnswers {
   [key: string]: string;
 }
 
+export type DemoClarificationAmbiguityLevel = "low" | "medium" | "high";
+export type DemoClarificationQuestionType = "single_select" | "multi_select" | "free_text";
+
+export interface DemoClarifyingCard {
+  show: boolean;
+  title: string;
+  description: string;
+  questions: DemoClarificationQuestion[];
+  primaryActionText: string;
+  skipActionText: string;
+}
+
+export interface DemoClarificationQuestion {
+  id: string;
+  label: string;
+  type: DemoClarificationQuestionType;
+  required: boolean;
+  options?: DemoClarificationOption[];
+}
+
+export interface DemoClarificationOption {
+  id: string;
+  label: string;
+}
+
+export interface DemoClarificationStage {
+  needClarification: boolean;
+  ambiguityLevel: DemoClarificationAmbiguityLevel;
+  llmUsed: boolean;
+  fallbackReason?: string;
+}
+
 export interface DemoIntentSearchPlanResponse {
   intent: string;
   intentSummary: string;
@@ -88,6 +120,8 @@ export interface DemoSearchResponse {
   sections: DemoSection[];
   meta: DemoMeta;
   debug: DemoDebug;
+  clarifyingCard?: DemoClarifyingCard;
+  clarificationStage?: DemoClarificationStage;
 }
 
 export interface DemoFeatures {
@@ -366,7 +400,16 @@ export interface DemoDebug {
   droppedCandidates?: DemoDroppedCandidateDebug[];
   candidateQuality?: DemoCandidateQuality[];
   experienceSummaryDebug?: DemoExperienceSummaryDebug[];
+  clarificationContext?: DemoDebugClarificationContext;
   notes: string[];
+}
+
+export interface DemoDebugClarificationContext {
+  originalQuery: string;
+  answers: DemoClarificationAnswers;
+  answerSummary: string;
+  applied: boolean;
+  searchHintCount: number;
 }
 
 export interface DemoMatchedQueryDebug {
