@@ -14,7 +14,8 @@ import { CLARIFICATION_PLANNER_SYSTEM_PROMPT } from "../../llm/prompts/clarifica
 import type { IntentExpandOutput } from "../../llm/schemas/taskSchemas.js";
 
 const MAX_QUESTIONS = 3;
-const MAX_OPTIONS = 4;
+const MAX_OPTIONS = 3;
+const MIN_OPTIONS = 3;
 const MAX_HINTS = 6;
 
 export interface ClarificationPlannerOutput {
@@ -198,7 +199,10 @@ function parseClarificationPlannerOutput(
   const context = buildClarificationContext(input.query, answers);
   const needClarification = readBoolean(parsed.needClarification, fallback.card.show);
   const ambiguityLevel = readAmbiguityLevel(parsed.ambiguityLevel, fallback.stage.ambiguityLevel);
-  const questions = readQuestions(parsed.questions);
+  const questions = ensureThreeOptionQuestions(
+    readQuestions(parsed.questions),
+    fallback.card.questions
+  );
   const searchHints = readStringArray(parsed.searchHints).slice(0, MAX_HINTS);
   const show = needClarification && questions.length > 0 && Object.keys(answers).length === 0;
   const card: ClarifyingCard = show
@@ -329,6 +333,78 @@ function readQuestions(value: unknown): ClarificationQuestion[] {
     .map(readQuestion)
     .filter((question): question is ClarificationQuestion => Boolean(question))
     .slice(0, MAX_QUESTIONS);
+}
+
+function ensureThreeOptionQuestions(
+  questions: ClarificationQuestion[],
+  fallbackQuestions: ClarificationQuestion[]
+): ClarificationQuestion[] {
+  return questions
+    .map((question, index) => {
+      const fallbackQuestion =
+        fallbackQuestions.find((item) => item.id === question.id) ?? fallbackQuestions[index];
+      const options = uniqueOptions([
+        ...(question.options ?? []),
+        ...(fallbackQuestion?.options ?? []),
+        ...defaultClarificationOptions(question.id)
+      ]).slice(0, MAX_OPTIONS);
+
+      return {
+        ...question,
+        type: question.type === "free_text" ? "single_select" : question.type,
+        options
+      };
+    })
+    .filter((question) => (question.options?.length ?? 0) >= MIN_OPTIONS);
+}
+
+function uniqueOptions(options: Array<{ id: string; label: string }>): Array<{
+  id: string;
+  label: string;
+}> {
+  const seen = new Set<string>();
+  const result: Array<{ id: string; label: string }> = [];
+  for (const option of options) {
+    const id = normalizeId(option.id);
+    const label = truncateText(readString(option.label), 20);
+    if (!id || !label || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    result.push({ id, label });
+  }
+  return result;
+}
+
+function defaultClarificationOptions(questionId: string): Array<{ id: string; label: string }> {
+  const defaultsByQuestionId: Record<string, Array<{ id: string; label: string }>> = {
+    current_state: [
+      { id: "burnout", label: "想休息" },
+      { id: "unemployed", label: "已失业" },
+      { id: "exploring", label: "找新方向" }
+    ],
+    main_constraint: [
+      { id: "cashflow", label: "现金流" },
+      { id: "place", label: "去哪生活" },
+      { id: "career", label: "再就业" }
+    ],
+    relationship_stage: [
+      { id: "early", label: "刚开始" },
+      { id: "stable", label: "稳定关系" },
+      { id: "marriage", label: "谈婚论嫁" }
+    ],
+    core_constraint: [
+      { id: "career", label: "工作机会" },
+      { id: "city", label: "城市距离" },
+      { id: "future", label: "未来时间表" }
+    ]
+  };
+
+  return defaultsByQuestionId[questionId] ?? [
+    { id: "similar", label: "相似经历" },
+    { id: "resolved", label: "已经走出" },
+    { id: "tradeoff", label: "代价边界" }
+  ];
 }
 
 function readQuestion(value: unknown): ClarificationQuestion | null {

@@ -546,9 +546,51 @@
         text: String(question.text || question.label || question.title || id),
         type: String(question.type || "single_select"),
         required: question.required !== false,
-        options
+        options: ensureThreeClarifyOptions(id, options)
       };
     }).filter((question) => question.id && question.text && question.options.length > 0);
+  }
+
+  function ensureThreeClarifyOptions(questionId, options) {
+    const seen = new Set();
+    const merged = [...options, ...defaultClarifyOptions(questionId)].filter((option) => {
+      if (!option.id || !option.label || seen.has(option.id)) {
+        return false;
+      }
+      seen.add(option.id);
+      return true;
+    });
+    return merged.slice(0, 3);
+  }
+
+  function defaultClarifyOptions(questionId) {
+    const defaults = {
+      current_state: [
+        { id: "burnout", label: "想休息" },
+        { id: "unemployed", label: "已失业" },
+        { id: "exploring", label: "找新方向" }
+      ],
+      main_constraint: [
+        { id: "cashflow", label: "现金流" },
+        { id: "place", label: "去哪生活" },
+        { id: "career", label: "再就业" }
+      ],
+      relationship_stage: [
+        { id: "early", label: "刚开始" },
+        { id: "stable", label: "稳定关系" },
+        { id: "marriage", label: "谈婚论嫁" }
+      ],
+      core_constraint: [
+        { id: "career", label: "工作机会" },
+        { id: "city", label: "城市距离" },
+        { id: "future", label: "未来时间表" }
+      ]
+    };
+    return defaults[questionId] || [
+      { id: "similar", label: "相似经历" },
+      { id: "resolved", label: "已经走出" },
+      { id: "tradeoff", label: "代价边界" }
+    ];
   }
 
   function shouldShowDemoClarification(result) {
