@@ -1105,6 +1105,40 @@
     const timings = transitionTimings();
     const currentState = App.store.getState();
     const pageBeforeSubmit = options.pageBeforeSubmit || currentState.page;
+    const shouldCheckClarificationBeforeLoading =
+      pageBeforeSubmit === "entry" &&
+      options.allowClarification !== false &&
+      !hasClarifyAnswers(answers);
+    let response = null;
+
+    if (shouldCheckClarificationBeforeLoading) {
+      try {
+        response = await App.Api.search({
+          query,
+          answers
+        });
+      } catch (error) {
+        setTaskError(requestId, error);
+        return;
+      }
+
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      const result = response.data;
+      if (shouldShowDemoClarification(result)) {
+        await showClarifyQuestions({
+          card: result.clarifyingCard,
+          stage: result.clarificationStage,
+          requestId,
+          pageBeforeSubmit,
+          source: "backend_demo"
+        });
+        return;
+      }
+    }
+
     if (currentState.page === "entry") {
       App.store.update((draft) => {
         draft.search.requestId = requestId;
@@ -1133,10 +1167,12 @@
 
     const loadingStartedAt = Date.now();
     startLoadingStageTicker(requestId);
-    const responsePromise = App.Api.search({
-      query,
-      answers
-    });
+    const responsePromise = response
+      ? Promise.resolve(response)
+      : App.Api.search({
+        query,
+        answers
+      });
 
     if (timings.loadingEnter > 0) {
       await wait(timings.loadingEnter);
@@ -1147,7 +1183,6 @@
     }
 
     setTransitionPhase("loading");
-    let response;
     try {
       response = await responsePromise;
     } catch (error) {
