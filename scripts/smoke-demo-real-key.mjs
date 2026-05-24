@@ -122,7 +122,7 @@ async function main() {
       });
     }
 
-    console.log("PASS demo real-key smoke");
+    console.log("PASS demo real LLM/persona smoke");
     console.log(`demo counts paths=${demoData.paths.length} people=${demoData.people.length} personas=${personas.length}`);
     console.log(
       `demo stages ${REQUIRED_DEMO_STAGES.map((stage) => `${stage}=recorded`).join(" ")}`

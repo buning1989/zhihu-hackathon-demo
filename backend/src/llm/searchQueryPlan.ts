@@ -119,7 +119,26 @@ function completeSearchQueryPlan(
 }
 
 function selectFallbackCategoryPlans(query: string): DemoSearchQueryPlan[] {
+  if (isRelationshipWorkQuery(query)) {
+    return relationshipWorkFallbackPlans();
+  }
+
   return genericFallbackPlans(query);
+}
+
+function relationshipWorkFallbackPlans(): DemoSearchQueryPlan[] {
+  return [
+    plan("长期异地恋 工作选择", "decision_conflict", "召回异地恋和工作取舍", 2),
+    plan("异地恋 职业发展 后悔吗", "failure_review", "召回职业发展与关系代价复盘", 2),
+    plan("异地恋 为了工作 分开", "failure_review", "召回为工作分开的经历", 3),
+    plan("异地恋 追求梦想 真实经历", "real_experience", "召回追求自我与关系距离经历", 3),
+    plan("异地恋 工作机会 怎么选", "decision_conflict", "召回工作机会和关系选择", 4),
+    plan("异地恋 异地工作 坚持下来", "real_experience", "召回坚持异地的后续状态", 4),
+    plan("异地恋 团聚 城市选择", "life_path", "召回团聚和城市路径", 5),
+    plan("为了工作 异地恋 值得吗", "decision_conflict", "召回是否值得的讨论", 5),
+    plan("异地恋 未来规划 沟通", "life_path", "召回未来时间表和沟通路径", 6),
+    plan("异地恋 工作调动 代价", "alternative_solution", "召回工作调动与关系代价", 6)
+  ];
 }
 
 function genericFallbackPlans(query: string): DemoSearchQueryPlan[] {
@@ -328,6 +347,26 @@ function extractCorePhrase(query: string): string {
   }
 
   return truncateSearchQuery(normalized, 18);
+}
+
+function isRelationshipWorkQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  const hasRelationship = ["异地恋", "长期异地", "恋爱", "伴侣", "男友", "女友"].some((keyword) =>
+    normalized.includes(keyword)
+  );
+  const hasWorkTradeoff = [
+    "工作",
+    "职业",
+    "事业",
+    "追求自己",
+    "想做的事",
+    "梦想",
+    "城市",
+    "距离",
+    "机会"
+  ].some((keyword) => normalized.includes(keyword));
+
+  return hasRelationship && hasWorkTradeoff;
 }
 
 function isUsableSearchQuery(query: string): boolean {

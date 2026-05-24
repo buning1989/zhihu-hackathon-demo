@@ -103,6 +103,64 @@ const VAGUE_WORDS = ["人生", "选择", "成长", "努力", "心态", "热爱",
 const ADVICE_MARKERS = ["建议", "应该", "最好", "可以", "不要", "方法", "策略", "技巧", "心态"];
 const CLICKBAIT_MARKERS = ["震惊", "必看", "后悔死", "稳赚", "躺赚", "秘籍", "速成", "真相"];
 const AD_MARKERS = ["课程", "私信", "加微信", "报名", "咨询", "训练营", "返利", "带货", "推广"];
+const RELATIONSHIP_WORK_CONTEXT_MARKERS = [
+  "异地恋",
+  "长期异地",
+  "恋爱",
+  "伴侣",
+  "距离",
+  "城市",
+  "工作",
+  "职业",
+  "事业",
+  "追求自己",
+  "想做的事"
+];
+const RELATIONSHIP_EVIDENCE_MARKERS = [
+  "异地恋",
+  "长期",
+  "见面",
+  "城市",
+  "距离",
+  "伴侣",
+  "男友",
+  "女友",
+  "恋爱",
+  "团聚",
+  "分开",
+  "坚持",
+  "未来",
+  "时间表"
+];
+const CAREER_TRADEOFF_MARKERS = [
+  "为了工作",
+  "工作机会",
+  "职业选择",
+  "职业发展",
+  "事业",
+  "工作调动",
+  "追求自己",
+  "想做的事",
+  "追求梦想",
+  "梦想",
+  "高薪",
+  "裸辞",
+  "辞掉",
+  "稳定工作",
+  "薪资",
+  "城市选择"
+];
+const GENERIC_WORK_REVIEW_MARKERS = [
+  "复盘",
+  "效率",
+  "方法",
+  "目标",
+  "成长",
+  "管理",
+  "提升",
+  "曾国藩",
+  "工作复盘"
+];
 const STOP_TOPIC_SIGNALS = new Set([
   "用户",
   "问题",
@@ -170,6 +228,15 @@ export function scoreSearchCandidate(
   const textForScoring = [title, body, author, ...matchedQueries.flatMap((entry) => [entry.query, entry.purpose ?? ""])]
     .join("\n")
     .toLowerCase();
+  const contextText = [
+    query,
+    context.userCoreQuestion ?? "",
+    ...(context.focusTags ?? []),
+    ...(context.topicSignals ?? []),
+    ...(context.searchQueries ?? []).flatMap((plan) => [plan.query, plan.purpose])
+  ].join("\n");
+  const scenarioText = [title, body].join("\n");
+  const relationshipWork = scoreRelationshipWorkScenario(contextText, scenarioText);
   const topicAssessment = scoreTopicHit(textForScoring, topicSignals);
   const narrative = scoreNarrative(body);
   const specificity = scoreSpecificity(body);
@@ -181,14 +248,40 @@ export function scoreSearchCandidate(
     contentLength,
     matchedQueryCount: matchedQueries.length
   });
+  const penaltyScore = Math.min(penalty.score + relationshipWork.penaltyScore, 65);
+  const relevanceSignals = unique([
+    ...topicAssessment.signals,
+    ...relationshipWork.relevanceSignals
+  ]);
+  const penaltySignals = unique([
+    ...penalty.signals,
+    ...relationshipWork.penaltySignals
+  ]);
   const roughScore = clampPercent(
-    topicAssessment.score + narrative.score + specificity.score + basicQuality.score - penalty.score
+    relationshipWork.forceDrop
+      ? Math.min(
+          35,
+          topicAssessment.score +
+            narrative.score +
+            specificity.score +
+            basicQuality.score +
+            relationshipWork.boostScore -
+            penaltyScore
+        )
+      : topicAssessment.score +
+          narrative.score +
+          specificity.score +
+          basicQuality.score +
+          relationshipWork.boostScore -
+          penaltyScore
   );
   const roughTier = toRoughTier(roughScore);
   const hardFiltered = !item.url && !item.id;
-  const relevanceScore = clamp01(topicAssessment.score / 35);
+  const relevanceScore = clamp01((topicAssessment.score + Math.min(relationshipWork.boostScore, 16)) / 45);
   const experienceSignalScore = clamp01(narrative.score / 25);
-  const qualityScore = clamp01((narrative.score + specificity.score + basicQuality.score - penalty.score) / 65);
+  const qualityScore = clamp01(
+    (narrative.score + specificity.score + basicQuality.score + relationshipWork.boostScore - penaltyScore) / 65
+  );
   const adviceSignalScore = markerScore(body, ADVICE_MARKERS, 5);
   const selectionScore = clamp01(
     roughScore / 100 +
@@ -201,7 +294,8 @@ export function scoreSearchCandidate(
     roughScore,
     roughTier,
     topicHitScore: topicAssessment.score,
-    penaltyScore: penalty.score
+    penaltyScore,
+    penaltySignals
   });
 
   return {
@@ -225,19 +319,19 @@ export function scoreSearchCandidate(
     narrativeScore: narrative.score,
     specificityScore: specificity.score,
     basicQualityScore: basicQuality.score,
-    penaltyScore: penalty.score,
+    penaltyScore,
     roughTier,
-    relevanceSignals: topicAssessment.signals,
+    relevanceSignals,
     narrativeSignals: narrative.signals,
     specificitySignals: specificity.signals,
-    penaltySignals: penalty.signals,
+    penaltySignals,
     roughReason: buildRoughReason({
       roughScore,
       roughTier,
-      relevanceSignals: topicAssessment.signals,
+      relevanceSignals,
       narrativeSignals: narrative.signals,
       specificitySignals: specificity.signals,
-      penaltySignals: penalty.signals
+      penaltySignals
     }),
     contentRole: inferContentRole(matchedQueries[0]?.type ?? item.queryType, narrative.score),
     selectionScore,
@@ -523,6 +617,76 @@ function scorePenalty(input: {
   };
 }
 
+function scoreRelationshipWorkScenario(contextText: string, candidateText: string): {
+  boostScore: number;
+  penaltyScore: number;
+  relevanceSignals: string[];
+  penaltySignals: string[];
+  forceDrop: boolean;
+} {
+  const normalizedContext = normalizeText(contextText);
+  const normalizedCandidate = normalizeText(candidateText);
+  const contextHits = RELATIONSHIP_WORK_CONTEXT_MARKERS.filter((marker) =>
+    includesLoose(normalizedContext, marker)
+  );
+  const relationshipContextHit = contextHits.some((marker) =>
+    ["异地恋", "长期异地", "恋爱", "伴侣", "距离", "城市"].includes(marker)
+  );
+  const workContextHit = contextHits.some((marker) =>
+    ["工作", "职业", "事业", "追求自己", "想做的事"].includes(marker)
+  );
+
+  if (!relationshipContextHit || !workContextHit) {
+    return {
+      boostScore: 0,
+      penaltyScore: 0,
+      relevanceSignals: [],
+      penaltySignals: [],
+      forceDrop: false
+    };
+  }
+
+  const relationshipHits = RELATIONSHIP_EVIDENCE_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const strongRelationshipHits = relationshipHits.filter(
+    (marker) => !["长期", "坚持", "未来", "时间表"].includes(marker)
+  );
+  const careerTradeoffHits = CAREER_TRADEOFF_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const genericWorkHits = GENERIC_WORK_REVIEW_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const hasScenarioEvidence = strongRelationshipHits.length > 0 || careerTradeoffHits.length > 0;
+  const genericWorkOnly = genericWorkHits.length > 0 && !hasScenarioEvidence;
+  const relevanceSignals = [
+    ...(relationshipHits.length ? ["relationship_work_topic_boost"] : []),
+    ...relationshipHits.slice(0, 4),
+    ...careerTradeoffHits.slice(0, 4)
+  ];
+  const penaltySignals = [
+    ...(!hasScenarioEvidence ? ["relationship_work_missing_relationship_or_career_signal"] : []),
+    ...(genericWorkOnly ? ["relationship_work_generic_work_penalty"] : []),
+    ...genericWorkHits.slice(0, 4)
+  ];
+  const boostScore = Math.min(
+    24,
+    strongRelationshipHits.length * 7 +
+      (relationshipHits.length - strongRelationshipHits.length) * 2 +
+      careerTradeoffHits.length * 5
+  );
+  const penaltyScore = (hasScenarioEvidence ? 0 : 22) + (genericWorkOnly ? 18 : 0);
+
+  return {
+    boostScore,
+    penaltyScore,
+    relevanceSignals,
+    penaltySignals,
+    forceDrop: !hasScenarioEvidence
+  };
+}
+
 function buildFilterReason(input: {
   hardFiltered: boolean;
   contentLength: number;
@@ -530,9 +694,18 @@ function buildFilterReason(input: {
   roughTier: DemoRoughTier;
   topicHitScore: number;
   penaltyScore: number;
+  penaltySignals: string[];
 }): string {
   if (input.hardFiltered) {
     return "excluded: missing stable item id and source url";
+  }
+
+  if (input.penaltySignals.includes("relationship_work_missing_relationship_or_career_signal")) {
+    return "downranked: relationship-work query but candidate lacks relationship or career tradeoff signals";
+  }
+
+  if (input.penaltySignals.includes("relationship_work_generic_work_penalty")) {
+    return "downranked: generic work-review content is weak for relationship-work query";
   }
 
   if (input.contentLength < MIN_EVIDENCE_CONTENT_LENGTH) {

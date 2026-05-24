@@ -1,5 +1,50 @@
 # AI Handoff
 
+## 2026-05-24 - real smoke split and relationship-work candidate quality
+
+本轮目标：把 `smoke:demo-real` 拆成稳定的搜索召回 smoke 和单独的 LLM/persona smoke，并优化“长期异地恋 + 工作/追求自己想做的事”场景的候选质量。
+
+已完成：
+
+- 新增 `scripts/smoke-demo-real-search.mjs`，只验证 `/api/demo/search` real 搜索召回：
+  - `debug.search.queriesUsed`
+  - `debug.search.searchRounds`
+  - `debug.search.totalRawResults`
+  - `debug.search.totalDedupedCandidates`
+  - `debug.search.candidates[]`
+  - top 3 candidates 至少 2 条命中异地恋/恋爱/距离/伴侣/城市/分开/团聚等关系信号。
+- `package.json` 脚本拆分：
+  - `npm run smoke:demo-real`：默认搜索召回 smoke。
+  - `npm run smoke:demo-real:search`：同上。
+  - `npm run smoke:demo-real:llm-persona`：保留原 LLM/persona 全链路验收。
+  - `npm run smoke:demo-real:full`：顺序跑 search + llm/persona。
+- `demoCandidateQuality.service.ts` 增加 relationship-work 场景规则：
+  - query/topic/searchQueries 同时命中异地恋/恋爱/伴侣/距离/城市与工作/职业/追求自己/想做的事时启用。
+  - 关系信号、城市距离、职业取舍信号加权。
+  - 只命中复盘/效率/方法/目标/成长/管理/提升/曾国藩/工作复盘，且缺少关系或职业取舍信号的候选会被降权到 drop。
+  - debug 中可见 `relationship_work_topic_boost`、`relationship_work_generic_work_penalty`、`relationship_work_missing_relationship_or_career_signal`。
+- `searchQueryPlan` 的 fallback 在 relationship-work 场景下优先生成短 query，例如：
+  - `长期异地恋 工作选择`
+  - `异地恋 职业发展 后悔吗`
+  - `异地恋 为了工作 分开`
+  - `异地恋 追求梦想 真实经历`
+
+验证记录：
+
+- `npm run build -w backend` 通过。
+- `npm run smoke:demo-real:search` 通过。
+- 测试 query「为了工作能追求自己想做的事，长期异地恋真的值得吗？」返回：
+  - `queriesUsed=6`
+  - `searchRounds=6`
+  - `totalRawResults=18`
+  - `totalDedupedCandidates=15`
+  - `degraded=false`
+  - top 3 candidates 均为异地恋/异地工作/就业机会相关内容。
+
+注意：
+
+- LLM/persona smoke 仍单独依赖 DeepSeek/Kimi 稳定性；如果失败，应看是否落在 LLM timeout 或 persona chat 断言，不再代表搜索召回失败。
+
 ## 2026-05-24 - demo real multi-round Zhihu search candidates
 
 本轮目标：在 `/api/demo/search` real 链路中，把 intent/search query 计划真正执行为多轮知乎搜索，并产出可供 `evidence_extract` / `demo_response_compose` 消费的标准候选内容。
