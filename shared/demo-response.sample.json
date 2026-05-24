@@ -139,6 +139,44 @@
       "articleBody": false,
       "sourceEvidenceRequired": true
     },
+    "clarifyingCard": {
+      "show": true,
+      "title": "补充一点背景，帮你找到更像你的人",
+      "description": "我们不会直接替你判断，只是用这些信息去匹配相似处境下的真实经历。",
+      "questions": [
+        {
+          "id": "currentStatus",
+          "slot": "currentStatus",
+          "label": "你和当前路径的事实关系是哪类？",
+          "question": "你和当前路径的事实关系是哪类？",
+          "type": "single_select",
+          "required": true,
+          "selectedReason": "当前事实状态能匹配相似处境下离开、暂停或转向的人",
+          "queryTokens": ["在职", "离职", "裸辞", "已开始"],
+          "score": 0.86,
+          "options": [
+            {
+              "id": "currentStatus_1",
+              "label": "在职",
+              "queryTokens": ["在职"]
+            },
+            {
+              "id": "currentStatus_2",
+              "label": "已离职 / 裸辞",
+              "queryTokens": ["离职", "裸辞"]
+            }
+          ]
+        }
+      ],
+      "primaryActionText": "用这些信息重新匹配",
+      "skipActionText": "先跳过"
+    },
+    "clarificationStage": {
+      "needClarification": true,
+      "ambiguityLevel": "high",
+      "llmUsed": false,
+      "fallbackReason": "deterministic planner used for non-real data mode"
+    },
     "analysis": {
       "steps": [
         {
@@ -647,6 +685,78 @@
           "primary": ["35岁 大厂 裸辞", "互联网大厂 裸辞 创业", "大厂 裸辞 创业"],
           "secondary": ["35岁 裸辞 创业", "互联网 裸辞 创业"],
           "fallback": ["裸辞 创业 后悔", "大厂裸辞 复盘"]
+        }
+      },
+      "clarificationPlan": {
+        "intentCategory": "similarity_clarification_planner",
+        "knownFacts": [
+          {
+            "slot": "currentStatus",
+            "value": "不工作",
+            "evidence": "不工作了之后",
+            "confidence": 0.9,
+            "queryTokens": ["不工作"]
+          }
+        ],
+        "choiceFrame": {
+          "type": "find_similar_path",
+          "currentPath": null,
+          "targetOptions": ["新西兰"],
+          "avoidPath": null,
+          "action": "evaluate",
+          "queryTokens": ["新西兰"]
+        },
+        "missingSimilarityDimensions": [
+          {
+            "slot": "cityContext",
+            "reason": "城市和迁移事实会显著影响可对照经历",
+            "queryUtility": 0.9,
+            "similarityPower": 0.9
+          }
+        ],
+        "candidateQuestions": [
+          {
+            "slot": "cityContext",
+            "question": "当前和目标城市事实更接近哪类？",
+            "type": "single_choice",
+            "options": ["北京 / 上海", "一线 / 新一线", "县城 / 老家"],
+            "whyUseful": "城市层级和迁移方向会显著影响可对照经历",
+            "queryTokens": ["北京", "上海", "县城", "老家"],
+            "similarityPower": 0.9,
+            "queryUtility": 0.9,
+            "answerability": 0.9,
+            "riskFlags": []
+          }
+        ],
+        "rejectedQuestions": [
+          {
+            "slot": "currentStatus",
+            "question": "你和当前路径的事实关系是哪类？",
+            "reason": "duplicate_known_fact",
+            "queryTokens": ["在职", "离职", "裸辞"]
+          }
+        ],
+        "selectedQuestions": [
+          {
+            "slot": "cityContext",
+            "question": "当前和目标城市事实更接近哪类？",
+            "selectedReason": "城市层级和迁移方向会显著影响可对照经历",
+            "queryTokens": ["北京", "上海", "县城", "老家"],
+            "score": 0.88
+          }
+        ],
+        "scoringDetails": [
+          {
+            "slot": "cityContext",
+            "question": "当前和目标城市事实更接近哪类？",
+            "score": 0.88,
+            "selected": true
+          }
+        ],
+        "queryPlan": {
+          "primary": ["不工作 新西兰"],
+          "secondary": ["北京 上海 新西兰"],
+          "fallback": ["新西兰 复盘"]
         }
       },
       "searchQueries": [

@@ -92,6 +92,9 @@ export const config = {
       baseUrl: firstNonEmpty(process.env.DEEPSEEK_BASE_URL) || DEFAULT_DEEPSEEK_BASE_URL,
       defaultModel: DEFAULT_DEEPSEEK_STAGE_MODEL,
       models: {
+        similarity_clarification_plan:
+          firstNonEmpty(process.env.SIMILARITY_CLARIFICATION_PLAN_MODEL) ||
+          DEFAULT_DEEPSEEK_STAGE_MODEL,
         intent_expand: firstNonEmpty(process.env.INTENT_EXPAND_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
         candidate_rerank:
           firstNonEmpty(process.env.CANDIDATE_RERANK_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,

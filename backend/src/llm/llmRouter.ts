@@ -13,6 +13,7 @@ import {
 } from "./llmTimeout.js";
 
 export type LlmTaskType =
+  | "similarity_clarification_plan"
   | "intent_expand"
   | "candidate_rerank"
   | "evidence_extract"

@@ -78,6 +78,8 @@ export interface DemoClarificationQuestion {
   id: string;
   slot?: string;
   selectedReason?: string;
+  queryTokens?: string[];
+  score?: number;
   label: string;
   question?: string;
   type: DemoClarificationQuestionType;
@@ -88,6 +90,7 @@ export interface DemoClarificationQuestion {
 export interface DemoClarificationOption {
   id: string;
   label: string;
+  queryTokens?: string[];
 }
 
 export interface DemoClarificationStage {
@@ -477,6 +480,11 @@ export interface DemoDebug {
 
 export interface DemoDebugClarificationPlan {
   intentCategory: string;
+  knownFacts?: DemoClarificationKnownFact[];
+  choiceFrame?: DemoClarificationChoiceFrame;
+  missingSimilarityDimensions?: DemoClarificationMissingSimilarityDimension[];
+  candidateQuestions?: DemoClarificationCandidateQuestion[];
+  scoringDetails?: DemoClarificationScoringDetail[];
   knownSlots: Record<string, string | null>;
   missingSimilaritySlots: string[];
   selectedQuestions: DemoDebugSelectedClarificationQuestion[];
@@ -485,15 +493,73 @@ export interface DemoDebugClarificationPlan {
   queryPlan?: DemoObjectiveQueryPlan;
 }
 
+export interface DemoClarificationKnownFact {
+  slot: string;
+  value: string;
+  evidence: string;
+  confidence: number;
+  queryTokens?: string[];
+}
+
+export interface DemoClarificationChoiceFrame {
+  type: string;
+  currentPath: string | null;
+  targetOptions: string[];
+  avoidPath: string | null;
+  action: string;
+  queryTokens?: string[];
+}
+
+export interface DemoClarificationMissingSimilarityDimension {
+  slot: string;
+  reason: string;
+  queryUtility: number;
+  similarityPower: number;
+}
+
+export interface DemoClarificationCandidateQuestion {
+  slot: string;
+  question: string;
+  type: string;
+  options: string[];
+  whyUseful: string;
+  queryTokens: string[];
+  similarityPower: number;
+  queryUtility: number;
+  answerability: number;
+  targetRelevance?: number;
+  riskFlags: string[];
+}
+
+export interface DemoClarificationScoringDetail {
+  slot: string;
+  question: string;
+  score: number;
+  similarityPower: number;
+  queryUtility: number;
+  answerability: number;
+  targetRelevance: number;
+  knownPenalty: number;
+  futurePenalty: number;
+  preferencePenalty: number;
+  selected: boolean;
+}
+
 export interface DemoDebugSelectedClarificationQuestion {
   slot: string;
   question: string;
   selectedReason: string;
+  queryTokens?: string[];
+  score?: number;
+  answer?: string;
 }
 
 export interface DemoDebugRejectedClarificationQuestion {
+  slot?: string;
   question: string;
   reason: string;
+  queryTokens?: string[];
+  riskFlags?: string[];
 }
 
 export interface DemoDebugClarificationContext {
@@ -504,6 +570,7 @@ export interface DemoDebugClarificationContext {
   searchHints: string[];
   applied: boolean;
   searchHintCount: number;
+  queryPlan?: DemoObjectiveQueryPlan;
 }
 
 export interface DemoMatchedQueryDebug {
@@ -595,6 +662,7 @@ export interface DemoDebugTiming {
     | "experience_summary"
     | "grounding_guard"
     | "persona_chat"
+    | "similarity_clarification_plan"
     | "path_enhancer"
     | "people_enhancer"
     | "persona_enhancer";
@@ -628,6 +696,7 @@ export interface DemoDebugLlmStageResult {
     | "experience_summary"
     | "grounding_guard"
     | "persona_chat"
+    | "similarity_clarification_plan"
     | "path_enhancer"
     | "people_enhancer"
     | "persona_enhancer";

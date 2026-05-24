@@ -72,6 +72,29 @@ Content-Type: application/json
 8. 用顶层 `personas[]` 做快捷入口或导航索引，可展示 `personas[].fitReason`。
 9. `sections[]` 只作为弱绑定布局辅助，不替代主数据。
 
+## 澄清卡可选字段
+
+当前澄清卡由相似经历匹配 planner 生成，前端仍优先读取既有字段：
+
+- `clarifyingCard.title`
+- `clarifyingCard.description`
+- `clarifyingCard.questions[].label`
+- `clarifyingCard.questions[].options[]`
+
+新增字段均为可选增强：
+
+- `clarifyingCard.questions[].queryTokens`：该问题可进入搜索 query 的事实词。
+- `clarifyingCard.questions[].selectedReason`：为什么这个事实有助于匹配相似人。
+- `clarifyingCard.questions[].score`：validator/scorer 之后的排序分。
+- `debug.clarificationPlan.knownFacts`
+- `debug.clarificationPlan.choiceFrame`
+- `debug.clarificationPlan.candidateQuestions`
+- `debug.clarificationPlan.rejectedQuestions`
+- `debug.clarificationPlan.selectedQuestions`
+- `debug.clarificationPlan.scoringDetails`
+
+前端不要把 `debug.clarificationPlan` 当用户可见内容；它只用于联调和质量审查。
+
 ## 用户上下文与 fitReason
 
 `contextUsed` 是可选调试友好字段，用来说明本次是否读取了知乎授权用户的轻量上下文：

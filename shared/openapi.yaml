@@ -1243,6 +1243,10 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
         debug:
           $ref: "#/components/schemas/DemoDebug"
+        clarifyingCard:
+          $ref: "#/components/schemas/DemoClarifyingCard"
+        clarificationStage:
+          $ref: "#/components/schemas/DemoClarificationStage"
     DemoContextUsed:
       type: object
       description: >
@@ -1273,6 +1277,101 @@ components:
             type: string
         usedFor:
           type: array
+    DemoClarifyingCard:
+      type: object
+      required:
+        - show
+        - title
+        - description
+        - questions
+        - primaryActionText
+        - skipActionText
+      properties:
+        show:
+          type: boolean
+        title:
+          type: string
+        description:
+          type: string
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoClarificationQuestion"
+        primaryActionText:
+          type: string
+        skipActionText:
+          type: string
+    DemoClarificationQuestion:
+      type: object
+      required:
+        - id
+        - label
+        - type
+        - required
+      properties:
+        id:
+          type: string
+        slot:
+          type: string
+        selectedReason:
+          type: string
+        queryTokens:
+          type: array
+          items:
+            type: string
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        label:
+          type: string
+        question:
+          type: string
+        type:
+          type: string
+          enum:
+            - single_select
+            - multi_select
+            - free_text
+        required:
+          type: boolean
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoClarificationOption"
+    DemoClarificationOption:
+      type: object
+      required:
+        - id
+        - label
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        queryTokens:
+          type: array
+          items:
+            type: string
+    DemoClarificationStage:
+      type: object
+      required:
+        - needClarification
+        - ambiguityLevel
+        - llmUsed
+      properties:
+        needClarification:
+          type: boolean
+        ambiguityLevel:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        llmUsed:
+          type: boolean
+        fallbackReason:
+          type: string
           items:
             type: string
             enum:
@@ -2009,6 +2108,35 @@ components:
           description: Redacted/debug preview of the cache key; includes normalizedQuery.
         intentStage:
           $ref: "#/components/schemas/DemoDebugIntentStage"
+        clarificationPlan:
+          $ref: "#/components/schemas/DemoClarificationPlan"
+        clarificationContext:
+          type: object
+          additionalProperties: true
+          properties:
+            originalQuery:
+              type: string
+            answers:
+              type: object
+              additionalProperties:
+                type: string
+            answerLabels:
+              type: object
+              additionalProperties:
+                type: string
+            answerSummary:
+              type: string
+            searchHints:
+              type: array
+              items:
+                type: string
+            applied:
+              type: boolean
+            searchHintCount:
+              type: integer
+              minimum: 0
+            queryPlan:
+              $ref: "#/components/schemas/DemoObjectiveQueryPlan"
         stubbed:
           type: boolean
         searchQueries:
@@ -2191,6 +2319,196 @@ components:
             fallbackSummary field is not intended for primary frontend display.
           items:
             $ref: "#/components/schemas/DemoExperienceSummaryDebug"
+    DemoClarificationPlan:
+      type: object
+      additionalProperties: true
+      properties:
+        intentCategory:
+          type: string
+          description: Debug label only. Not used as the clarification-card route.
+        knownFacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoClarificationKnownFact"
+        choiceFrame:
+          type: object
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+            currentPath:
+              type: string
+              nullable: true
+            targetOptions:
+              type: array
+              items:
+                type: string
+            avoidPath:
+              type: string
+              nullable: true
+            action:
+              type: string
+            queryTokens:
+              type: array
+              items:
+                type: string
+        missingSimilarityDimensions:
+          type: array
+          items:
+            type: object
+            required:
+              - slot
+              - reason
+              - queryUtility
+              - similarityPower
+            properties:
+              slot:
+                type: string
+              reason:
+                type: string
+              queryUtility:
+                type: number
+              similarityPower:
+                type: number
+        candidateQuestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoClarificationCandidateQuestion"
+        rejectedQuestions:
+          type: array
+          items:
+            type: object
+            required:
+              - question
+              - reason
+            properties:
+              slot:
+                type: string
+              question:
+                type: string
+              reason:
+                type: string
+              queryTokens:
+                type: array
+                items:
+                  type: string
+              riskFlags:
+                type: array
+                items:
+                  type: string
+        selectedQuestions:
+          type: array
+          items:
+            type: object
+            required:
+              - slot
+              - question
+              - selectedReason
+              - queryTokens
+              - score
+            properties:
+              slot:
+                type: string
+              question:
+                type: string
+              selectedReason:
+                type: string
+              queryTokens:
+                type: array
+                items:
+                  type: string
+              score:
+                type: number
+              answer:
+                type: string
+        scoringDetails:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        queryPlan:
+          $ref: "#/components/schemas/DemoObjectiveQueryPlan"
+    DemoClarificationKnownFact:
+      type: object
+      required:
+        - slot
+        - value
+        - evidence
+        - confidence
+      properties:
+        slot:
+          type: string
+        value:
+          type: string
+        evidence:
+          type: string
+        confidence:
+          type: number
+        queryTokens:
+          type: array
+          items:
+            type: string
+    DemoClarificationCandidateQuestion:
+      type: object
+      required:
+        - slot
+        - question
+        - type
+        - options
+        - whyUseful
+        - queryTokens
+        - similarityPower
+        - queryUtility
+        - answerability
+        - riskFlags
+      properties:
+        slot:
+          type: string
+        question:
+          type: string
+        type:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        whyUseful:
+          type: string
+        queryTokens:
+          type: array
+          items:
+            type: string
+        similarityPower:
+          type: number
+        queryUtility:
+          type: number
+        answerability:
+          type: number
+        targetRelevance:
+          type: number
+        riskFlags:
+          type: array
+          items:
+            type: string
+    DemoObjectiveQueryPlan:
+      type: object
+      required:
+        - primary
+        - secondary
+        - fallback
+      properties:
+        primary:
+          type: array
+          items:
+            type: string
+        secondary:
+          type: array
+          items:
+            type: string
+        fallback:
+          type: array
+          items:
+            type: string
     DemoSearchQueryPlan:
       type: object
       required:

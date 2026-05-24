@@ -71,10 +71,12 @@ try {
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
   assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
   assertClarifyingCard(demoSearch.body.data.clarifyingCard, "demo clarifyingCard");
-  assertObjectiveClarifyingCard(demoSearch.body.data.clarifyingCard, "demo objective clarifyingCard");
-  await assertContextualObjectiveClarifyingCards(baseUrl);
-  await assertEvaluationStageClarifyingCards(baseUrl);
-  await assertVerticalSimilarityClarifyingBadcases(baseUrl);
+  assertSimilarityClarifyingCard(
+    demoSearch.body.data.clarifyingCard,
+    demoSearch.body.data.debug,
+    "demo similarity clarifyingCard"
+  );
+  await assertSimilarityClarificationRegressionCases(baseUrl);
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -281,6 +283,17 @@ function assertArray(value: unknown, label: string): void {
   }
 }
 
+function assertNumberInRange(
+  value: unknown,
+  min: number,
+  max: number,
+  label: string
+): void {
+  if (typeof value !== "number" || value < min || value > max) {
+    throw new Error(`${label}: expected number between ${min} and ${max}`);
+  }
+}
+
 function assertNonEmptyString(value: unknown, label: string): void {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${label}: expected non-empty string`);
@@ -355,318 +368,88 @@ function assertClarifyingCard(value: unknown, label: string): void {
   }
 }
 
-function assertObjectiveClarifyingCard(value: unknown, label: string): void {
-  if (!isRecord(value)) {
-    throw new Error(`${label}: expected clarifying card object`);
+function assertSimilarityClarifyingCard(card: unknown, debug: unknown, label: string): void {
+  assertClarifyingCard(card, label);
+  if (!isRecord(card) || !Array.isArray(card.questions)) {
+    throw new Error(`${label}: expected card.questions`);
   }
 
-  const questions = Array.isArray(value.questions) ? value.questions : [];
-  const questionIds = questions
-    .map((question) => (isRecord(question) ? question.id : ""))
-    .filter(Boolean);
-  const searchableQuestionIds = [
-    "role",
-    "currentStatus",
-    "industry",
-    "companyType",
-    "city",
-    "age",
-    "workYears",
-    "skillDirection",
-    "projectAsset",
-    "resourceType",
-    "projectExperience",
-    "contentAsset",
-    "function",
-    "examStage",
-    "professionalBackground",
-    "educationBackground",
-    "targetCity",
-    "localResource",
-    "skill_gap",
-    "content_monetization",
-    "techDirection",
-    "productRelatedExperience",
-    "institutionRoleType",
-    "contentDirection",
-    "contentFoundation",
-    "engineeringAbility",
-    "teacherStage",
-    "counselingFoundation",
-    "counselingRelatedExperience"
-  ];
-  const objectiveQuestionCount = questionIds.filter((id) =>
-    searchableQuestionIds.includes(String(id))
-  ).length;
-  if (objectiveQuestionCount < 3) {
-    throw new Error(`${label}: expected at least 3 searchable objective slot questions`);
-  }
-
-  const labels = questions
-    .map((question) => (isRecord(question) ? String(question.label) : ""))
-    .join("\n");
-  for (const forbidden of ["最担心", "怕不怕后悔", "是不是很迷茫"]) {
-    assertNotIncludes(labels, forbidden, `${label}.labels`);
-  }
+  const labels = readClarifyingCardQuestionLabels(card).join("\n");
   assertNoForbiddenClarificationQuestion(labels, `${label}.labels`);
 
-  for (const [index, question] of questions.entries()) {
+  for (const [index, question] of card.questions.entries()) {
     if (!isRecord(question)) {
-      continue;
+      throw new Error(`${label}.questions[${index}]: expected object`);
     }
+
     assertNonEmptyString(question.slot, `${label}.questions[${index}].slot`);
-  }
-}
-
-async function assertContextualObjectiveClarifyingCards(baseUrl: string): Promise<void> {
-  const shanghaiResponse = await requestJson(`${baseUrl}/api/demo/search`, {
-    method: "POST",
-    body: {
-      query: "在上海工作很多年，想辞职回老家生活可以吗？",
-      count: 3,
-      dataMode: "mock"
-    }
-  });
-  const shopResponse = await requestJson(`${baseUrl}/api/demo/search`, {
-    method: "POST",
-    body: {
-      query: "国企上班太压抑，辞职开咖啡店现实吗？",
-      count: 3,
-      dataMode: "mock"
-    }
-  });
-
-  assertEqual(shanghaiResponse.status, 200, "contextual shanghai clarification status");
-  assertEqual(shopResponse.status, 200, "contextual shop clarification status");
-  const shanghaiCard = shanghaiResponse.body.data.clarifyingCard;
-  const shopCard = shopResponse.body.data.clarifyingCard;
-  assertEqual(
-    shopResponse.body.data.debug.intentStage.objectiveSlots.direction,
-    "开店",
-    "contextual shop objectiveSlots.direction"
-  );
-  assertClarifyingCard(shanghaiCard, "contextual shanghai clarifyingCard");
-  assertClarifyingCard(shopCard, "contextual shop clarifyingCard");
-  assertObjectiveClarifyingCard(shanghaiCard, "contextual shanghai objective clarifyingCard");
-  assertObjectiveClarifyingCard(shopCard, "contextual shop objective clarifyingCard");
-
-  const shanghaiLabels = readClarifyingCardQuestionLabels(shanghaiCard).join("\n");
-  const shopLabels = readClarifyingCardQuestionLabels(shopCard).join("\n");
-  if (shanghaiLabels === shopLabels) {
-    throw new Error("contextual objective clarifying cards should not reuse identical questions");
+    assertNonEmptyString(question.selectedReason, `${label}.questions[${index}].selectedReason`);
+    assertNonEmptyArray(question.queryTokens, `${label}.questions[${index}].queryTokens`);
+    assertNumberInRange(question.score, 0, 1, `${label}.questions[${index}].score`);
   }
 
-  assertIncludes(shanghaiLabels, "目标城市", "contextual shanghai labels");
-  assertIncludes(shopLabels, "经营或线下项目经验", "contextual shop labels");
-  assertNoForbiddenClarificationQuestion(shanghaiLabels, "contextual shanghai labels");
-  assertNoForbiddenClarificationQuestion(shopLabels, "contextual shop labels");
+  assertClarificationPlanDebug(debug, label);
 }
 
-async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<void> {
+async function assertSimilarityClarificationRegressionCases(baseUrl: string): Promise<void> {
   const cases = [
-    {
-      query: "广州设计师裸辞后接私单，能养活自己吗？",
-      direction: "接私单",
-      expectedLabels: [
-        "你主要是哪类设计师？",
-        "你大概有几年设计经验？",
-        "你目前积累最多的是哪类资源？"
-      ]
-    },
-    {
-      query: "金融公司中后台想辞职考公，值不值得？",
-      direction: "考公",
-      expectedLabels: [
-        "你之前主要做哪类中后台岗位？",
-        "你目前考公准备到哪一步？",
-        "你的背景更接近哪类？"
-      ]
-    },
-    {
-      query: "35岁从互联网大厂裸辞，要不要创业？",
-      direction: "创业",
-      expectedLabels: [
-        "你之前主要做什么岗位？",
-        "你过去主要做过哪类项目？",
-        "你现在手里更接近哪类资源？"
-      ]
-    },
-    {
-      query: "产品经理被裁后，要不要转自由职业？",
-      direction: "自由职业",
-      expectedLabels: [
-        "你大概有几年相关经验？",
-        "你过去主要做过哪类项目？",
-        "你现在手里更接近哪类资源？"
-      ]
-    },
-    {
-      query: "北京工作十年，想回老家开店现实吗？",
-      direction: "回老家 开店",
-      expectedLabels: [
-        "你之前主要做什么岗位？",
-        "你过去是否有经营或线下项目经验？",
-        "你过去主要做过哪类项目？"
-      ]
-    },
-    {
-      query: "施工单位正式工辞职后，不知道能做什么？",
-      direction: "出路",
-      expectedLabels: [
-        "你在施工单位主要做哪类工作？",
-        "你大概有几年施工或工程相关经验？",
-        "你目前积累最多的是哪类工程能力？"
-      ]
-    },
-    {
-      query: "外企市场岗工作八年，想辞职去读研现实吗？",
-      direction: "读研",
-      expectedLabels: [
-        "你的学历或专业背景更接近哪类？",
-        "读研目前准备到哪一步？",
-        "你的专业背景更接近哪类？"
-      ]
-    },
-    {
-      query: "县城老师想离职去一线城市找工作，靠谱吗？",
-      direction: "一线城市工作",
-      expectedLabels: [
-        "你大概有几年相关经验？",
-        "目标城市目前更明确的是哪类？",
-        "目标城市目前已有哪类资源？"
-      ]
-    }
+    "北大毕业，进银行还是去互联网大厂？",
+    "985硕士毕业，去国企还是去外企？",
+    "计算机应届生，去大厂还是去创业公司？",
+    "三本毕业，想进互联网产品岗现实吗？",
+    "机械专业毕业，不想进工厂还能做什么？",
+    "28岁程序员不想继续写代码，转产品经理靠谱吗？",
+    "体制内工作五年，想辞职做自媒体，会不会太冒险？",
+    "施工单位正式工想离职，不知道还能做什么？",
+    "30岁女教师想转行心理咨询，还有机会吗？",
+    "北京工作十年，想回老家开店现实吗？",
+    "异地恋三年，要不要去对方城市？",
+    "35岁有一个孩子，要不要生二胎？",
+    "县城公务员想去省会发展，值得吗？",
+    "租房五年，要不要在杭州买房？",
+    "自媒体做了一年没起色，要不要回去上班？"
   ];
 
-  const seenLabelSets = new Set<string>();
-  for (const testCase of cases) {
+  for (const query of cases) {
     const response = await requestJson(`${baseUrl}/api/demo/search`, {
       method: "POST",
       body: {
-        query: testCase.query,
+        query,
         count: 3,
         dataMode: "mock"
       }
     });
 
-    assertEqual(response.status, 200, `${testCase.query}: clarification status`);
-    assertEqual(
-      response.body.data.debug.intentStage.objectiveSlots.direction,
-      testCase.direction,
-      `${testCase.query}: objectiveSlots.direction`
-    );
+    assertEqual(response.status, 200, `${query}: clarification status`);
+    assertEqual(response.body.success, true, `${query}: clarification success`);
     const card = response.body.data.clarifyingCard;
-    assertClarifyingCard(card, `${testCase.query}: clarifyingCard`);
-    assertObjectiveClarifyingCard(card, `${testCase.query}: objective clarifyingCard`);
-    const labels = readClarifyingCardQuestionLabels(card).join("\n");
-    for (const expectedLabel of testCase.expectedLabels) {
-      assertIncludes(labels, expectedLabel, `${testCase.query}: labels`);
-    }
-    assertNoForbiddenClarificationQuestion(labels, `${testCase.query}: labels`);
-    assertClarificationPlanDebug(response.body.data.debug, testCase.query);
-    if (seenLabelSets.has(labels)) {
-      throw new Error(`${testCase.query}: evaluation clarifying card reused an existing label set`);
-    }
-    seenLabelSets.add(labels);
-  }
-}
+    assertSimilarityClarifyingCard(card, response.body.data.debug, `${query}: similarity clarification`);
+    assertClarificationDoesNotRepeatKnownFacts(response.body.data.debug, query);
 
-async function assertVerticalSimilarityClarifyingBadcases(baseUrl: string): Promise<void> {
-  const cases = [
-    {
-      query: "28岁程序员不想继续写代码，转产品经理靠谱吗？",
-      direction: "产品经理",
-      intentCategory: "tech_to_product",
-      expectedLabels: [
-        "你之前主要做哪类技术方向？",
-        "你大概有几年开发或技术经验？",
-        "你过去更接近哪类产品相关经历？"
-      ],
-      expectedPrimary: ["28岁 程序员 产品经理", "程序员 转产品经理", "技术 转产品经理"],
-      forbiddenOptions: []
-    },
-    {
-      query: "体制内工作五年，想辞职做自媒体，会不会太冒险？",
-      direction: "自媒体",
-      intentCategory: "institution_to_content_creator",
-      expectedLabels: [
-        "你在体制内主要做哪类工作？",
-        "你想做哪类内容方向？",
-        "你目前已有哪类内容基础？"
-      ],
-      expectedPrimary: ["体制内 五年 自媒体", "体制内 辞职 自媒体", "体制内 内容创业"],
-      forbiddenOptions: []
-    },
-    {
-      query: "施工单位正式工想离职，不知道还能做什么？",
-      direction: "出路",
-      intentCategory: "construction_career_exit",
-      expectedLabels: [
-        "你在施工单位主要做哪类工作？",
-        "你大概有几年施工或工程相关经验？",
-        "你目前积累最多的是哪类工程能力？"
-      ],
-      expectedPrimary: ["施工单位 正式工 辞职", "施工单位 离职 出路", "工程行业 转行"],
-      forbiddenOptions: ["产品 / 策划", "内容 / 表达", "运营 / 管理"]
-    },
-    {
-      query: "30岁女教师想转行心理咨询，还有机会吗？",
-      direction: "心理咨询",
-      intentCategory: "teacher_to_counseling",
-      expectedLabels: [
-        "你之前主要是哪类教师？",
-        "你是否有心理学或咨询相关基础？",
-        "你过去更接近哪类相关经验？"
-      ],
-      expectedPrimary: ["30岁 女教师 心理咨询", "教师 转心理咨询", "教育背景 心理咨询"],
-      forbiddenOptions: []
-    }
-  ];
-
-  for (const testCase of cases) {
-    const response = await requestJson(`${baseUrl}/api/demo/search`, {
+    const answers = buildFirstOptionAnswers(card);
+    const clarifiedResponse = await requestJson(`${baseUrl}/api/demo/search`, {
       method: "POST",
       body: {
-        query: testCase.query,
+        query,
         count: 3,
-        dataMode: "mock"
+        dataMode: "mock",
+        clarificationAnswers: answers
       }
     });
 
-    assertEqual(response.status, 200, `${testCase.query}: vertical clarification status`);
+    assertEqual(clarifiedResponse.status, 200, `${query}: clarified status`);
+    assertEqual(clarifiedResponse.body.success, true, `${query}: clarified success`);
     assertEqual(
-      response.body.data.debug.intentStage.objectiveSlots.direction,
-      testCase.direction,
-      `${testCase.query}: objectiveSlots.direction`
+      clarifiedResponse.body.data.clarificationStage.needClarification,
+      false,
+      `${query}: clarified needClarification`
     );
-    const card = response.body.data.clarifyingCard;
-    assertClarifyingCard(card, `${testCase.query}: vertical clarifyingCard`);
-    assertObjectiveClarifyingCard(card, `${testCase.query}: vertical objective clarifyingCard`);
-    const labels = readClarifyingCardQuestionLabels(card).join("\n");
-    for (const expectedLabel of testCase.expectedLabels) {
-      assertIncludes(labels, expectedLabel, `${testCase.query}: vertical labels`);
-    }
-    assertNoForbiddenClarificationQuestion(labels, `${testCase.query}: vertical labels`);
-
-    const optionLabels = readClarifyingCardOptionLabels(card).join("\n");
-    for (const forbiddenOption of testCase.forbiddenOptions) {
-      assertNotIncludes(optionLabels, forbiddenOption, `${testCase.query}: vertical options`);
-    }
-
-    const plan = response.body.data.debug.clarificationPlan;
-    assertEqual(
-      plan.intentCategory,
-      testCase.intentCategory,
-      `${testCase.query}: clarificationPlan.intentCategory`
+    assertClarificationPlanDebug(clarifiedResponse.body.data.debug, `${query}: clarified debug`);
+    assertClarifiedQueryPlanUsesAnswers(
+      clarifiedResponse.body.data.debug,
+      readSelectedAnswerLabels(card, answers),
+      query
     );
-    assertClarificationPlanDebug(response.body.data.debug, testCase.query);
-    for (const expectedQuery of testCase.expectedPrimary) {
-      if (!plan.queryPlan.primary.includes(expectedQuery)) {
-        throw new Error(
-          `${testCase.query}: clarification queryPlan.primary missing ${expectedQuery}; got ${plan.queryPlan.primary.join(" | ")}`
-        );
-      }
-    }
   }
 }
 
@@ -711,11 +494,31 @@ function assertClarificationPlanDebug(value: unknown, label: string): void {
 
   const plan = value.clarificationPlan;
   assertNonEmptyString(plan.intentCategory, `${label}: clarificationPlan.intentCategory`);
+  assertNonEmptyArray(plan.knownFacts, `${label}: clarificationPlan.knownFacts`);
+  if (!isRecord(plan.choiceFrame)) {
+    throw new Error(`${label}: expected clarificationPlan.choiceFrame`);
+  }
+  assertNonEmptyArray(
+    plan.missingSimilarityDimensions,
+    `${label}: clarificationPlan.missingSimilarityDimensions`
+  );
+  assertMinArrayLength(
+    plan.candidateQuestions,
+    6,
+    `${label}: clarificationPlan.candidateQuestions`
+  );
+  assertNonEmptyArray(plan.scoringDetails, `${label}: clarificationPlan.scoringDetails`);
   if (!isRecord(plan.knownSlots)) {
     throw new Error(`${label}: expected clarificationPlan.knownSlots`);
   }
   assertNonEmptyArray(plan.missingSimilaritySlots, `${label}: clarificationPlan.missingSimilaritySlots`);
   assertNonEmptyArray(plan.selectedQuestions, `${label}: clarificationPlan.selectedQuestions`);
+  const selectedWithQueryUtility = (plan.selectedQuestions as unknown[]).filter((question) =>
+    isRecord(question) && Array.isArray(question.queryTokens) && question.queryTokens.length > 0
+  );
+  if (selectedWithQueryUtility.length < 2) {
+    throw new Error(`${label}: expected at least 2 selected questions with queryTokens`);
+  }
   for (const [index, question] of (plan.selectedQuestions as unknown[]).entries()) {
     if (!isRecord(question)) {
       throw new Error(`${label}: clarificationPlan.selectedQuestions[${index}] expected object`);
@@ -723,13 +526,102 @@ function assertClarificationPlanDebug(value: unknown, label: string): void {
     assertNonEmptyString(question.slot, `${label}: selectedQuestions[${index}].slot`);
     assertNonEmptyString(question.question, `${label}: selectedQuestions[${index}].question`);
     assertNonEmptyString(question.selectedReason, `${label}: selectedQuestions[${index}].selectedReason`);
+    assertNonEmptyArray(question.queryTokens, `${label}: selectedQuestions[${index}].queryTokens`);
+    assertNumberInRange(question.score, 0, 1, `${label}: selectedQuestions[${index}].score`);
   }
-  assertNonEmptyArray(plan.rejectedQuestions, `${label}: clarificationPlan.rejectedQuestions`);
+  assertArray(plan.rejectedQuestions, `${label}: clarificationPlan.rejectedQuestions`);
+  for (const [index, rejected] of (plan.rejectedQuestions as unknown[]).entries()) {
+    if (!isRecord(rejected)) {
+      throw new Error(`${label}: clarificationPlan.rejectedQuestions[${index}] expected object`);
+    }
+    assertNonEmptyString(rejected.question, `${label}: rejectedQuestions[${index}].question`);
+    assertNonEmptyString(rejected.reason, `${label}: rejectedQuestions[${index}].reason`);
+  }
   if (!isRecord(plan.queryPlan)) {
     throw new Error(`${label}: expected clarificationPlan.queryPlan`);
   }
   assertNonEmptyArray(plan.queryPlan.primary, `${label}: clarificationPlan.queryPlan.primary`);
   assertPrimaryQueryQuality(plan.queryPlan.primary as string[], `${label}: clarificationPlan.queryPlan.primary`);
+}
+
+function assertClarificationDoesNotRepeatKnownFacts(debug: unknown, label: string): void {
+  if (!isRecord(debug) || !isRecord(debug.clarificationPlan)) {
+    throw new Error(`${label}: expected clarificationPlan`);
+  }
+
+  const plan = debug.clarificationPlan;
+  const knownSlots = new Set(
+    Array.isArray(plan.knownFacts)
+      ? plan.knownFacts.flatMap((fact) => isRecord(fact) ? [String(fact.slot)] : [])
+      : []
+  );
+  for (const question of Array.isArray(plan.selectedQuestions) ? plan.selectedQuestions : []) {
+    if (!isRecord(question)) {
+      continue;
+    }
+
+    const slot = String(question.slot);
+    if (knownSlots.has(slot)) {
+      throw new Error(`${label}: selected question repeats known fact slot ${slot}`);
+    }
+  }
+}
+
+function buildFirstOptionAnswers(card: unknown): Record<string, string> {
+  if (!isRecord(card) || !Array.isArray(card.questions)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    card.questions.flatMap((question) => {
+      if (!isRecord(question) || !Array.isArray(question.options) || !isRecord(question.options[0])) {
+        return [];
+      }
+
+      return [[String(question.id), String(question.options[0].id)]];
+    })
+  );
+}
+
+function readSelectedAnswerLabels(
+  card: unknown,
+  answers: Record<string, string>
+): string[] {
+  if (!isRecord(card) || !Array.isArray(card.questions)) {
+    return [];
+  }
+
+  return card.questions.flatMap((question) => {
+    if (!isRecord(question) || !Array.isArray(question.options)) {
+      return [];
+    }
+
+    const selectedId = answers[String(question.id)];
+    const option = question.options.find((item) => isRecord(item) && item.id === selectedId);
+    return isRecord(option) ? [String(option.label)] : [];
+  });
+}
+
+function assertClarifiedQueryPlanUsesAnswers(
+  debug: unknown,
+  answerLabels: string[],
+  label: string
+): void {
+  if (!isRecord(debug) || !isRecord(debug.clarificationPlan) || !isRecord(debug.clarificationPlan.queryPlan)) {
+    throw new Error(`${label}: expected clarified clarificationPlan.queryPlan`);
+  }
+
+  const primary = debug.clarificationPlan.queryPlan.primary;
+  assertNonEmptyArray(primary, `${label}: clarified queryPlan.primary`);
+  const primaryText = Array.isArray(primary) ? primary.join(" ") : "";
+  const answerTokens = answerLabels.flatMap((answerLabel) =>
+    answerLabel.split(/[\s/／、,，]+/).filter((token) => token.length >= 2)
+  );
+  if (!answerTokens.some((token) => primaryText.includes(token))) {
+    throw new Error(
+      `${label}: expected queryPlan.primary to include clarification answer tokens; got ${primaryText}`
+    );
+  }
 }
 
 function readClarifyingCardQuestionLabels(value: unknown): string[] {
@@ -1158,13 +1050,13 @@ function assertPrimaryQueryQuality(queries: string[], label: string): void {
 }
 
 function hasObjectiveIdentityWord(query: string): boolean {
-  return /[2-6]\d岁|互联网|教育|教师|老师|心理咨询|医疗|金融|中后台|施工单位|工程行业|工程|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工|裸辞|辞职|离职|被裁|待业|失业|不工作|在职|工作十年|创业|自由职业|转行|转产品|回老家|开店|自媒体|内容创业|考公|读研|出路/.test(
+  return /[2-6]\d岁|北大|清华|985|211|三本|双非|专科|本科|硕士|博士|应届|毕业|计算机|软件|数据|机械|工厂|制造|互联网|教育|教师|老师|心理咨询|心理|医疗|金融|经管|法律|财会|中后台|施工单位|工程行业|工程|建筑|体制内|大厂|国企|外企|创业公司|银行|产品岗|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|省会|一线城市|二线城市|正式工|裸辞|辞职|离职|被裁|待业|失业|不工作|在职|工作五年|工作十年|异地恋|对方城市|孩子|二胎|租房|买房|创业|自由职业|转行|转产品|回老家|开店|自媒体|内容创业|考公|读研|出路/.test(
     query
   );
 }
 
 function hasBackgroundIdentityWord(query: string): boolean {
-  return /[2-6]\d岁|互联网|教育|教师|老师|医疗|金融|中后台|施工单位|工程行业|工程|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工/.test(
+  return /[2-6]\d岁|北大|清华|985|211|三本|双非|本科|硕士|应届|计算机|机械|互联网|教育|教师|老师|医疗|金融|经管|施工单位|工程行业|工程|建筑|体制内|大厂|国企|外企|创业公司|银行|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|省会|一线城市|二线城市|正式工|异地恋|孩子|租房/.test(
     query
   );
 }

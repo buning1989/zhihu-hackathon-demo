@@ -16,6 +16,11 @@ import {
   buildObjectiveSearchContext
 } from "../llm/searchQueryPlan.js";
 import {
+  createDeterministicSimilarityClarificationPlan,
+  readClarificationAnswerLabels,
+  similarityClarificationPlanner
+} from "../llm/similarityClarificationPlanner.js";
+import {
   type DemoClarificationAnswers,
   type DemoClarificationQuestion,
   type DemoClarifyingCard,
@@ -62,11 +67,6 @@ interface DemoSearchCacheEntry {
   response: DemoSearchResponse;
 }
 
-interface ClarificationLabelLookup {
-  questionLabels: Map<string, string>;
-  optionLabels: Map<string, Map<string, string>>;
-}
-
 const demoSearchResponseCache = new Map<string, DemoSearchCacheEntry>();
 
 export class DemoSearchService {
@@ -109,7 +109,7 @@ export class DemoSearchService {
         return cacheDemoResponse(
           writeCachedDemoResponse(
             cacheKey,
-            applyDemoClarificationState(
+            await applyDemoClarificationState(
               finalizeDemoMeta(response, startedAt),
               request,
               clarificationContext
@@ -188,7 +188,7 @@ export class DemoSearchService {
         return cacheDemoResponse(
           writeCachedDemoResponse(
             cacheKey,
-            applyDemoClarificationState(response, request, clarificationContext),
+            await applyDemoClarificationState(response, request, clarificationContext),
             false
           )
         );
@@ -209,7 +209,7 @@ export class DemoSearchService {
     return cacheDemoResponse(
       writeCachedDemoResponse(
         cacheKey,
-        applyDemoClarificationState(response, request, clarificationContext),
+        await applyDemoClarificationState(response, request, clarificationContext),
         false
       )
     );
@@ -218,14 +218,18 @@ export class DemoSearchService {
 
 export const demoSearchService = new DemoSearchService();
 
-function applyDemoClarificationState(
+async function applyDemoClarificationState(
   response: DemoSearchResponse,
   request: DemoSearchRequest,
   clarificationContext: DemoDebugClarificationContext | null = null
-): DemoSearchResponse {
+): Promise<DemoSearchResponse> {
   if (request.clarificationAnswers) {
     const context =
       clarificationContext ?? buildClarificationContext(request.query, request.clarificationAnswers);
+    const answeredPlan = createDeterministicSimilarityClarificationPlan(
+      request.query,
+      context.answerLabels
+    );
     response.clarifyingCard = buildHiddenClarifyingCard();
     response.clarificationStage = {
       needClarification: false,
@@ -233,6 +237,7 @@ function applyDemoClarificationState(
       llmUsed: false
     };
     response.debug.clarificationContext = context;
+    response.debug.clarificationPlan = answeredPlan.debug;
     response.debug.notes = unique([
       ...response.debug.notes,
       "clarificationAnswers consumed by intent/search/path planning; full demo result response returned"
@@ -240,20 +245,23 @@ function applyDemoClarificationState(
     return response;
   }
 
-  const clarification = buildRuleClarifyingCard(request.query);
+  const clarification = await similarityClarificationPlanner.create({
+    query: request.query,
+    useLlm: request.dataMode === "real"
+  });
   response.clarifyingCard = clarification.card;
-  if (clarification.debug) {
-    response.debug.clarificationPlan = clarification.debug;
-  }
+  response.debug.clarificationPlan = clarification.debug;
   response.clarificationStage = {
     needClarification: clarification.card.show,
     ambiguityLevel: clarification.ambiguityLevel,
-    llmUsed: false,
-    fallbackReason: "rule clarification planner used"
+    llmUsed: clarification.llmUsed,
+    ...(clarification.fallbackReason ? { fallbackReason: clarification.fallbackReason } : {})
   };
   response.debug.notes = unique([
     ...response.debug.notes,
-    "rule clarification card attached to demo search response"
+    clarification.llmUsed
+      ? "LLM similarity clarification planner attached to demo search response"
+      : "deterministic similarity clarification planner attached to demo search response"
   ]);
   return response;
 }
@@ -262,27 +270,21 @@ function buildClarificationContext(
   query: string,
   answers: DemoClarificationAnswers
 ): DemoDebugClarificationContext {
-  const labelLookup = buildClarificationLabelLookup(query);
-  const answerLabels = Object.fromEntries(
-    Object.entries(answers).map(([key, value]) => [
-      key,
-      readClarificationOptionLabel(labelLookup, key, value)
-    ])
+  const basePlan = createDeterministicSimilarityClarificationPlan(query);
+  const answerLabels = readClarificationAnswerLabels(basePlan.card, answers);
+  const answeredPlan = createDeterministicSimilarityClarificationPlan(query, answerLabels);
+  const questionLabels = new Map(
+    basePlan.card.questions.map((question) => [question.id, question.label])
   );
   const answerParts = Object.entries(answerLabels).map(
-    ([key, value]) => `${readClarificationQuestionLabel(labelLookup, key)}: ${value}`
+    ([key, value]) => `${questionLabels.get(key) ?? key}: ${value}`
   );
   const compactAnswerText = Object.values(answerLabels).join(" ");
-  const role = answerLabels.role;
-  const status = answerLabels.status;
-  const direction = answerLabels.direction;
-  const constraint = answerLabels.constraint;
+  const queryPlan = answeredPlan.debug.queryPlan;
   const searchHints = unique(
     [
-      [query, role, status, direction].filter(Boolean).join(" "),
-      [role, status, direction].filter(Boolean).join(" "),
-      [query, status, direction, constraint].filter(Boolean).join(" "),
-      [status, direction, "复盘"].filter(Boolean).join(" "),
+      ...(queryPlan?.primary ?? []),
+      ...(queryPlan?.secondary ?? []),
       `${query} ${compactAnswerText}`,
       ...Object.values(answerLabels).flatMap((label) => [
         `${query} ${label}`,
@@ -299,36 +301,9 @@ function buildClarificationContext(
     answerSummary: answerParts.join("；"),
     searchHints,
     applied: true,
-    searchHintCount: searchHints.length
+    searchHintCount: searchHints.length,
+    queryPlan
   };
-}
-
-function buildClarificationLabelLookup(query: string): ClarificationLabelLookup {
-  const card = buildRuleClarifyingCard(query).card;
-  return {
-    questionLabels: new Map(card.questions.map((question) => [question.id, question.label])),
-    optionLabels: new Map(
-      card.questions.map((question) => [
-        question.id,
-        new Map((question.options ?? []).map((option) => [option.id, option.label]))
-      ])
-    )
-  };
-}
-
-function readClarificationQuestionLabel(
-  labelLookup: ClarificationLabelLookup,
-  questionId: string
-): string {
-  return labelLookup.questionLabels.get(questionId) ?? questionId;
-}
-
-function readClarificationOptionLabel(
-  labelLookup: ClarificationLabelLookup,
-  questionId: string,
-  optionId: string
-): string {
-  return labelLookup.optionLabels.get(questionId)?.get(optionId) ?? optionId;
 }
 
 function buildRuleClarifyingCard(query: string): {
@@ -336,6 +311,15 @@ function buildRuleClarifyingCard(query: string): {
   ambiguityLevel: "medium" | "high";
   debug?: DemoDebugClarificationPlan;
 } {
+  const clarification = createDeterministicSimilarityClarificationPlan(query);
+  return {
+    card: clarification.card,
+    ambiguityLevel: clarification.ambiguityLevel,
+    debug: clarification.debug
+  };
+
+  // Legacy template code below is unreachable and kept only until the old helper
+  // block is fully removed from this large service file.
   const normalized = query.replace(/\s+/g, "").toLowerCase();
 
   if (/异地恋|远距离|伴侣|恋爱/.test(normalized)) {
