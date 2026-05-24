@@ -46,7 +46,7 @@ export function validateClarificationQuestions(
   candidates: DemoClarificationCandidateQuestion[],
   knownFacts: DemoClarificationKnownFact[]
 ): ClarificationValidationResult {
-  const knownSlots = new Set(knownFacts.map((fact) => normalizeSlot(fact.slot)));
+  const knownSlots = buildKnownSlotSet(knownFacts);
   const accepted: DemoClarificationCandidateQuestion[] = [];
   const rejected: DemoDebugRejectedClarificationQuestion[] = [];
   const seenSlots = new Set<string>();
@@ -62,7 +62,9 @@ export function validateClarificationQuestions(
       ...candidate,
       queryTokens: unique(candidate.queryTokens.map(normalizeToken))
     });
-    seenSlots.add(normalizeSlot(candidate.slot));
+    for (const slot of expandSlotAliases(candidate.slot)) {
+      seenSlots.add(slot);
+    }
   }
 
   return {
@@ -76,7 +78,7 @@ export function scoreClarificationQuestions(
   knownFacts: DemoClarificationKnownFact[],
   limit = 3
 ): ClarificationScoringResult {
-  const knownSlots = new Set(knownFacts.map((fact) => normalizeSlot(fact.slot)));
+  const knownSlots = buildKnownSlotSet(knownFacts);
   const scored = candidates.map((candidate) => {
     const penalties = scorePenalties(candidate, knownSlots);
     const targetRelevance = clampScore(candidate.targetRelevance ?? 0.65);
@@ -143,7 +145,7 @@ function readRejectionReason(
   knownSlots: Set<string>,
   seenSlots: Set<string>
 ): string | null {
-  const slot = normalizeSlot(candidate.slot);
+  const slotAliases = expandSlotAliases(candidate.slot);
   const text = [
     candidate.question,
     candidate.whyUseful,
@@ -155,7 +157,10 @@ function readRejectionReason(
     return "no_query_utility";
   }
 
-  if (knownSlots.has(slot) || seenSlots.has(slot)) {
+  if (
+    slotAliases.some((slot) => knownSlots.has(slot)) ||
+    slotAliases.some((slot) => seenSlots.has(slot))
+  ) {
     return "duplicate_known_fact";
   }
 
@@ -185,9 +190,9 @@ function scorePenalties(
   futurePenalty: number;
   preferencePenalty: number;
 } {
-  const slot = normalizeSlot(candidate.slot);
+  const slotAliases = expandSlotAliases(candidate.slot);
   const text = [candidate.question, candidate.whyUseful, ...candidate.options].join(" ");
-  const knownPenalty = knownSlots.has(slot) ? 0.5 : 0;
+  const knownPenalty = slotAliases.some((slot) => knownSlots.has(slot)) ? 0.5 : 0;
   const futurePenalty = /预计|预期|未来|能接受多久|承受多久|打算多久/.test(text) ? 0.4 : 0;
   const preferencePenalty = /更想看|更看重|更在意|最吸引|想看.*案例/.test(text) ? 0.4 : 0;
 
@@ -213,6 +218,55 @@ function toRejectedQuestion(
 
 function normalizeSlot(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function buildKnownSlotSet(knownFacts: DemoClarificationKnownFact[]): Set<string> {
+  const knownSlots = new Set<string>();
+  for (const fact of knownFacts) {
+    for (const slot of expandSlotAliases(fact.slot, fact.value)) {
+      knownSlots.add(slot);
+    }
+  }
+
+  return knownSlots;
+}
+
+function expandSlotAliases(slot: string, value = ""): string[] {
+  const normalizedSlot = normalizeSlot(slot);
+  const normalizedValue = value.trim().toLowerCase();
+  const aliases = new Set([normalizedSlot]);
+
+  if (
+    /education|degree|学历|教育/.test(normalizedSlot) ||
+    /研究生|硕士|博士|本科|专科|应届|毕业|在读/.test(normalizedValue)
+  ) {
+    aliases.add("educationstage");
+    aliases.add("degreestage");
+    aliases.add("educationlevel");
+    aliases.add("graduationstatus");
+  }
+
+  if (/major|专业/.test(normalizedSlot)) {
+    aliases.add("major");
+    aliases.add("majorbackground");
+  }
+
+  if (/role|岗位|function/.test(normalizedSlot)) {
+    aliases.add("role");
+    aliases.add("currentrole");
+    aliases.add("targetfunction");
+  }
+
+  if (/industry|行业/.test(normalizedSlot)) {
+    aliases.add("industry");
+  }
+
+  if (/schooltier|schoolbackground|学校/.test(normalizedSlot)) {
+    aliases.add("schooltier");
+    aliases.add("schoolbackground");
+  }
+
+  return [...aliases];
 }
 
 function normalizeToken(value: string): string {

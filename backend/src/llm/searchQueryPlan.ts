@@ -210,7 +210,9 @@ function relationshipWorkFallbackPlans(): DemoSearchQueryPlan[] {
   ];
 }
 
-function objectiveQueryPlanToSearchPlans(queryPlan: DemoObjectiveQueryPlan): DemoSearchQueryPlan[] {
+export function objectiveQueryPlanToSearchPlans(
+  queryPlan: DemoObjectiveQueryPlan
+): DemoSearchQueryPlan[] {
   const plans: DemoSearchQueryPlan[] = [];
 
   queryPlan.primary.forEach((query, index) => {

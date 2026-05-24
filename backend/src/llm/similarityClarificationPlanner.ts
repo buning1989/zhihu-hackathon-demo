@@ -50,6 +50,7 @@ const KEYWORD_DICTIONARY = [
   "三本",
   "双非",
   "专科",
+  "研究生",
   "本科",
   "硕士",
   "博士",
@@ -72,6 +73,10 @@ const KEYWORD_DICTIONARY = [
   "银行",
   "互联网大厂",
   "互联网",
+  "新能源汽车",
+  "新能源",
+  "主机厂",
+  "供应商",
   "大厂",
   "国企",
   "外企",
@@ -194,12 +199,15 @@ export function buildSimilarityQueryPlan(input: {
   const fallback: string[] = [];
   const pathCore = pathTokens.length > 0 ? pathTokens : originalTokens.slice(0, 2);
   const identityCore = preferTokens([...knownTokens, ...answerTokens], [
+    "新能源汽车",
+    "新能源",
+    "研究生",
+    "硕士",
     "北大",
     "清华",
     "985",
     "211",
     "三本",
-    "硕士",
     "本科",
     "应届",
     "计算机",
@@ -420,14 +428,14 @@ function extractKnownFacts(query: string): DemoClarificationKnownFact[] {
   };
 
   add("schoolTier", firstIncluded(query, ["北大", "清华", "985", "211", "三本", "双非", "专科"]), query);
-  add("degreeStage", firstIncluded(query, ["博士", "硕士", "本科"]), query);
+  add("degreeStage", firstIncluded(query, ["博士", "研究生", "硕士", "本科"]), query);
   add("graduationStatus", firstIncluded(query, ["应届生", "应届", "毕业", "在读"]), query);
   add("major", firstIncluded(query, ["计算机", "软件", "数据", "机械", "金融", "经管", "法律", "财会", "教育", "心理"]), query);
   add("age", extractAge(query), query);
   add("gender", query.includes("女") ? "女" : query.includes("男") ? "男" : null, query);
   add("city", firstIncluded(query, ["北京", "上海", "深圳", "广州", "杭州", "老家", "县城", "省会", "对方城市"]), query);
-  add("industry", firstIncluded(query, ["互联网", "金融", "教育", "施工单位", "建筑", "制造业", "自媒体"]), query);
-  add("companyType", firstIncluded(query, ["互联网大厂", "大厂", "国企", "外企", "创业公司", "体制内", "公务员", "正式工"]), query);
+  add("industry", firstIncluded(query, ["新能源汽车", "新能源", "互联网", "金融", "教育", "施工单位", "建筑", "制造业", "自媒体"]), query);
+  add("companyType", firstIncluded(query, ["互联网大厂", "主机厂", "供应商", "大厂", "国企", "外企", "创业公司", "体制内", "公务员", "正式工"]), query);
   add("currentRole", extractRole(query), query);
   add("workYears", extractDuration(query), query);
   add("currentStatus", firstIncluded(query, ["应届生", "应届", "在职", "离职", "辞职", "裸辞", "转行", "已开始", "待业", "不工作"]), query);
@@ -469,6 +477,8 @@ function extractTargetOptions(query: string): string[] {
     "大厂",
     "创业公司",
     "互联网产品岗",
+    "主机厂",
+    "供应商",
     "产品经理",
     "心理咨询",
     "自媒体",
@@ -951,7 +961,7 @@ function isGenericPrimaryQuery(query: string): boolean {
 
 function sanitizePathOption(value: string): string {
   return sanitizeShortText(
-    value.replace(/^(要不要|该不该|想|去|进|留在|还是|或者)+/g, ""),
+    value.replace(/^(要不要|该不该|想|选|去|进|留在|还是|或者)+/g, ""),
     16
   );
 }

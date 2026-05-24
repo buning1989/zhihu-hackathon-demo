@@ -70,6 +70,7 @@ import {
 import {
   buildFallbackSearchQueryPlan,
   buildObjectiveSearchContext,
+  objectiveQueryPlanToSearchPlans,
   sortSearchQueryPlans
 } from "./searchQueryPlan.js";
 import { enforceDemoPathDiversity } from "../services/demoPathDiversity.service.js";
@@ -285,10 +286,14 @@ export async function composeMultiLlmDemoSearchResponse(
   );
   stageResults.push(intentStage.stageResult);
   timings.push(createStageTiming(intentStage));
+  const searchIntent = applyClarificationSearchQueries(
+    intentStage.output,
+    input.clarificationContext
+  );
 
   const recalledSearch = await searchByExpandedQueries(
     pipelineQuery,
-    intentStage.output,
+    searchIntent,
     input.count,
     input.dataMode,
     input.userContext
@@ -305,7 +310,7 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const candidatePipeline = await runCandidatePipeline(
     pipelineQuery,
-    intentStage.output,
+    searchIntent,
     recalledSearch,
     input.count,
     input.userContext,
@@ -343,7 +348,7 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const candidates = buildCleanedCandidatesFromResponse(response);
   const evidenceStage = await runTimedStage(() =>
-    runEvidenceExtractStage(pipelineQuery, intentStage.output, candidates, budget)
+    runEvidenceExtractStage(pipelineQuery, searchIntent, candidates, budget)
   );
   stageResults.push(evidenceStage.stageResult);
   timings.push(createStageTiming(evidenceStage));
@@ -356,7 +361,7 @@ export async function composeMultiLlmDemoSearchResponse(
   const composeStage = await runTimedStage(() =>
     runDemoResponseComposeStage(
       pipelineQuery,
-      intentStage.output,
+      searchIntent,
       evidenceStage.output,
       response,
       candidates,
@@ -440,14 +445,14 @@ export async function composeMultiLlmDemoSearchResponse(
       intentStage.stageResult,
       composeStage.stageResult,
       applyStats.focusTagCount > 0,
-      intentStage.output
+      searchIntent
     ),
     fallbackUsed: fallbackSummary.used,
     fallbackKind: fallbackSummary.kind,
     fallbackReason: fallbackSummary.reason,
     guardWarnings,
-    userCoreQuestion: intentStage.output.userCoreQuestion,
-    topicSignals: intentStage.output.topicSignals,
+    userCoreQuestion: searchIntent.userCoreQuestion,
+    topicSignals: searchIntent.topicSignals,
     searchQueries: recalledSearch.searchQueries,
     searchQueryResults: recalledSearch.searchQueryResults,
     search: recalledSearch.searchDebug,
@@ -512,6 +517,37 @@ function buildClarifiedPipelineQuery(
     ].join("；"),
     220
   );
+}
+
+function applyClarificationSearchQueries(
+  intent: IntentExpandOutput,
+  clarificationContext?: DemoDebugClarificationContext
+): IntentExpandOutput {
+  const queryPlan = clarificationContext?.queryPlan;
+  if (!queryPlan) {
+    return intent;
+  }
+
+  const clarificationSearchQueries = objectiveQueryPlanToSearchPlans(queryPlan);
+  if (clarificationSearchQueries.length === 0) {
+    return intent;
+  }
+
+  return {
+    ...intent,
+    searchQueries: sortSearchQueryPlans([
+      ...clarificationSearchQueries,
+      ...intent.searchQueries
+    ]),
+    queryPlan: {
+      primary: unique([...(queryPlan.primary ?? []), ...(intent.queryPlan?.primary ?? [])]).slice(0, 5),
+      secondary: unique([
+        ...(queryPlan.secondary ?? []),
+        ...(intent.queryPlan?.secondary ?? [])
+      ]).slice(0, 5),
+      fallback: unique([...(queryPlan.fallback ?? []), ...(intent.queryPlan?.fallback ?? [])]).slice(0, 4)
+    }
+  };
 }
 
 async function runTimedStage<T>(

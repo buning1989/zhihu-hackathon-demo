@@ -27,7 +27,9 @@
   }
 
   function resolveApiBaseUrl() {
+    const params = new URLSearchParams(window.location.search);
     const configured =
+      params.get("apiBaseUrl") ||
       window.LifeSampleAppConfig?.apiBaseUrl ||
       window.localStorage.getItem("lifeSampleApiBaseUrl");
     if (configured) {
@@ -233,7 +235,10 @@
   }
 
   function resolveDemoDataMode() {
+    const params = new URLSearchParams(window.location.search);
     const configured =
+      params.get("dataMode") ||
+      params.get("demoDataMode") ||
       window.LifeSampleAppConfig?.demoDataMode ||
       window.localStorage.getItem("lifeSampleDemoDataMode") ||
       "mock";

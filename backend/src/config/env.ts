@@ -55,6 +55,9 @@ export const config = {
   port: parsePositiveInteger(process.env.PORT ?? process.env.BACKEND_PORT, 8000),
   frontendUrl: process.env.FRONTEND_URL || "http://127.0.0.1:5173",
   sessionSecret: process.env.SESSION_SECRET || "dev-session-secret",
+  demoSearch: {
+    requestBudgetMs: parsePositiveInteger(process.env.DEMO_SEARCH_BUDGET_MS, 36000)
+  },
   zhihu: {
     accessSecret: zhihuAccessSecret,
     appId: process.env.ZHIHU_APP_ID || "",
