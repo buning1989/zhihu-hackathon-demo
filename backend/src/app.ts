@@ -11,6 +11,10 @@ import { zhihuRoutes } from "./routes/zhihu.routes.js";
 export const app = express();
 const frontendDir = fileURLToPath(new URL("../../frontend/", import.meta.url));
 const allowedCorsOrigins = new Set([
+  "http://127.0.0.1:3000",
+  "http://localhost:3000",
+  "http://127.0.0.1:3001",
+  "http://localhost:3001",
   "http://127.0.0.1:5173",
   "http://localhost:5173"
 ]);
