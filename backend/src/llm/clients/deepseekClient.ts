@@ -9,7 +9,11 @@ export class DeepSeekClient {
   readonly provider: LlmModelProvider = "deepseek";
 
   get model(): string {
-    return config.llm.deepseek.model;
+    return config.llm.deepseek.defaultModel;
+  }
+
+  getModelForTask(taskType: string): string {
+    return readDeepSeekTaskModel(taskType);
   }
 
   isConfigured(): boolean {
@@ -17,10 +21,11 @@ export class DeepSeekClient {
   }
 
   createJsonCompletion(input: JsonCompletionInput): Promise<string> {
+    const model = this.getModelForTask(input.taskType);
     return createOpenAICompatibleJsonCompletion(this.provider, {
       apiKey: config.llm.deepseek.apiKey,
       baseUrl: config.llm.deepseek.baseUrl,
-      model: config.llm.deepseek.model,
+      model,
       timeoutMs: config.llm.timeoutMs,
       maxRetry: config.llm.maxRetry
     }, {
@@ -33,3 +38,8 @@ export class DeepSeekClient {
 }
 
 export const deepSeekClient = new DeepSeekClient();
+
+function readDeepSeekTaskModel(taskType: string): string {
+  const models = config.llm.deepseek.models as Record<string, string>;
+  return models[taskType] || config.llm.deepseek.defaultModel;
+}

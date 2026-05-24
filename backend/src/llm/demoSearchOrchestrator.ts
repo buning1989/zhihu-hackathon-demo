@@ -480,7 +480,7 @@ export async function composeMultiLlmDemoSearchResponse(
         ? [
             "real Zhihu items cleaned by rules",
             fallbackSummary.reason || "all configured LLM stages completed without fallback",
-            "Kimi/DeepSeek LLM stages enhanced safe display fields where available"
+            "DeepSeek LLM stages enhanced safe display fields where available"
           ]
         : [
             "real Zhihu items cleaned by rules",
@@ -768,7 +768,7 @@ async function runEvidenceExtractStage(
   if (!llmRouter.isTaskConfigured("evidence_extract")) {
     return {
       output: fallback,
-      stageResult: createSkippedStage("evidence_extract", "Kimi not configured; rule evidence seeds used")
+      stageResult: createSkippedStage("evidence_extract", "DeepSeek not configured; rule evidence seeds used")
     };
   }
 
@@ -963,7 +963,7 @@ async function runExperienceSummaryStage(
       markExperienceSummaryDebug(debug, candidate.personId, {
         status: "failed",
         source: "none",
-        reason: "Kimi not configured; experienceSummary not generated",
+        reason: "DeepSeek not configured; experienceSummary not generated",
         cacheHit: false
       });
     }
@@ -973,7 +973,7 @@ async function runExperienceSummaryStage(
         summaries: { summaries: cachedSummaries },
         debug
       },
-      stageResult: createSkippedStage("experience_summary", "Kimi not configured; experienceSummary not generated")
+      stageResult: createSkippedStage("experience_summary", "DeepSeek not configured; experienceSummary not generated")
     };
   }
 

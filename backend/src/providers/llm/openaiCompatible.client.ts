@@ -26,15 +26,15 @@ export class LlmProviderError extends Error {
 
 export class OpenAICompatibleClient {
   async createJsonCompletion(input: CreateJsonCompletionInput): Promise<string> {
-    const effectiveConfig = readEffectiveConfig();
-    const startedAt = Date.now();
     const taskType = input.taskType ?? "legacy_json_completion";
+    const effectiveConfig = readEffectiveConfig(taskType);
+    const startedAt = Date.now();
 
     try {
       assertConfigured(effectiveConfig);
     } catch (error) {
       if (error instanceof LlmProviderError) {
-        logLegacyLlmCall(taskType, effectiveConfig.model, "fallback", startedAt, error);
+        logLegacyLlmCall(taskType, effectiveConfig, "fallback", startedAt, error);
       }
       throw error;
     }
@@ -73,22 +73,22 @@ export class OpenAICompatibleClient {
         throw new LlmProviderError("LLM_EMPTY_RESPONSE", "LLM response did not include content");
       }
 
-      logLegacyLlmCall(taskType, effectiveConfig.model, "success", startedAt);
+      logLegacyLlmCall(taskType, effectiveConfig, "success", startedAt);
       return content;
     } catch (error) {
       if (isAbortError(error)) {
         const timeoutError = new LlmProviderError("LLM_TIMEOUT", "LLM request timed out");
-        logLegacyLlmCall(taskType, effectiveConfig.model, "timeout", startedAt, timeoutError);
+        logLegacyLlmCall(taskType, effectiveConfig, "timeout", startedAt, timeoutError);
         throw timeoutError;
       }
 
       if (error instanceof LlmProviderError) {
-        logLegacyLlmCall(taskType, effectiveConfig.model, "fallback", startedAt, error);
+        logLegacyLlmCall(taskType, effectiveConfig, "fallback", startedAt, error);
         throw error;
       }
 
       const requestError = new LlmProviderError("LLM_REQUEST_FAILED", toErrorMessage(error));
-      logLegacyLlmCall(taskType, effectiveConfig.model, "fallback", startedAt, requestError);
+      logLegacyLlmCall(taskType, effectiveConfig, "fallback", startedAt, requestError);
       throw requestError;
     } finally {
       clearTimeout(timeout);
@@ -99,16 +99,19 @@ export class OpenAICompatibleClient {
 export const llmClient = new OpenAICompatibleClient();
 
 interface EffectiveLlmConfig {
+  provider: "deepseek" | "openai_compatible";
   apiKey: string;
   baseUrl: string;
   model: string;
 }
 
-function readEffectiveConfig(): EffectiveLlmConfig {
+function readEffectiveConfig(taskType: string): EffectiveLlmConfig {
+  const usesDeepSeekConfig = Boolean(config.llm.deepseek.apiKey || !config.llm.apiKey);
   return {
-    apiKey: config.llm.apiKey,
-    baseUrl: config.llm.baseUrl,
-    model: config.llm.model || config.llm.deepseek.model
+    provider: usesDeepSeekConfig ? "deepseek" : "openai_compatible",
+    apiKey: usesDeepSeekConfig ? config.llm.deepseek.apiKey : config.llm.apiKey,
+    baseUrl: usesDeepSeekConfig ? config.llm.deepseek.baseUrl : config.llm.baseUrl,
+    model: readDeepSeekModelForLegacyTask(taskType)
   };
 }
 
@@ -179,14 +182,14 @@ function toErrorMessage(error: unknown): string {
 
 function logLegacyLlmCall(
   taskType: string,
-  model: string,
+  effectiveConfig: EffectiveLlmConfig,
   status: "success" | "fallback" | "timeout",
   startedAt: number,
   error?: LlmProviderError
 ): void {
   const fields: Array<[string, string | number | undefined]> = [
-    ["provider", "openai_compatible"],
-    ["model", model],
+    ["provider", effectiveConfig.provider],
+    ["model", effectiveConfig.model],
     ["taskType", taskType],
     ["durationMs", Date.now() - startedAt],
     ["status", status],
@@ -203,6 +206,24 @@ function logLegacyLlmCall(
   } else {
     console.warn(line);
   }
+}
+
+function readDeepSeekModelForLegacyTask(taskType: string): string {
+  if (taskType.endsWith("_json_repair") || taskType === "json_repair") {
+    return config.llm.deepseek.models.json_repair;
+  }
+
+  if (
+    taskType === "path_enhancer" ||
+    taskType === "people_enhancer" ||
+    taskType === "persona_enhancer" ||
+    taskType === "legacy_json_completion"
+  ) {
+    return config.llm.deepseek.models.demo_response_compose;
+  }
+
+  const models = config.llm.deepseek.models as Record<string, string>;
+  return models[taskType] || config.llm.deepseek.defaultModel;
 }
 
 function formatLogValue(value: string | number | undefined): string {

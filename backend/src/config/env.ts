@@ -18,7 +18,7 @@ const DEFAULT_ZHIHU_SEARCH_API_URL =
 const DEFAULT_ZHIHU_OPENAPI_BASE = "https://openapi.zhihu.com";
 const DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_STAGE_MODEL = "deepseek-v4-flash";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
@@ -74,7 +74,7 @@ export const config = {
   llm: {
     enabled: parseBoolean(
       process.env.LLM_ENABLED,
-      Boolean(kimiApiKey || deepseekApiKey || legacyLlmApiKey)
+      Boolean(deepseekApiKey || legacyLlmApiKey)
     ),
     maxRetry: parseNonNegativeInteger(process.env.LLM_MAX_RETRY, 1),
     provider: parseLlmProvider(process.env.LLM_PROVIDER),
@@ -90,7 +90,23 @@ export const config = {
     deepseek: {
       apiKey: deepseekApiKey,
       baseUrl: firstNonEmpty(process.env.DEEPSEEK_BASE_URL) || DEFAULT_DEEPSEEK_BASE_URL,
-      model: firstNonEmpty(process.env.DEEPSEEK_MODEL) || DEFAULT_DEEPSEEK_MODEL,
+      defaultModel: DEFAULT_DEEPSEEK_STAGE_MODEL,
+      models: {
+        intent_expand: firstNonEmpty(process.env.INTENT_EXPAND_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        candidate_rerank:
+          firstNonEmpty(process.env.CANDIDATE_RERANK_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        evidence_extract:
+          firstNonEmpty(process.env.EVIDENCE_EXTRACT_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        demo_response_compose:
+          firstNonEmpty(process.env.DEMO_RESPONSE_COMPOSE_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        experience_summary:
+          firstNonEmpty(process.env.EXPERIENCE_SUMMARY_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        grounding_guard:
+          firstNonEmpty(process.env.GROUNDING_GUARD_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        persona_chat:
+          firstNonEmpty(process.env.PERSONA_CHAT_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
+        json_repair: firstNonEmpty(process.env.JSON_REPAIR_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL
+      },
       jsonMode: parseBoolean(process.env.DEEPSEEK_JSON_MODE, true)
     }
   }

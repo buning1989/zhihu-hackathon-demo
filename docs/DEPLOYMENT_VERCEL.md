@@ -66,10 +66,13 @@ ZHIHU_USERINFO_PATH=/user
 接入真实 LLM 时再配置：
 
 ```env
-KIMI_API_KEY=
-KIMI_MODEL=moonshot-v1-8k
 DEEPSEEK_API_KEY=
-DEEPSEEK_MODEL=deepseek-v4-flash
+INTENT_EXPAND_MODEL=deepseek-v4-flash
+EVIDENCE_EXTRACT_MODEL=deepseek-v4-flash
+DEMO_RESPONSE_COMPOSE_MODEL=deepseek-v4-pro
+GROUNDING_GUARD_MODEL=deepseek-v4-flash
+PERSONA_CHAT_MODEL=deepseek-v4-pro
+JSON_REPAIR_MODEL=deepseek-v4-flash
 LLM_ENABLED=true
 LLM_TIMEOUT_MS=15000
 ```

@@ -148,7 +148,7 @@ export class PersonaChatService {
       return finalizePersonaChatResponse(
         createMockFallback(
           request,
-          "KIMI_API_KEY not configured; mock persona chat fallback used",
+          "DeepSeek not configured; mock persona chat fallback used",
           grounding,
           person
         ),

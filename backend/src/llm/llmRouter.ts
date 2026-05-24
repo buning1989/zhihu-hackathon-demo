@@ -1,6 +1,5 @@
 import { config } from "../config/env.js";
 import { deepSeekClient } from "./clients/deepseekClient.js";
-import { kimiClient } from "./clients/kimiClient.js";
 import {
   LlmClientError,
   type JsonCompletionInput,
@@ -115,15 +114,12 @@ export class LlmRouter {
 export const llmRouter = new LlmRouter();
 
 function getClientForTask(taskType: LlmTaskType): RoutedClient {
-  if (
-    taskType === "evidence_extract" ||
-    taskType === "experience_summary" ||
-    taskType === "persona_chat"
-  ) {
-    return kimiClient;
-  }
-
-  return deepSeekClient;
+  return {
+    provider: deepSeekClient.provider,
+    model: deepSeekClient.getModelForTask(taskType),
+    isConfigured: () => deepSeekClient.isConfigured(),
+    createJsonCompletion: (input) => deepSeekClient.createJsonCompletion(input)
+  };
 }
 
 function logLlmCall(
