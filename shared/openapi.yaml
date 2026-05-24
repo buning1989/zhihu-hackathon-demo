@@ -474,9 +474,11 @@ paths:
         persona indexes, sections and metadata. The existing GET /api/search
         contract remains implemented and must not be broken. During P0
         implementation, this endpoint must run with mock/stub data when Zhihu
-        API keys or LLM keys are missing.
+        API keys or LLM keys are missing. When clarificationAnswers is present,
+        the endpoint returns only the intent expansion and Zhihu search plan
+        needed by the next recall step.
       operationId: createDemoSearch
-      x-implementation-status: planned-p0
+      x-implementation-status: implemented
       requestBody:
         required: true
         content:
@@ -491,46 +493,49 @@ paths:
                   mode: mock
       responses:
         "200":
-          description: Product-layer search response with AI persona entry points.
+          description: Product-layer search response, or clarified intent search plan.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DemoSearchResponse"
+                $ref: "#/components/schemas/DemoSearchSuccessResponse"
               examples:
-                aiPersona:
+                clarifiedIntentPlan:
                   value:
-                    schemaVersion: "2026-05-13.ai-persona-v1"
-                    queryId: query_demo_001
-                    query: 不工作了之后，我想去新西兰生活
-                    dataMode: mock
-                    contextUsed:
-                      provider: zhihu
-                      loggedIn: false
-                      zhihuProfileUsed: false
-                      profileSignals: []
-                      usedFor: []
-                    features:
-                      aiPersona: true
-                      personaChat: mock
-                      saveSample: false
-                      articleBody: false
-                      sourceEvidenceRequired: true
-                    analysis:
-                      steps:
-                        - title: 读取问题
-                          text: 不工作了之后，我想去新西兰生活
+                    success: true
+                    data:
+                      intent: relationship_career_tradeoff
+                      intentSummary: 用户正在权衡为了追求想做的工作而进入长期异地恋是否值得，希望参考真实经历，而不是获得单一建议。
                       focusTags:
-                        - 暂停工作
-                        - 新西兰
-                    paths: []
-                    people: []
-                    personas: []
-                    sections: []
-                    meta:
-                      mode: mock
-                      generatedAt: "2026-05-13T00:00:00.000Z"
-                    debug:
-                      stubbed: true
+                        - 事业选择与亲密关系冲突
+                        - 长期异地恋的现实成本
+                        - 坚持或分开的真实经历
+                      searchPlan:
+                        coreQueries:
+                          - 异地恋 工作
+                          - 为了工作 异地恋
+                          - 职业发展 异地恋
+                        expandedQueries:
+                          - 异地恋 分手 后悔
+                          - 异地恋 坚持下来
+                        exploratoryQueries:
+                          - 为了事业选择异地恋
+                        rankingSignals:
+                          - 真实经历
+                          - 长期异地
+                          - 坚持下来
+                        negativeHints:
+                          - 不要优先使用纯鸡汤内容
+                          - 不要优先使用恋爱技巧泛泛建议
+                        expectedEvidenceTypes:
+                          - 亲身经历
+                          - 分手复盘
+                          - 异地坚持经验
+                      debug:
+                        stage: intent_expand
+                        llmUsed: false
+                        provider: deepseek
+                        model: deepseek-chat
+                        fallbackReason: DeepSeek not configured; deterministic search plan fallback used
         "400":
           description: Missing or invalid request body.
           content:
@@ -1008,6 +1013,19 @@ components:
               type: string
             message:
               type: string
+    DemoSearchSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/DemoSearchResponse"
+            - $ref: "#/components/schemas/DemoIntentSearchPlanResponse"
     DemoSearchRequest:
       type: object
       required:
@@ -1031,9 +1049,127 @@ components:
             - real
           default: mock
           description: Data mode. P0 must work in mock mode without Zhihu or LLM keys.
+        dataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+          default: mock
+          description: Data mode used by the implemented backend. mode remains a compatibility alias.
+        clarificationAnswers:
+          type: object
+          additionalProperties:
+            type: string
+          description: >
+            Non-empty clarification-card answers. When present, /api/demo/search
+            returns intent/searchPlan only and does not enter the full
+            paths/people/personas result generation chain.
         sessionId:
           type: string
           description: Optional client-provided session id for local demo continuity.
+    DemoIntentSearchPlanResponse:
+      type: object
+      required:
+        - intent
+        - intentSummary
+        - focusTags
+        - searchPlan
+        - debug
+      properties:
+        intent:
+          type: string
+          description: Compact snake_case intent category.
+          example: relationship_career_tradeoff
+        intentSummary:
+          type: string
+          description: One-sentence understanding of the user's clarified need.
+        focusTags:
+          type: array
+          minItems: 3
+          items:
+            type: string
+        searchPlan:
+          $ref: "#/components/schemas/DemoIntentSearchPlan"
+        contextUsed:
+          $ref: "#/components/schemas/DemoContextUsed"
+        debug:
+          $ref: "#/components/schemas/DemoIntentSearchPlanDebug"
+    DemoIntentSearchPlan:
+      type: object
+      required:
+        - coreQueries
+        - expandedQueries
+        - exploratoryQueries
+        - rankingSignals
+        - negativeHints
+        - expectedEvidenceTypes
+      properties:
+        coreQueries:
+          type: array
+          minItems: 3
+          description: Short keyword queries for primary Zhihu recall.
+          items:
+            type: string
+        expandedQueries:
+          type: array
+          minItems: 2
+          description: Slightly more specific supplemental recall queries.
+          items:
+            type: string
+        exploratoryQueries:
+          type: array
+          minItems: 1
+          description: Small number of long-tail exploratory queries.
+          items:
+            type: string
+        rankingSignals:
+          type: array
+          minItems: 3
+          description: Complex intent signals reserved for later filtering and ranking.
+          items:
+            type: string
+        negativeHints:
+          type: array
+          items:
+            type: string
+        expectedEvidenceTypes:
+          type: array
+          items:
+            type: string
+    DemoIntentSearchPlanDebug:
+      type: object
+      required:
+        - stage
+        - llmUsed
+        - provider
+        - model
+        - clarificationAnswerKeys
+        - latencyMs
+        - notes
+      properties:
+        stage:
+          type: string
+          const: intent_expand
+        llmUsed:
+          type: boolean
+        provider:
+          type: string
+        model:
+          type: string
+        fallbackReason:
+          type: string
+        clarificationAnswerKeys:
+          type: array
+          items:
+            type: string
+        latencyMs:
+          type: integer
+          minimum: 0
+        notes:
+          type: array
+          items:
+            type: string
     DemoSearchResponse:
       type: object
       required:

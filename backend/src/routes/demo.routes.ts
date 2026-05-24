@@ -2,7 +2,10 @@ import { Router } from "express";
 import { getCurrentUserContext } from "../auth/session.js";
 import { demoSearchService, parseDemoSearchRequest } from "../services/demoSearch.service.js";
 import type { ApiSuccessResponse } from "../types/api.types.js";
-import type { DemoSearchResponse } from "../types/demo.types.js";
+import type {
+  DemoIntentSearchPlanResponse,
+  DemoSearchResponse
+} from "../types/demo.types.js";
 
 export const demoRoutes = Router();
 
@@ -15,7 +18,7 @@ demoRoutes.post("/search", async (req, res, next) => {
     res.json({
       success: true,
       data
-    } satisfies ApiSuccessResponse<DemoSearchResponse>);
+    } satisfies ApiSuccessResponse<DemoSearchResponse | DemoIntentSearchPlanResponse>);
   } catch (error) {
     next(error);
   }

@@ -57,6 +57,7 @@ Content-Type: application/json
 | `count` | string/number | 否 | 默认 `5`；无法解析时用默认值；最终 clamp 到 `1..20`。 | 稳定 |
 | `dataMode` | string | 否 | `mock`、`cache_first`、`real`；缺省使用后端 `DATA_MODE` 配置。 | 稳定 |
 | `mode` | string | 否 | `dataMode` 的兼容别名；当 `dataMode` 为空时读取。 | 半稳定 |
+| `clarificationAnswers` | object | 否 | 非空对象表示用户已提交澄清卡答案；后端进入 `intent_expand` 搜索计划阶段，不生成完整 `paths/people/personas`。 | 稳定 |
 
 常见错误：
 
@@ -66,6 +67,8 @@ Content-Type: application/json
 | 400 | `DATA_MODE_INVALID` | `dataMode/mode` 不是 `mock`、`cache_first`、`real`。 |
 
 ### 返回字段
+
+当没有 `clarificationAnswers` 时，`data` 仍返回完整 demo 结果结构。
 
 `data` 顶层字段：
 
@@ -232,6 +235,27 @@ Content-Type: application/json
 - `fallbackUsed/fallbackKind/fallbackReason`
 - `guardWarnings`
 - `notes`
+
+### 澄清卡后二次请求响应
+
+当请求体包含非空 `clarificationAnswers` 时，`POST /api/demo/search` 只返回意图展开和知乎搜索计划，不返回完整结果页集合：
+
+| 字段 | 类型 | 说明 | 稳定性 |
+| --- | --- | --- | --- |
+| `intent` | string | 结构化意图类别，例如 `relationship_career_tradeoff`。 | 稳定 |
+| `intentSummary` | string | 对用户真实问题的一句话概括。 | 半稳定 |
+| `focusTags` | string[] | 用户关注点，至少 3 个。 | 半稳定 |
+| `searchPlan.coreQueries` | string[] | 主召回 query，至少 3 条，短关键词为主。 | 稳定 |
+| `searchPlan.expandedQueries` | string[] | 补充召回 query，至少 2 条。 | 稳定 |
+| `searchPlan.exploratoryQueries` | string[] | 少量长尾探索 query，至少 1 条。 | 稳定 |
+| `searchPlan.rankingSignals` | string[] | 后续筛选、重排、证据抽取信号，至少 3 个。 | 稳定 |
+| `searchPlan.negativeHints` | string[] | 后续过滤低质量内容的提示。 | 半稳定 |
+| `searchPlan.expectedEvidenceTypes` | string[] | 后续希望召回的证据类型。 | 半稳定 |
+| `debug.stage` | string | 固定为 `intent_expand`。 | 稳定 |
+| `debug.llmUsed` | boolean | 是否成功使用 LLM。LLM 不可用时为 `false` 并使用规则兜底。 | 稳定 |
+| `debug.fallbackReason` | string | 兜底原因；仅在未成功使用 LLM 时出现。 | 调试 |
+
+该响应不会包含 `paths`、`people` 或 `personas`，避免澄清后二次请求误进入完整结果生成链路。
 
 ## POST /api/personas/chat
 

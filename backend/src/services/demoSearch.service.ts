@@ -10,9 +10,15 @@ import {
   type DemoSearchIdentity
 } from "./demoQueryIdentity.service.js";
 import { demoSessionCacheService } from "./demoSessionCache.service.js";
+import { intentSearchPlanService } from "./intentSearchPlan.service.js";
 import { createDemoContextUsed } from "./userContext.service.js";
 import type { UserContext } from "../auth/session.js";
-import { type DemoDataMode, type DemoSearchResponse } from "../types/demo.types.js";
+import {
+  type DemoClarificationAnswers,
+  type DemoDataMode,
+  type DemoIntentSearchPlanResponse,
+  type DemoSearchResponse
+} from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
 import {
   isRequestBudgetTimeoutError,
@@ -23,6 +29,7 @@ export interface DemoSearchRequest {
   query: string;
   count: number;
   dataMode: DemoDataMode;
+  clarificationAnswers?: DemoClarificationAnswers;
 }
 
 const DEFAULT_COUNT = 5;
@@ -42,7 +49,15 @@ export class DemoSearchService {
   async search(
     request: DemoSearchRequest,
     userContext?: UserContext
-  ): Promise<DemoSearchResponse> {
+  ): Promise<DemoSearchResponse | DemoIntentSearchPlanResponse> {
+    if (request.clarificationAnswers) {
+      return intentSearchPlanService.create({
+        query: request.query,
+        clarificationAnswers: request.clarificationAnswers,
+        userContext
+      });
+    }
+
     const startedAt = Date.now();
     const identity = createDemoSearchIdentity(request.query, {
       count: request.count,
@@ -145,8 +160,30 @@ export function parseDemoSearchRequest(body: unknown): DemoSearchRequest {
   return {
     query,
     count: parseCount(record.count),
-    dataMode: parseDataMode(dataMode)
+    dataMode: parseDataMode(dataMode),
+    clarificationAnswers: parseClarificationAnswers(record.clarificationAnswers)
   };
+}
+
+function parseClarificationAnswers(value: unknown): DemoClarificationAnswers | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const answers = Object.entries(value).reduce<DemoClarificationAnswers>(
+    (result, [key, rawValue]) => {
+      const normalizedKey = key.trim();
+      const answer = readString(rawValue).trim();
+      if (normalizedKey && answer) {
+        result[normalizedKey] = answer;
+      }
+
+      return result;
+    },
+    {}
+  );
+
+  return Object.keys(answers).length > 0 ? answers : undefined;
 }
 
 function parseDataMode(value: unknown): DemoDataMode {

@@ -58,6 +58,7 @@ Content-Type: application/json
 | `query` | string | 是 | 用户输入的问题，不能为空。 |
 | `count` | number | 否 | 希望召回的数量，后端会限制在 1 到 20；不传默认 5。 |
 | `dataMode` | string | 否 | `mock`、`cache_first`、`real`；不传时读取环境变量，默认 `mock`。 |
+| `clarificationAnswers` | object | 否 | 用户提交澄清卡后传入。存在非空答案时，接口返回 intent/searchPlan，不返回完整结果页数据。 |
 
 注意：当前实际后端读取 `dataMode`。如果旧 mock 或 OpenAPI 草稿里写过 `mode`，前端联调时请改成 `dataMode`。
 
@@ -95,6 +96,8 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 
 ## 3. 成功响应
 
+没有 `clarificationAnswers` 时，成功响应是完整 demo 结果：
+
 成功外壳：
 
 ```json
@@ -118,6 +121,49 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 ```
 
 完整字段样例见 [demo-search.sample.json](./demo-search.sample.json)。前端联调优先以接口真实返回为准，样例用于 mock 和 UI 占位。
+
+### 澄清卡后二次请求
+
+当用户填写澄清卡后，请把答案放在 `clarificationAnswers`：
+
+```json
+{
+  "query": "为了工作能追求自己想做的事，长期异地恋真的值得吗？",
+  "clarificationAnswers": {
+    "priority": "我更在意能不能追求自己想做的工作，但也不想轻易放弃关系",
+    "duration": "可能异地 1-2 年",
+    "relationshipStatus": "关系稳定，但对未来不确定",
+    "wantedSamples": "想看真实经历，尤其是坚持下来和最后分开的两类人"
+  }
+}
+```
+
+该请求会返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "intent": "relationship_career_tradeoff",
+    "intentSummary": "用户正在权衡为了追求想做的工作而进入长期异地恋是否值得，希望参考真实经历，而不是获得单一建议。",
+    "focusTags": ["事业选择与亲密关系冲突", "长期异地恋的现实成本", "坚持或分开的真实经历"],
+    "searchPlan": {
+      "coreQueries": ["异地恋 工作", "为了工作 异地恋", "职业发展 异地恋"],
+      "expandedQueries": ["异地恋 分手 后悔", "异地恋 坚持下来"],
+      "exploratoryQueries": ["为了事业选择异地恋"],
+      "rankingSignals": ["真实经历", "长期异地", "坚持下来"],
+      "negativeHints": ["不要优先使用纯鸡汤内容"],
+      "expectedEvidenceTypes": ["亲身经历", "分手复盘"]
+    },
+    "debug": {
+      "stage": "intent_expand",
+      "llmUsed": false
+    }
+  }
+}
+```
+
+这个阶段只准备“接下来去知乎搜什么”，不会返回 `paths`、`people`、`personas`。
 
 ## 4. 顶层字段解释
 

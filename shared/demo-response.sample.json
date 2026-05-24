@@ -14,7 +14,8 @@
     "paths should be differentiated life paths with summary, whyRelevant, tradeoff, diversityKey, and sourceRefs.",
     "people[].experienceSummary is the primary author/sample experience summary and should be displayed only when source=llm and status=ready.",
     "Debug fallbackSummary may exist for troubleshooting, but it is not a frontend primary display field.",
-    "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape."
+    "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape.",
+    "When clarificationAnswers is present, POST /api/demo/search returns only intent/searchPlan/debug and skips the full result-page shape."
   ],
   "field_levels": {
     "P0_required": [
@@ -47,6 +48,61 @@
       "multi-article person aggregation",
       "full article body reader"
     ]
+  },
+  "clarified_intent_search_plan_response": {
+    "intent": "relationship_career_tradeoff",
+    "intentSummary": "用户正在权衡为了追求想做的工作而进入长期异地恋是否值得，希望参考真实经历，而不是获得单一建议。",
+    "focusTags": [
+      "事业选择与亲密关系冲突",
+      "长期异地恋的现实成本",
+      "坚持或分开的真实经历"
+    ],
+    "searchPlan": {
+      "coreQueries": [
+        "异地恋 工作",
+        "为了工作 异地恋",
+        "职业发展 异地恋"
+      ],
+      "expandedQueries": [
+        "异地恋 分手 后悔",
+        "异地恋 坚持下来",
+        "异地恋 职业选择"
+      ],
+      "exploratoryQueries": [
+        "为了事业选择异地恋",
+        "异地恋和职业发展如何平衡"
+      ],
+      "rankingSignals": [
+        "真实经历",
+        "长期异地",
+        "坚持下来",
+        "最后分开",
+        "后悔",
+        "不后悔",
+        "事业选择",
+        "关系稳定性",
+        "分手复盘"
+      ],
+      "negativeHints": [
+        "不要优先使用纯鸡汤内容",
+        "不要优先使用恋爱技巧泛泛建议",
+        "不要优先使用没有个人经历的空泛观点"
+      ],
+      "expectedEvidenceTypes": [
+        "亲身经历",
+        "分手复盘",
+        "异地坚持经验",
+        "职业选择后悔或不后悔的回答",
+        "关系与人生选择的长文讨论"
+      ]
+    },
+    "debug": {
+      "stage": "intent_expand",
+      "llmUsed": false,
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "fallbackReason": "DeepSeek not configured; deterministic search plan fallback used"
+    }
   },
   "demo_search_success_response": {
     "schemaVersion": "2026-05-13.ai-persona-v1",

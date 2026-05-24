@@ -38,6 +38,40 @@ export interface DemoSearchRequestBody {
   count?: unknown;
   mode?: unknown;
   dataMode?: unknown;
+  clarificationAnswers?: unknown;
+}
+
+export interface DemoClarificationAnswers {
+  [key: string]: string;
+}
+
+export interface DemoIntentSearchPlanResponse {
+  intent: string;
+  intentSummary: string;
+  focusTags: string[];
+  searchPlan: DemoIntentSearchPlan;
+  contextUsed?: DemoContextUsed;
+  debug: DemoIntentSearchPlanDebug;
+}
+
+export interface DemoIntentSearchPlan {
+  coreQueries: string[];
+  expandedQueries: string[];
+  exploratoryQueries: string[];
+  rankingSignals: string[];
+  negativeHints: string[];
+  expectedEvidenceTypes: string[];
+}
+
+export interface DemoIntentSearchPlanDebug {
+  stage: "intent_expand";
+  llmUsed: boolean;
+  provider: string;
+  model: string;
+  fallbackReason?: string;
+  clarificationAnswerKeys: string[];
+  latencyMs: number;
+  notes: string[];
 }
 
 export interface DemoSearchResponse {

@@ -23,6 +23,8 @@ Content-Type: application/json
 }
 ```
 
+如果用户已经填写澄清卡，前端把答案放入 `clarificationAnswers`。此时接口只返回 `intent / intentSummary / focusTags / searchPlan / debug`，用于下一步知乎搜索召回计划，不返回完整 `paths / people / personas` 结果页结构。
+
 `GET /api/search?query=...&count=...` 已经实现并继续保留，但它的定位是知乎搜索结果映射接口，主要返回 `items[]`，用于调试、兼容和产品层接口的底层召回。前端 AI 分身页面不要把 `GET /api/search` 当成最终页面数据结构。
 
 `/api/zhihu/search` 是后端调试用的知乎原始响应代理，前端不要直接依赖。

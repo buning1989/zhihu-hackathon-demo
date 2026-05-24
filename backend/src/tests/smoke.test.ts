@@ -71,6 +71,25 @@ try {
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
   assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
 
+  const clarifiedIntentPlan = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    body: {
+      query: "为了工作能追求自己想做的事，长期异地恋真的值得吗？",
+      count: 3,
+      dataMode: "mock",
+      clarificationAnswers: {
+        priority: "我更在意能不能追求自己想做的工作，但也不想轻易放弃关系",
+        duration: "可能异地 1-2 年",
+        relationshipStatus: "关系稳定，但对未来不确定",
+        wantedSamples: "想看真实经历，尤其是坚持下来和最后分开的两类人"
+      }
+    }
+  });
+
+  assertEqual(clarifiedIntentPlan.status, 200, "clarified intent plan status");
+  assertEqual(clarifiedIntentPlan.body.success, true, "clarified intent plan success");
+  assertClarifiedIntentPlan(clarifiedIntentPlan.body.data);
+
   const loggedInDemoSearch = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
     headers: {
@@ -221,6 +240,12 @@ function assertNonEmptyArray(value: unknown, label: string): void {
   }
 }
 
+function assertMinArrayLength(value: unknown, minLength: number, label: string): void {
+  if (!Array.isArray(value) || value.length < minLength) {
+    throw new Error(`${label}: expected array length >= ${minLength}`);
+  }
+}
+
 function assertArray(value: unknown, label: string): void {
   if (!Array.isArray(value)) {
     throw new Error(`${label}: expected array`);
@@ -271,6 +296,36 @@ function assertPersonaChatExperienceReply(value: unknown, label: string): void {
     boundaryNotice !== PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE
   ) {
     throw new Error(`${label} boundaryNotice used unexpected copy`);
+  }
+}
+
+function assertClarifiedIntentPlan(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new Error("clarified intent plan: expected response data object");
+  }
+
+  assertNonEmptyString(value.intent, "clarified intent");
+  assertNonEmptyString(value.intentSummary, "clarified intentSummary");
+  assertMinArrayLength(value.focusTags, 3, "clarified focusTags");
+
+  const searchPlan = value.searchPlan;
+  if (!isRecord(searchPlan)) {
+    throw new Error("clarified searchPlan: expected object");
+  }
+
+  assertMinArrayLength(searchPlan.coreQueries, 3, "clarified coreQueries");
+  assertMinArrayLength(searchPlan.expandedQueries, 2, "clarified expandedQueries");
+  assertMinArrayLength(searchPlan.exploratoryQueries, 1, "clarified exploratoryQueries");
+  assertMinArrayLength(searchPlan.rankingSignals, 3, "clarified rankingSignals");
+
+  const debug = value.debug;
+  if (!isRecord(debug)) {
+    throw new Error("clarified debug: expected object");
+  }
+
+  assertEqual(debug.stage, "intent_expand", "clarified debug.stage");
+  if ("paths" in value || "people" in value || "personas" in value) {
+    throw new Error("clarified intent plan must not return full demo result collections");
   }
 }
 

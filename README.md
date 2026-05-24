@@ -65,6 +65,7 @@ docker compose -f infra/docker-compose.yml up
 ## 前后端协作规则
 
 - `shared/openapi.yaml` 是前后端协作的最小契约。当前已实现接口 `GET /api/search` 继续保留；AI 分身产品层 P0 目标契约统一为 `POST /api/demo/search`。
+- `POST /api/demo/search` 在请求体包含 `clarificationAnswers` 时，会返回 `intent + focusTags + searchPlan + debug`，用于澄清卡后的知乎搜索计划生成；未包含澄清答案时继续返回完整 demo 结果结构。
 - 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
