@@ -529,6 +529,7 @@ function createStageTiming(result: TimedStageRunResult<unknown>): DemoDebugTimin
   const fallbackUsed = result.stageResult.attempted === 0 || result.stageResult.failed > 0;
   return logAndCreateStageTiming({
     stageName: result.stageResult.stage,
+    ...getLlmStageRuntimeInfo(result.stageResult.stage),
     durationMs: result.durationMs,
     llmUsed: result.stageResult.succeeded > 0,
     fallbackUsed,
@@ -537,25 +538,31 @@ function createStageTiming(result: TimedStageRunResult<unknown>): DemoDebugTimin
 }
 
 function logAndCreateStageTiming(timing: DemoDebugTiming): DemoDebugTiming {
-  const status = timing.llmUsed
+  const enrichedTiming = {
+    ...getLlmStageRuntimeInfo(timing.stageName),
+    ...timing
+  };
+  const status = enrichedTiming.llmUsed
     ? "success"
-    : isTimeoutFallbackReason(timing.fallbackReason)
+    : isTimeoutFallbackReason(enrichedTiming.fallbackReason)
       ? "timeout"
       : "fallback";
   const payload = {
-    taskType: timing.stageName,
+    taskType: enrichedTiming.stageName,
+    provider: enrichedTiming.provider,
+    model: enrichedTiming.model,
     status,
-    durationMs: timing.durationMs,
-    fallbackReason: timing.fallbackReason
+    durationMs: enrichedTiming.durationMs,
+    fallbackReason: enrichedTiming.fallbackReason
   };
 
-  if (timing.fallbackUsed) {
-    console.warn("[LLMStage]", payload);
+  if (enrichedTiming.fallbackUsed) {
+    console.warn(formatLlmStageLogLine(payload));
   } else {
-    console.info("[LLMStage]", payload);
+    console.info(formatLlmStageLogLine(payload));
   }
 
-  return timing;
+  return enrichedTiming;
 }
 
 function buildLlmStageMeta(timings: DemoDebugTiming[]): {
@@ -567,6 +574,8 @@ function buildLlmStageMeta(timings: DemoDebugTiming[]): {
     const timedOut = isTimeoutFallbackReason(timing.fallbackReason);
     return {
       taskType: timing.stageName,
+      provider: timing.provider,
+      model: timing.model,
       status: timing.llmUsed ? "success" : timedOut ? "timeout" : "fallback",
       durationMs: timing.durationMs,
       fallbackReason: timing.fallbackReason
@@ -588,6 +597,63 @@ function buildLlmStageMeta(timings: DemoDebugTiming[]): {
 
 function isTimeoutFallbackReason(reason: string): boolean {
   return /timeout|timed out|exceeded|LLM_TASK_TIMEOUT|LLM_TIMEOUT/i.test(reason);
+}
+
+function getLlmStageRuntimeInfo(
+  stageName: DemoDebugTiming["stageName"]
+): Pick<DemoDebugTiming, "provider" | "model"> {
+  if (!isRoutedLlmTask(stageName)) {
+    return {};
+  }
+
+  return {
+    provider: llmRouter.getProviderForTask(stageName),
+    model: llmRouter.getModelForTask(stageName)
+  };
+}
+
+function isRoutedLlmTask(stageName: DemoDebugTiming["stageName"]): stageName is LlmTaskType {
+  return (
+    stageName === "intent_expand" ||
+    stageName === "candidate_rerank" ||
+    stageName === "evidence_extract" ||
+    stageName === "demo_response_compose" ||
+    stageName === "experience_summary" ||
+    stageName === "grounding_guard" ||
+    stageName === "persona_chat"
+  );
+}
+
+function formatLlmStageLogLine(payload: {
+  taskType: string;
+  provider?: string;
+  model?: string;
+  status: string;
+  durationMs: number;
+  fallbackReason: string;
+}): string {
+  const fields: Array<[string, string | number | undefined]> = [
+    ["provider", payload.provider],
+    ["model", payload.model],
+    ["taskType", payload.taskType],
+    ["durationMs", payload.durationMs],
+    ["status", payload.status],
+    ["fallbackReason", payload.fallbackReason]
+  ];
+
+  return `[LLMStage] ${fields
+    .filter(([, value]) => value !== undefined && value !== "")
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ")}`;
+}
+
+function formatLogValue(value: string | number | undefined): string {
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  const text = String(value ?? "");
+  return /\s/.test(text) ? JSON.stringify(text) : text;
 }
 
 function createPipelineBudget(
@@ -729,7 +795,7 @@ async function runEvidenceExtractStage(
             query: truncateText(query, 120),
             intent,
             promptBudget: {
-              model: "moonshot-v1-8k",
+              model: llmRouter.getModelForTask("evidence_extract"),
               maxContextTokens: 6500,
               candidateCount: promptCandidates.length,
               evidenceCharBudget: EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET

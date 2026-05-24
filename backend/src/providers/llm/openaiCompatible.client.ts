@@ -11,6 +11,7 @@ export interface CreateJsonCompletionInput {
   messages: LlmMessage[];
   temperature?: number;
   maxTokens?: number;
+  taskType?: string;
 }
 
 export class LlmProviderError extends Error {
@@ -25,20 +26,31 @@ export class LlmProviderError extends Error {
 
 export class OpenAICompatibleClient {
   async createJsonCompletion(input: CreateJsonCompletionInput): Promise<string> {
-    assertConfigured();
+    const effectiveConfig = readEffectiveConfig();
+    const startedAt = Date.now();
+    const taskType = input.taskType ?? "legacy_json_completion";
+
+    try {
+      assertConfigured(effectiveConfig);
+    } catch (error) {
+      if (error instanceof LlmProviderError) {
+        logLegacyLlmCall(taskType, effectiveConfig.model, "fallback", startedAt, error);
+      }
+      throw error;
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), config.llm.timeoutMs);
 
     try {
-      const response = await fetch(toChatCompletionsUrl(config.llm.baseUrl), {
+      const response = await fetch(toChatCompletionsUrl(effectiveConfig.baseUrl), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${config.llm.apiKey}`
+          Authorization: `Bearer ${effectiveConfig.apiKey}`
         },
         body: JSON.stringify({
-          model: config.llm.model,
+          model: effectiveConfig.model,
           messages: input.messages,
           temperature: input.temperature ?? 0.2,
           max_tokens: input.maxTokens ?? 3000,
@@ -61,17 +73,23 @@ export class OpenAICompatibleClient {
         throw new LlmProviderError("LLM_EMPTY_RESPONSE", "LLM response did not include content");
       }
 
+      logLegacyLlmCall(taskType, effectiveConfig.model, "success", startedAt);
       return content;
     } catch (error) {
       if (isAbortError(error)) {
-        throw new LlmProviderError("LLM_TIMEOUT", "LLM request timed out");
+        const timeoutError = new LlmProviderError("LLM_TIMEOUT", "LLM request timed out");
+        logLegacyLlmCall(taskType, effectiveConfig.model, "timeout", startedAt, timeoutError);
+        throw timeoutError;
       }
 
       if (error instanceof LlmProviderError) {
+        logLegacyLlmCall(taskType, effectiveConfig.model, "fallback", startedAt, error);
         throw error;
       }
 
-      throw new LlmProviderError("LLM_REQUEST_FAILED", toErrorMessage(error));
+      const requestError = new LlmProviderError("LLM_REQUEST_FAILED", toErrorMessage(error));
+      logLegacyLlmCall(taskType, effectiveConfig.model, "fallback", startedAt, requestError);
+      throw requestError;
     } finally {
       clearTimeout(timeout);
     }
@@ -80,16 +98,30 @@ export class OpenAICompatibleClient {
 
 export const llmClient = new OpenAICompatibleClient();
 
-function assertConfigured(): void {
-  if (!config.llm.apiKey) {
+interface EffectiveLlmConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+function readEffectiveConfig(): EffectiveLlmConfig {
+  return {
+    apiKey: config.llm.apiKey,
+    baseUrl: config.llm.baseUrl,
+    model: config.llm.model || config.llm.deepseek.model
+  };
+}
+
+function assertConfigured(effectiveConfig: EffectiveLlmConfig): void {
+  if (!effectiveConfig.apiKey) {
     throw new LlmProviderError("LLM_API_KEY_MISSING", "LLM_API_KEY is not configured");
   }
 
-  if (!config.llm.baseUrl) {
+  if (!effectiveConfig.baseUrl) {
     throw new LlmProviderError("LLM_BASE_URL_MISSING", "LLM_BASE_URL is not configured");
   }
 
-  if (!config.llm.model) {
+  if (!effectiveConfig.model) {
     throw new LlmProviderError("LLM_MODEL_MISSING", "LLM_MODEL is not configured");
   }
 }
@@ -139,10 +171,65 @@ function isAbortError(error: unknown): boolean {
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
-    return error.message;
+    return redactSensitiveText(error.message);
   }
 
   return "Unknown LLM request error";
+}
+
+function logLegacyLlmCall(
+  taskType: string,
+  model: string,
+  status: "success" | "fallback" | "timeout",
+  startedAt: number,
+  error?: LlmProviderError
+): void {
+  const fields: Array<[string, string | number | undefined]> = [
+    ["provider", "openai_compatible"],
+    ["model", model],
+    ["taskType", taskType],
+    ["durationMs", Date.now() - startedAt],
+    ["status", status],
+    ["errorCode", error?.code],
+    ["errorMessage", error ? redactSensitiveText(error.message) : undefined]
+  ];
+  const line = `[LLM] ${fields
+    .filter(([, value]) => value !== undefined && value !== "")
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ")}`;
+
+  if (status === "success") {
+    console.info(line);
+  } else {
+    console.warn(line);
+  }
+}
+
+function formatLogValue(value: string | number | undefined): string {
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  const safeValue = redactSensitiveText(String(value ?? ""));
+  return /\s/.test(safeValue) ? JSON.stringify(safeValue) : safeValue;
+}
+
+function redactSensitiveText(value: string): string {
+  const knownSecrets = [
+    config.llm.apiKey,
+    config.llm.deepseek.apiKey,
+    config.llm.kimi.apiKey
+  ].filter((secret) => secret.length >= 8);
+
+  let redacted = value;
+  for (const secret of knownSecrets) {
+    redacted = redacted.split(secret).join("[REDACTED]");
+  }
+
+  return redacted
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/(api[_-]?key["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]")
+    .replace(/(authorization["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

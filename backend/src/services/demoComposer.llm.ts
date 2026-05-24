@@ -390,6 +390,7 @@ interface RunJsonStageInput {
 
 async function runJsonStage(input: RunJsonStageInput): Promise<ParseResult> {
   const content = await llmClient.createJsonCompletion({
+    taskType: input.stage,
     temperature: 0.2,
     maxTokens: input.maxTokens,
     messages: [
@@ -457,6 +458,7 @@ async function parseJsonObjectWithRepair(
 
 async function repairLlmJson(input: RepairInput): Promise<string> {
   return llmClient.createJsonCompletion({
+    taskType: `${input.stage}_json_repair`,
     temperature: 0,
     maxTokens: 2200,
     messages: [

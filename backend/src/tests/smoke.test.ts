@@ -583,7 +583,7 @@ async function assertDeepSeekResponseFormatFallback(): Promise<void> {
       {
         apiKey: "test-key",
         baseUrl: "https://example.test/v1",
-        model: "deepseek-chat",
+        model: "deepseek-v4-flash",
         timeoutMs: 1000,
         maxRetry: 0
       },

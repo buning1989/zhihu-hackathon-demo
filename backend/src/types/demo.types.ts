@@ -347,6 +347,8 @@ export interface DemoMeta {
 
 export interface DemoLlmStageMeta {
   taskType: DemoDebugTiming["stageName"] | string;
+  provider?: string;
+  model?: string;
   status: "success" | "fallback" | "timeout" | "skipped";
   durationMs: number;
   fallbackReason: string;
@@ -571,6 +573,8 @@ export interface DemoDebugTiming {
     | "path_enhancer"
     | "people_enhancer"
     | "persona_enhancer";
+  provider?: string;
+  model?: string;
   durationMs: number;
   llmUsed: boolean;
   fallbackUsed: boolean;

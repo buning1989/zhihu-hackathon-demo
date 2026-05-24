@@ -51,6 +51,8 @@ export interface PersonaChatMeta {
   fallbackStages?: string[];
   llmStages?: Array<{
     taskType: "persona_chat";
+    provider?: string;
+    model?: string;
     status: "success" | "fallback" | "timeout" | "skipped";
     durationMs: number;
     fallbackReason: string;

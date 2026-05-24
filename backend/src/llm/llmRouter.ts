@@ -34,7 +34,7 @@ export class LlmRouterError extends Error {
     public readonly code: string,
     message: string,
     public readonly taskType: LlmTaskType,
-    public readonly modelProvider: LlmModelProvider
+    public readonly provider: LlmModelProvider
   ) {
     super(message);
     this.name = "LlmRouterError";
@@ -137,7 +137,7 @@ function logLlmCall(
   const safeError = error ? toSafeError(error) : undefined;
   const payload = {
     taskType,
-    modelProvider: client.provider,
+    provider: client.provider,
     model: client.model,
     status,
     durationMs: Date.now() - startedAt,
@@ -146,9 +146,9 @@ function logLlmCall(
   };
 
   if (status === "success") {
-    console.info("[LLM]", payload);
+    console.info(formatLlmLogLine("[LLM]", payload));
   } else {
-    console.warn("[LLM]", payload);
+    console.warn(formatLlmLogLine("[LLM]", payload));
   }
 }
 
@@ -170,8 +170,10 @@ function toSafeError(error: unknown): { code: string; message: string; responseB
   if (error instanceof LlmClientError) {
     return {
       code: error.code,
-      message: truncateText(error.message || "Unknown LLM error", 260),
-      ...(error.responseBody ? { responseBody: truncateText(error.responseBody, 260) } : {})
+      message: truncateText(redactSensitiveText(error.message || "Unknown LLM error"), 260),
+      ...(error.responseBody
+        ? { responseBody: truncateText(redactSensitiveText(error.responseBody), 260) }
+        : {})
     };
   }
 
@@ -179,7 +181,7 @@ function toSafeError(error: unknown): { code: string; message: string; responseB
     const code = "code" in error && typeof error.code === "string" ? error.code : error.name;
     return {
       code: code || "LLM_ERROR",
-      message: truncateText(error.message || "Unknown LLM error", 160)
+      message: truncateText(redactSensitiveText(error.message || "Unknown LLM error"), 160)
     };
   }
 
@@ -203,6 +205,64 @@ function truncateText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function formatLlmLogLine(
+  prefix: string,
+  payload: {
+    provider: string;
+    model: string;
+    taskType: string;
+    durationMs: number;
+    status: string;
+    timeoutMs?: number;
+    fallbackReason?: string;
+    error?: { code: string; message: string; responseBody?: string };
+  }
+): string {
+  const fields: Array<[string, string | number | undefined]> = [
+    ["provider", payload.provider],
+    ["model", payload.model],
+    ["taskType", payload.taskType],
+    ["durationMs", payload.durationMs],
+    ["status", payload.status],
+    ["timeoutMs", payload.timeoutMs],
+    ["fallbackReason", payload.fallbackReason],
+    ["errorCode", payload.error?.code],
+    ["errorMessage", payload.error?.message]
+  ];
+
+  return `${prefix} ${fields
+    .filter(([, value]) => value !== undefined && value !== "")
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ")}`;
+}
+
+function formatLogValue(value: string | number | undefined): string {
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  const safeValue = redactSensitiveText(String(value ?? ""));
+  return /\s/.test(safeValue) ? JSON.stringify(safeValue) : safeValue;
+}
+
+function redactSensitiveText(value: string): string {
+  const knownSecrets = [
+    config.llm.apiKey,
+    config.llm.deepseek.apiKey,
+    config.llm.kimi.apiKey
+  ].filter((secret) => secret.length >= 8);
+
+  let redacted = value;
+  for (const secret of knownSecrets) {
+    redacted = redacted.split(secret).join("[REDACTED]");
+  }
+
+  return redacted
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/(api[_-]?key["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]")
+    .replace(/(authorization["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]");
 }
 
 export type { LlmMessage };

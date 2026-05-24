@@ -217,12 +217,35 @@ function printSearchInspection(run) {
   console.log(`  queriesUsed=${Array.isArray(search.queriesUsed) ? search.queriesUsed.join(" | ") : "[]"}`);
   console.log(`  failedQueries=${Array.isArray(search.failedQueries) && search.failedQueries.length ? search.failedQueries.join(" | ") : "[]"}`);
   console.log(`  emptyQueries=${Array.isArray(search.emptyQueries) && search.emptyQueries.length ? search.emptyQueries.join(" | ") : "[]"}`);
+  printLlmStageModels(run);
   candidates.slice(0, 3).forEach((candidate, index) => {
     if (!isRecord(candidate)) return;
     console.log(
       `  topCandidate[${index + 1}] title=${candidate.title || ""} url=${candidate.url || ""} queryUsed=${candidate.queryUsed || ""}`
     );
   });
+}
+
+function printLlmStageModels(run) {
+  const timings = Array.isArray(run.debug.timings) ? run.debug.timings.filter(isRecord) : [];
+  if (timings.length === 0) {
+    const intentStage = isRecord(run.debug.intentStage) ? run.debug.intentStage : {};
+    console.log(
+      `  llmStage=none provider=${intentStage.provider || ""} model=${intentStage.model || ""}`
+    );
+    return;
+  }
+
+  for (const timing of timings) {
+    const status = timing.llmUsed
+      ? "success"
+      : String(timing.fallbackReason || "").match(/timeout|timed out|exceeded|LLM_TASK_TIMEOUT|LLM_TIMEOUT/i)
+        ? "timeout"
+        : "fallback";
+    console.log(
+      `  llmStage=${timing.stageName} provider=${timing.provider || ""} model=${timing.model || ""} durationMs=${timing.durationMs} status=${status} fallbackUsed=${timing.fallbackUsed}`
+    );
+  }
 }
 
 async function requestJson(url, options) {

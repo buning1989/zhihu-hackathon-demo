@@ -380,6 +380,8 @@ function toRealPersonaChatResponse(
       llmStages: [
         {
           taskType: "persona_chat",
+          provider: llmRouter.getProviderForTask("persona_chat"),
+          model: llmRouter.getModelForTask("persona_chat"),
           status: "success",
           durationMs: 0,
           fallbackReason: ""
@@ -428,6 +430,8 @@ function createMockFallback(
       llmStages: [
         {
           taskType: "persona_chat",
+          provider: llmRouter.getProviderForTask("persona_chat"),
+          model: llmRouter.getModelForTask("persona_chat"),
           status: "fallback",
           durationMs: 0,
           fallbackReason
@@ -477,6 +481,8 @@ function finalizePersonaChatResponse(
   response.meta.llmStages =
     response.meta.llmStages?.map((stage) => ({
       ...stage,
+      provider: stage.provider ?? llmRouter.getProviderForTask("persona_chat"),
+      model: stage.model ?? llmRouter.getModelForTask("persona_chat"),
       durationMs: stage.durationMs || durationMs,
       status: options.timedOut ? "timeout" : stage.status,
       fallbackReason: stage.fallbackReason || fallbackReason
@@ -489,6 +495,8 @@ function finalizePersonaChatResponse(
     response.meta.llmStages = [
       {
         taskType: "persona_chat",
+        provider: llmRouter.getProviderForTask("persona_chat"),
+        model: llmRouter.getModelForTask("persona_chat"),
         status: options.timedOut ? "timeout" : "fallback",
         durationMs,
         fallbackReason
@@ -504,12 +512,19 @@ function finalizePersonaChatResponse(
     response.debug.fallbackReason = fallbackReason;
   }
 
-  console[response.meta.llmUsed ? "info" : "warn"]("[LLMStage]", {
-    taskType: "persona_chat",
-    status: response.meta.llmUsed ? "success" : options.timedOut ? "timeout" : "fallback",
-    durationMs,
-    fallbackReason
-  });
+  console[response.meta.llmUsed ? "info" : "warn"](
+    [
+      "[LLMStage]",
+      `provider=${llmRouter.getProviderForTask("persona_chat")}`,
+      `model=${llmRouter.getModelForTask("persona_chat")}`,
+      "taskType=persona_chat",
+      `durationMs=${durationMs}`,
+      `status=${response.meta.llmUsed ? "success" : options.timedOut ? "timeout" : "fallback"}`,
+      fallbackReason ? `fallbackReason=${JSON.stringify(fallbackReason)}` : ""
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
   return response;
 }

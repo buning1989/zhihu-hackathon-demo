@@ -713,7 +713,7 @@ function printDemoTiming(run) {
     }
 
     console.log(
-      `  stage=${timing.stageName} durationMs=${timing.durationMs} llmUsed=${timing.llmUsed} fallbackUsed=${timing.fallbackUsed} fallbackReason=${timing.fallbackReason || ""}`
+      `  stage=${timing.stageName} provider=${timing.provider || ""} model=${timing.model || ""} durationMs=${timing.durationMs} llmUsed=${timing.llmUsed} fallbackUsed=${timing.fallbackUsed} fallbackReason=${timing.fallbackReason || ""}`
     );
   }
 }

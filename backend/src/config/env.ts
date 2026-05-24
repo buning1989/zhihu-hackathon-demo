@@ -18,6 +18,7 @@ const DEFAULT_ZHIHU_SEARCH_API_URL =
 const DEFAULT_ZHIHU_OPENAPI_BASE = "https://openapi.zhihu.com";
 const DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
@@ -89,7 +90,7 @@ export const config = {
     deepseek: {
       apiKey: deepseekApiKey,
       baseUrl: firstNonEmpty(process.env.DEEPSEEK_BASE_URL) || DEFAULT_DEEPSEEK_BASE_URL,
-      model: firstNonEmpty(process.env.DEEPSEEK_MODEL) || "deepseek-chat",
+      model: firstNonEmpty(process.env.DEEPSEEK_MODEL) || DEFAULT_DEEPSEEK_MODEL,
       jsonMode: parseBoolean(process.env.DEEPSEEK_JSON_MODE, true)
     }
   }

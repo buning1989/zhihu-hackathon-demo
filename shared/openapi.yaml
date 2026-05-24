@@ -542,7 +542,7 @@ paths:
                         stage: intent_expand
                         llmUsed: false
                         provider: deepseek
-                        model: deepseek-chat
+                        model: deepseek-v4-flash
                         fallbackReason: DeepSeek not configured; deterministic search plan fallback used
         "400":
           description: Missing or invalid request body.
