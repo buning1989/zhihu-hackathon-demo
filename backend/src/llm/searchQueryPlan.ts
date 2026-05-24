@@ -261,9 +261,12 @@ function buildObjectiveQueryPlan(
   const companyPhrase = combineTight(slots.industry, slots.companyType);
 
   appendObjectiveQuery(primary, slots.age, slots.companyType, status);
+  appendObjectiveQuery(primary, slots.industry, slots.companyType, status);
   appendObjectiveQuery(primary, companyPhrase, status, direction);
   appendObjectiveQuery(primary, slots.companyType, status, direction);
   appendObjectiveQuery(primary, slots.role, status, direction);
+  appendObjectiveQuery(primary, slots.age, slots.role, direction);
+  appendObjectiveQuery(primary, slots.role, direction);
   appendObjectiveQuery(primary, slots.city, status, direction);
   appendObjectiveQuery(primary, slots.industry, slots.role, status);
   appendObjectiveQuery(primary, slots.industry, slots.companyType, status);
@@ -386,6 +389,10 @@ function extractAge(query: string): string | null {
 }
 
 function extractRole(query: string): string | null {
+  if (/程序员|研发|技术|写代码/.test(query) && /转产品|产品经理|产品岗/.test(query)) {
+    return "程序员";
+  }
+
   const rolePairs: Array<[RegExp, string]> = [
     [/产品经理/, "产品经理"],
     [/产品\s*[/／]?\s*运营|产品运营/, "产品经理"],
@@ -393,7 +400,7 @@ function extractRole(query: string): string | null {
     [/程序员|研发|技术/, "程序员"],
     [/设计师|设计|内容/, query.includes("内容") ? "内容" : "设计师"],
     [/市场|销售/, query.includes("市场") ? "市场" : "销售"],
-    [/老师|教师/, "老师"],
+    [/老师|教师/, query.includes("教师") ? "教师" : "老师"],
     [/医生/, "医生"],
     [/公务员/, "公务员"],
     [/正式工/, "正式工"]
@@ -432,6 +439,8 @@ function extractDirection(query: string): string | null {
     [/创业/, "创业"],
     [/自由职业/, "自由职业"],
     [/独立开发|个人开发者|indie\s*hacker/i, "独立开发"],
+    [/转产品经理|转产品|技术转产品|研发转产品/, "产品经理"],
+    [/心理咨询|心理行业|咨询服务/, "心理咨询"],
     [/读研|考研|升学/, "读研"],
     [/一线城市找工作|去一线城市|一线城市工作/, "一线城市工作"],
     [/二线城市工作|回二线城市|去二线城市/, "二线城市工作"],
@@ -455,7 +464,10 @@ function extractDirection(query: string): string | null {
     }
   }
 
-  return directions.length > 0 ? directions.slice(0, 2).join(" ") : null;
+  const specificDirections = directions.filter((item) => item !== "转行");
+  const normalizedDirections = specificDirections.length > 0 ? specificDirections : directions;
+
+  return normalizedDirections.length > 0 ? normalizedDirections.slice(0, 2).join(" ") : null;
 }
 
 function extractConstraint(query: string): string | null {

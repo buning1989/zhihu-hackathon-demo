@@ -74,6 +74,7 @@ try {
   assertObjectiveClarifyingCard(demoSearch.body.data.clarifyingCard, "demo objective clarifyingCard");
   await assertContextualObjectiveClarifyingCards(baseUrl);
   await assertEvaluationStageClarifyingCards(baseUrl);
+  await assertVerticalSimilarityClarifyingBadcases(baseUrl);
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -383,7 +384,16 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
     "targetCity",
     "localResource",
     "skill_gap",
-    "content_monetization"
+    "content_monetization",
+    "techDirection",
+    "productRelatedExperience",
+    "institutionRoleType",
+    "contentDirection",
+    "contentFoundation",
+    "engineeringAbility",
+    "teacherStage",
+    "counselingFoundation",
+    "counselingRelatedExperience"
   ];
   const objectiveQuestionCount = questionIds.filter((id) =>
     searchableQuestionIds.includes(String(id))
@@ -505,7 +515,7 @@ async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<vo
       expectedLabels: [
         "你在施工单位主要做哪类工作？",
         "你大概有几年施工或工程相关经验？",
-        "你目前积累最多的是哪类能力？"
+        "你目前积累最多的是哪类工程能力？"
       ]
     },
     {
@@ -561,8 +571,111 @@ async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<vo
   }
 }
 
+async function assertVerticalSimilarityClarifyingBadcases(baseUrl: string): Promise<void> {
+  const cases = [
+    {
+      query: "28岁程序员不想继续写代码，转产品经理靠谱吗？",
+      direction: "产品经理",
+      intentCategory: "tech_to_product",
+      expectedLabels: [
+        "你之前主要做哪类技术方向？",
+        "你大概有几年开发或技术经验？",
+        "你过去更接近哪类产品相关经历？"
+      ],
+      expectedPrimary: ["28岁 程序员 产品经理", "程序员 转产品经理", "技术 转产品经理"],
+      forbiddenOptions: []
+    },
+    {
+      query: "体制内工作五年，想辞职做自媒体，会不会太冒险？",
+      direction: "自媒体",
+      intentCategory: "institution_to_content_creator",
+      expectedLabels: [
+        "你在体制内主要做哪类工作？",
+        "你想做哪类内容方向？",
+        "你目前已有哪类内容基础？"
+      ],
+      expectedPrimary: ["体制内 五年 自媒体", "体制内 辞职 自媒体", "体制内 内容创业"],
+      forbiddenOptions: []
+    },
+    {
+      query: "施工单位正式工想离职，不知道还能做什么？",
+      direction: "出路",
+      intentCategory: "construction_career_exit",
+      expectedLabels: [
+        "你在施工单位主要做哪类工作？",
+        "你大概有几年施工或工程相关经验？",
+        "你目前积累最多的是哪类工程能力？"
+      ],
+      expectedPrimary: ["施工单位 正式工 辞职", "施工单位 离职 出路", "工程行业 转行"],
+      forbiddenOptions: ["产品 / 策划", "内容 / 表达", "运营 / 管理"]
+    },
+    {
+      query: "30岁女教师想转行心理咨询，还有机会吗？",
+      direction: "心理咨询",
+      intentCategory: "teacher_to_counseling",
+      expectedLabels: [
+        "你之前主要是哪类教师？",
+        "你是否有心理学或咨询相关基础？",
+        "你过去更接近哪类相关经验？"
+      ],
+      expectedPrimary: ["30岁 女教师 心理咨询", "教师 转心理咨询", "教育背景 心理咨询"],
+      forbiddenOptions: []
+    }
+  ];
+
+  for (const testCase of cases) {
+    const response = await requestJson(`${baseUrl}/api/demo/search`, {
+      method: "POST",
+      body: {
+        query: testCase.query,
+        count: 3,
+        dataMode: "mock"
+      }
+    });
+
+    assertEqual(response.status, 200, `${testCase.query}: vertical clarification status`);
+    assertEqual(
+      response.body.data.debug.intentStage.objectiveSlots.direction,
+      testCase.direction,
+      `${testCase.query}: objectiveSlots.direction`
+    );
+    const card = response.body.data.clarifyingCard;
+    assertClarifyingCard(card, `${testCase.query}: vertical clarifyingCard`);
+    assertObjectiveClarifyingCard(card, `${testCase.query}: vertical objective clarifyingCard`);
+    const labels = readClarifyingCardQuestionLabels(card).join("\n");
+    for (const expectedLabel of testCase.expectedLabels) {
+      assertIncludes(labels, expectedLabel, `${testCase.query}: vertical labels`);
+    }
+    assertNoForbiddenClarificationQuestion(labels, `${testCase.query}: vertical labels`);
+
+    const optionLabels = readClarifyingCardOptionLabels(card).join("\n");
+    for (const forbiddenOption of testCase.forbiddenOptions) {
+      assertNotIncludes(optionLabels, forbiddenOption, `${testCase.query}: vertical options`);
+    }
+
+    const plan = response.body.data.debug.clarificationPlan;
+    assertEqual(
+      plan.intentCategory,
+      testCase.intentCategory,
+      `${testCase.query}: clarificationPlan.intentCategory`
+    );
+    assertClarificationPlanDebug(response.body.data.debug, testCase.query);
+    for (const expectedQuery of testCase.expectedPrimary) {
+      if (!plan.queryPlan.primary.includes(expectedQuery)) {
+        throw new Error(
+          `${testCase.query}: clarification queryPlan.primary missing ${expectedQuery}; got ${plan.queryPlan.primary.join(" | ")}`
+        );
+      }
+    }
+  }
+}
+
 function assertNoForbiddenClarificationQuestion(labels: string, label: string): void {
   for (const forbidden of [
+    "更想看",
+    "真实经历",
+    "最影响判断",
+    "最需要先考虑",
     "能接受多久",
     "承受多久",
     "稳定工资",
@@ -580,7 +693,12 @@ function assertNoForbiddenClarificationQuestion(labels: string, label: string): 
     "最大现实压力",
     "最大的现实压力",
     "最缺哪块准备",
-    "考虑的方向是什么"
+    "考虑的方向是什么",
+    "情况相似",
+    "走通了",
+    "失败复盘",
+    "长期结果",
+    "希望得到哪类建议"
   ]) {
     assertNotIncludes(labels, forbidden, label);
   }
@@ -597,7 +715,21 @@ function assertClarificationPlanDebug(value: unknown, label: string): void {
     throw new Error(`${label}: expected clarificationPlan.knownSlots`);
   }
   assertNonEmptyArray(plan.missingSimilaritySlots, `${label}: clarificationPlan.missingSimilaritySlots`);
+  assertNonEmptyArray(plan.selectedQuestions, `${label}: clarificationPlan.selectedQuestions`);
+  for (const [index, question] of (plan.selectedQuestions as unknown[]).entries()) {
+    if (!isRecord(question)) {
+      throw new Error(`${label}: clarificationPlan.selectedQuestions[${index}] expected object`);
+    }
+    assertNonEmptyString(question.slot, `${label}: selectedQuestions[${index}].slot`);
+    assertNonEmptyString(question.question, `${label}: selectedQuestions[${index}].question`);
+    assertNonEmptyString(question.selectedReason, `${label}: selectedQuestions[${index}].selectedReason`);
+  }
   assertNonEmptyArray(plan.rejectedQuestions, `${label}: clarificationPlan.rejectedQuestions`);
+  if (!isRecord(plan.queryPlan)) {
+    throw new Error(`${label}: expected clarificationPlan.queryPlan`);
+  }
+  assertNonEmptyArray(plan.queryPlan.primary, `${label}: clarificationPlan.queryPlan.primary`);
+  assertPrimaryQueryQuality(plan.queryPlan.primary as string[], `${label}: clarificationPlan.queryPlan.primary`);
 }
 
 function readClarifyingCardQuestionLabels(value: unknown): string[] {
@@ -608,6 +740,22 @@ function readClarifyingCardQuestionLabels(value: unknown): string[] {
   return value.questions
     .map((question) => (isRecord(question) ? String(question.label ?? "") : ""))
     .filter(Boolean);
+}
+
+function readClarifyingCardOptionLabels(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.questions)) {
+    return [];
+  }
+
+  return value.questions.flatMap((question) => {
+    if (!isRecord(question) || !Array.isArray(question.options)) {
+      return [];
+    }
+
+    return question.options
+      .map((option) => (isRecord(option) ? String(option.label ?? "") : ""))
+      .filter(Boolean);
+  });
 }
 
 function assertClarifiedIntentPlan(value: unknown): void {
@@ -1010,13 +1158,13 @@ function assertPrimaryQueryQuality(queries: string[], label: string): void {
 }
 
 function hasObjectiveIdentityWord(query: string): boolean {
-  return /[2-6]\d岁|互联网|教育|医疗|施工单位|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工|裸辞|辞职|离职|被裁|待业|失业|不工作|在职|工作十年|创业|自由职业|转行|回老家|开店|自媒体|出路/.test(
+  return /[2-6]\d岁|互联网|教育|教师|老师|心理咨询|医疗|金融|中后台|施工单位|工程行业|工程|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工|裸辞|辞职|离职|被裁|待业|失业|不工作|在职|工作十年|创业|自由职业|转行|转产品|回老家|开店|自媒体|内容创业|考公|读研|出路/.test(
     query
   );
 }
 
 function hasBackgroundIdentityWord(query: string): boolean {
-  return /[2-6]\d岁|互联网|教育|医疗|施工单位|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工/.test(
+  return /[2-6]\d岁|互联网|教育|教师|老师|医疗|金融|中后台|施工单位|工程行业|工程|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工/.test(
     query
   );
 }

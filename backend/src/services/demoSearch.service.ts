@@ -22,6 +22,7 @@ import {
   type DemoDataMode,
   type DemoDebugClarificationContext,
   type DemoDebugClarificationPlan,
+  type DemoObjectiveQueryPlan,
   type DemoObjectiveSlotName,
   type DemoObjectiveSlots,
   type DemoSearchDebug,
@@ -640,7 +641,7 @@ function buildRuleClarifyingCard(query: string): {
 }
 
 function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
-  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|自由职业|创业|回老家|开店|读研|考研|升学|一线城市|二线城市|保险经纪人|职业咨询|新能源|小红书|博主|接私单|私单|独立开发|个人开发者|indiehacker|体制内|大厂|施工单位|自媒体|工作十年|gap/.test(
+  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|转产品|产品经理|程序员|写代码|自由职业|创业|回老家|开店|读研|考研|升学|一线城市|二线城市|保险经纪人|职业咨询|心理咨询|心理行业|新能源|小红书|博主|接私单|私单|独立开发|个人开发者|indiehacker|体制内|教师|老师|大厂|施工单位|工地|工程|自媒体|工作十年|gap/.test(
     normalizedQuery
   );
 }
@@ -660,6 +661,13 @@ function createObjectiveSlotClarification(query: string): {
   );
   const questions = selectSimilarityQuestions(candidates, knownSlots);
   const selectedSlots = questions.map((question) => question.slot ?? question.id);
+  const selectedQuestions = questions.map((question) => ({
+    slot: question.slot ?? question.id,
+    question: question.question ?? question.label,
+    selectedReason:
+      question.selectedReason ?? "补齐相似人匹配所需的身份、履历或资源槽位"
+  }));
+  const queryPlan = buildClarificationSimilarityQueryPlan(intentCategory, knownSlots);
 
   return {
     card: createClarifyingCard(
@@ -671,32 +679,71 @@ function createObjectiveSlotClarification(query: string): {
       intentCategory,
       knownSlots,
       missingSimilaritySlots: selectedSlots,
+      selectedQuestions,
       selectedSlots,
-      rejectedQuestions: buildRejectedClarificationQuestions()
+      rejectedQuestions: buildRejectedClarificationQuestions(),
+      queryPlan
     }
   };
 }
 
 type SimilarityIntentCategory =
-  | "career_choice"
+  | "tech_to_product"
+  | "institution_to_content_creator"
+  | "construction_career_exit"
+  | "teacher_to_counseling"
+  | "exam_or_public_sector"
   | "freelance_or_self_employment"
-  | "exam_or_study"
-  | "city_migration";
+  | "entrepreneurship"
+  | "city_or_homecoming"
+  | "generic_career_transition";
 
 function inferSimilarityIntentCategory(normalizedQuery: string): SimilarityIntentCategory {
-  if (/考公|考编|考研|读研|升学|体制内|全职备考/.test(normalizedQuery)) {
-    return "exam_or_study";
+  if (
+    /程序员|研发|技术|写代码/.test(normalizedQuery) &&
+    /转产品|产品经理|产品岗|业务岗位/.test(normalizedQuery)
+  ) {
+    return "tech_to_product";
+  }
+
+  if (
+    /教师|老师|教育/.test(normalizedQuery) &&
+    /心理咨询|心理行业|咨询服务|咨询/.test(normalizedQuery)
+  ) {
+    return "teacher_to_counseling";
+  }
+
+  if (
+    /体制内|事业单位|公务员|编制内/.test(normalizedQuery) &&
+    /自媒体|内容创业|个人ip|个人IP|博主/.test(normalizedQuery)
+  ) {
+    return "institution_to_content_creator";
+  }
+
+  if (
+    /施工单位|工地|工程|造价|项目现场/.test(normalizedQuery) &&
+    /离职|辞职|转行|不想干|还能做什么|能做什么|出路/.test(normalizedQuery)
+  ) {
+    return "construction_career_exit";
+  }
+
+  if (/考公|考编|考研|读研|升学|全职备考|转去体制内/.test(normalizedQuery)) {
+    return "exam_or_public_sector";
   }
 
   if (/回老家|一线城市|二线城市|小城市|大城市|换城市|离开北京|离开上海|去.*城市/.test(normalizedQuery)) {
-    return "city_migration";
+    return "city_or_homecoming";
   }
 
-  if (/创业|自由职业|接私单|私单|副业|自己干|开店|咖啡店|自媒体|独立开发|个人开发者|indiehacker|小红书|博主/.test(normalizedQuery)) {
+  if (/创业|开店|咖啡店|做项目/.test(normalizedQuery)) {
+    return "entrepreneurship";
+  }
+
+  if (/自由职业|接私单|私单|副业|自己干|自媒体|独立开发|个人开发者|indiehacker|小红书|博主/.test(normalizedQuery)) {
     return "freelance_or_self_employment";
   }
 
-  return "career_choice";
+  return "generic_career_transition";
 }
 
 function buildKnownSimilaritySlots(
@@ -705,15 +752,30 @@ function buildKnownSimilaritySlots(
 ): Record<string, string | null> {
   return {
     age: objectiveSlots.age,
+    gender: extractKnownGender(query),
     city: objectiveSlots.city,
     industry: objectiveSlots.industry,
     companyType: objectiveSlots.companyType,
     role: objectiveSlots.role,
+    currentRole: objectiveSlots.role,
     currentStatus: objectiveSlots.status,
     direction: objectiveSlots.direction,
+    targetDirection: objectiveSlots.direction,
     workYears: extractKnownWorkYears(query),
     constraint: objectiveSlots.constraint
   };
+}
+
+function extractKnownGender(query: string): string | null {
+  if (/女/.test(query)) {
+    return "女";
+  }
+
+  if (/男/.test(query)) {
+    return "男";
+  }
+
+  return null;
 }
 
 function extractKnownWorkYears(query: string): string | null {
@@ -727,16 +789,82 @@ function buildSimilarityQuestionCandidates(
   knownSlots: Record<string, string | null>
 ): DemoClarificationQuestion[] {
   switch (intentCategory) {
-    case "exam_or_study":
+    case "tech_to_product":
+      return buildTechToProductQuestions();
+    case "institution_to_content_creator":
+      return buildInstitutionContentCreatorQuestions();
+    case "construction_career_exit":
+      return buildConstructionCareerExitQuestions();
+    case "teacher_to_counseling":
+      return buildTeacherCounselingQuestions();
+    case "exam_or_public_sector":
       return buildExamSimilarityQuestions(normalizedQuery);
-    case "city_migration":
+    case "city_or_homecoming":
       return buildCityMigrationSimilarityQuestions(normalizedQuery, knownSlots);
+    case "entrepreneurship":
+      return buildEntrepreneurshipSimilarityQuestions(normalizedQuery, knownSlots);
     case "freelance_or_self_employment":
       return buildSelfEmploymentSimilarityQuestions(normalizedQuery, knownSlots);
-    case "career_choice":
+    case "generic_career_transition":
     default:
-      return buildCareerChoiceSimilarityQuestions(normalizedQuery, knownSlots);
+      return buildGenericCareerTransitionQuestions(knownSlots);
   }
+}
+
+function buildTechToProductQuestions(): DemoClarificationQuestion[] {
+  return [
+    createTechDirectionQuestion(),
+    createTechWorkYearsQuestion(),
+    createProductRelatedExperienceQuestion()
+  ];
+}
+
+function buildInstitutionContentCreatorQuestions(): DemoClarificationQuestion[] {
+  return [
+    createInstitutionRoleTypeQuestion(),
+    createContentDirectionQuestion(),
+    createContentFoundationQuestion()
+  ];
+}
+
+function buildConstructionCareerExitQuestions(): DemoClarificationQuestion[] {
+  return [
+    createConstructionFunctionQuestion(),
+    createWorkYearsQuestion(
+      "你大概有几年施工或工程相关经验？",
+      "补齐施工或工程经验年限，用于匹配同阶段离职转向样本"
+    ),
+    createConstructionAbilityQuestion()
+  ];
+}
+
+function buildTeacherCounselingQuestions(): DemoClarificationQuestion[] {
+  return [
+    createTeacherStageQuestion(),
+    createCounselingFoundationQuestion(),
+    createCounselingRelatedExperienceQuestion()
+  ];
+}
+
+function buildEntrepreneurshipSimilarityQuestions(
+  normalizedQuery: string,
+  knownSlots: Record<string, string | null>
+): DemoClarificationQuestion[] {
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    return [
+      knownSlots.role ? createProjectAssetQuestion("你过去主要做过哪类项目？") : createRoleQuestion(),
+      createOperationExperienceQuestion(),
+      createResourceTypeQuestion("你现在手里更接近哪类资源？"),
+      createWorkYearsQuestion()
+    ];
+  }
+
+  return [
+    knownSlots.role ? createWorkYearsQuestion() : createRoleQuestion(),
+    createProjectAssetQuestion("你过去主要做过哪类项目？"),
+    createResourceTypeQuestion("你现在手里更接近哪类资源？"),
+    createSkillDirectionQuestion("你目前积累最多的是哪类能力？")
+  ];
 }
 
 function buildSelfEmploymentSimilarityQuestions(
@@ -826,19 +954,9 @@ function buildCityMigrationSimilarityQuestions(
   ];
 }
 
-function buildCareerChoiceSimilarityQuestions(
-  normalizedQuery: string,
+function buildGenericCareerTransitionQuestions(
   knownSlots: Record<string, string | null>
 ): DemoClarificationQuestion[] {
-  if (/施工单位/.test(normalizedQuery)) {
-    return [
-      createConstructionFunctionQuestion(),
-      createWorkYearsQuestion("你大概有几年施工或工程相关经验？"),
-      createSkillDirectionQuestion("你目前积累最多的是哪类能力？"),
-      createCurrentStatusQuestion()
-    ];
-  }
-
   return [
     knownSlots.role ? createWorkYearsQuestion() : createRoleQuestion(),
     knownSlots.industry ? createCompanyTypeQuestion() : createIndustryQuestion(),
@@ -854,7 +972,7 @@ function selectSimilarityQuestions(
   const selected: DemoClarificationQuestion[] = [];
   for (const question of candidates) {
     const slot = question.slot ?? question.id;
-    if (knownSlots[slot]) {
+    if (knownSlots[slot] || !isAllowedSimilarityClarificationQuestion(question)) {
       continue;
     }
 
@@ -872,10 +990,22 @@ function selectSimilarityQuestions(
     if (selected.length >= REQUIRED_CLARIFICATION_QUESTIONS) {
       break;
     }
-    appendClarificationQuestion(selected, fallback);
+    if (isAllowedSimilarityClarificationQuestion(fallback)) {
+      appendClarificationQuestion(selected, fallback);
+    }
   }
 
   return selected.slice(0, REQUIRED_CLARIFICATION_QUESTIONS);
+}
+
+function isAllowedSimilarityClarificationQuestion(question: DemoClarificationQuestion): boolean {
+  const text = [
+    question.label,
+    ...(question.options ?? []).map((option) => option.label)
+  ].join(" ");
+  return !/更想看|真实经历|最影响判断|最需要先考虑|最大现实压力|最大的现实压力|最缺哪块准备|考虑的方向是什么|能接受多久|承受多久|稳定工资|稳定收入|预期|预计|风险|冒险|信心|坚持|适合|值不值得|怕不怕后悔|未来|希望得到哪类建议|情况相似|走通了|失败复盘|长期结果/.test(
+    text
+  );
 }
 
 function buildRejectedClarificationQuestions(): DemoDebugClarificationPlan["rejectedQuestions"] {
@@ -891,8 +1021,126 @@ function buildRejectedClarificationQuestions(): DemoDebugClarificationPlan["reje
     {
       question: "你觉得自己适合创业吗？",
       reason: "value_judgment_or_consulting_evaluation"
+    },
+    {
+      question: "更想看哪类真实经历？",
+      reason: "content_preference_not_similarity_slot"
+    },
+    {
+      question: "最影响判断的约束是什么？",
+      reason: "generic_constraint_not_user_background"
     }
   ];
+}
+
+function buildClarificationSimilarityQueryPlan(
+  intentCategory: SimilarityIntentCategory,
+  knownSlots: Record<string, string | null>
+): DemoObjectiveQueryPlan {
+  const primary: string[] = [];
+  const secondary: string[] = [];
+  const fallback: string[] = [];
+  const age = knownSlots.age;
+  const city = knownSlots.city;
+  const industry = knownSlots.industry;
+  const companyType = knownSlots.companyType;
+  const role = normalizeSimilarityRole(knownSlots.role ?? knownSlots.currentRole);
+  const status = knownSlots.currentStatus;
+  const direction = knownSlots.direction ?? knownSlots.targetDirection;
+  const workYears = knownSlots.workYears;
+  const genderRole = knownSlots.gender && role ? `${knownSlots.gender}${role}` : role;
+
+  switch (intentCategory) {
+    case "tech_to_product":
+      appendClarificationQuery(primary, age, role, direction ?? "产品经理");
+      appendClarificationQuery(primary, role, "转产品经理");
+      appendClarificationQuery(primary, "技术", "转产品经理");
+      appendClarificationQuery(primary, age, role, "转产品");
+      appendClarificationQuery(secondary, role, "不写代码", "转产品");
+      appendClarificationQuery(secondary, "研发", "产品经理");
+      appendClarificationQuery(fallback, "技术转产品", "复盘");
+      appendClarificationQuery(fallback, role, "转行", "后悔");
+      break;
+    case "institution_to_content_creator":
+      appendClarificationQuery(primary, companyType ?? "体制内", workYears, direction ?? "自媒体");
+      appendClarificationQuery(primary, companyType ?? "体制内", "辞职", direction ?? "自媒体");
+      appendClarificationQuery(primary, companyType ?? "体制内", "内容创业");
+      appendClarificationQuery(primary, workYears, companyType ?? "体制内", "自媒体");
+      appendClarificationQuery(secondary, "事业单位", "自媒体");
+      appendClarificationQuery(secondary, "体制内", "个人IP");
+      appendClarificationQuery(fallback, "体制内", "自媒体", "复盘");
+      appendClarificationQuery(fallback, "辞职", "自媒体", "后悔");
+      break;
+    case "construction_career_exit":
+      appendClarificationQuery(primary, industry ?? "施工单位", companyType, status ?? "辞职");
+      appendClarificationQuery(primary, industry ?? "施工单位", "离职", direction ?? "出路");
+      appendClarificationQuery(primary, "工程行业", "转行");
+      appendClarificationQuery(primary, companyType, industry ?? "施工单位", "辞职");
+      appendClarificationQuery(secondary, "施工单位", "转行", "方向");
+      appendClarificationQuery(secondary, "工程人", "离职", "出路");
+      appendClarificationQuery(fallback, "施工单位", "离职", "复盘");
+      appendClarificationQuery(fallback, "工程行业", "转行", "后悔");
+      break;
+    case "teacher_to_counseling":
+      appendClarificationQuery(primary, age, genderRole, direction ?? "心理咨询");
+      appendClarificationQuery(primary, role ?? "教师", "转心理咨询");
+      appendClarificationQuery(primary, "教育背景", "心理咨询");
+      appendClarificationQuery(primary, age, role ?? "教师", "心理咨询");
+      appendClarificationQuery(secondary, "教师", "心理行业");
+      appendClarificationQuery(secondary, "老师", "咨询服务");
+      appendClarificationQuery(fallback, "教师", "转心理咨询", "复盘");
+      appendClarificationQuery(fallback, "心理咨询", "转行", "后悔");
+      break;
+    case "city_or_homecoming":
+      appendClarificationQuery(primary, city, status, direction);
+      appendClarificationQuery(primary, city, role, direction);
+      appendClarificationQuery(primary, role, "回老家");
+      appendClarificationQuery(secondary, city, "回老家", "生活");
+      appendClarificationQuery(fallback, "回老家", "复盘");
+      break;
+    default:
+      appendClarificationQuery(primary, age, companyType, status);
+      appendClarificationQuery(primary, industry, role, direction);
+      appendClarificationQuery(primary, role, status, direction);
+      appendClarificationQuery(primary, city, role, direction);
+      appendClarificationQuery(secondary, workYears, role, direction);
+      appendClarificationQuery(secondary, companyType, status, direction);
+      appendClarificationQuery(fallback, role, direction, "复盘");
+      appendClarificationQuery(fallback, direction, "后悔");
+      break;
+  }
+
+  return {
+    primary: unique(primary).filter((query) => !isGenericProblemQuery(query)).slice(0, 5),
+    secondary: unique(secondary).slice(0, 5),
+    fallback: unique(fallback).slice(0, 4)
+  };
+}
+
+function appendClarificationQuery(
+  target: string[],
+  ...keywords: Array<string | null | undefined>
+): void {
+  const tokens = keywords
+    .flatMap((keyword) => (keyword ?? "").split(/\s+/))
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const query = unique(tokens).slice(0, 4).join(" ");
+  if (query.split(/\s+/).filter(Boolean).length >= 2) {
+    target.push(query);
+  }
+}
+
+function normalizeSimilarityRole(role: string | null | undefined): string | null {
+  if (role === "老师") {
+    return "教师";
+  }
+
+  return role ?? null;
+}
+
+function isGenericProblemQuery(query: string): boolean {
+  return /真实经历|后悔吗|怎么办|值得吗|值不值得|迷茫|能不能|靠谱吗|现实吗|可以吗/.test(query);
 }
 
 function createRoleQuestion(): DemoClarificationQuestion {
@@ -939,14 +1187,176 @@ function createCurrentStatusQuestion(): DemoClarificationQuestion {
   ]);
 }
 
-function createWorkYearsQuestion(label = "你大概有几年相关经验？"): DemoClarificationQuestion {
+function createWorkYearsQuestion(
+  label = "你大概有几年相关经验？",
+  selectedReason = "补齐工作年限，用于匹配同职业阶段的相似经历"
+): DemoClarificationQuestion {
   return createClarificationQuestion("workYears", label, [
     ["under_1_year", "1年以内"],
     ["1_to_3_years", "1-3年"],
     ["3_to_5_years", "3-5年"],
     ["5_to_8_years", "5-8年"],
     ["over_8_years", "8年以上"]
-  ]);
+  ], selectedReason);
+}
+
+function createTechDirectionQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "techDirection",
+    "你之前主要做哪类技术方向？",
+    [
+      ["frontend", "前端"],
+      ["backend", "后端"],
+      ["algorithm_data", "算法 / 数据"],
+      ["test_qa", "测试 / QA"],
+      ["full_stack", "全栈"],
+      ["other", "其他"]
+    ],
+    "补齐技术细分方向，用于匹配技术转产品的相似经历"
+  );
+}
+
+function createTechWorkYearsQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "workYears",
+    "你大概有几年开发或技术经验？",
+    [
+      ["under_1_year", "1年以内"],
+      ["1_to_3_years", "1-3年"],
+      ["3_to_5_years", "3-5年"],
+      ["5_to_8_years", "5-8年"],
+      ["over_8_years", "8年以上"]
+    ],
+    "补齐技术工作年限，用于匹配同阶段转产品样本"
+  );
+}
+
+function createProductRelatedExperienceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "productRelatedExperience",
+    "你过去更接近哪类产品相关经历？",
+    [
+      ["wrote_prd", "写过需求文档"],
+      ["requirement_review", "参与过需求评审"],
+      ["project_coordination", "做过项目协调"],
+      ["business_user_comm", "和用户或业务方沟通过"],
+      ["tech_only", "只负责技术实现"],
+      ["not_sure", "还不确定"]
+    ],
+    "补齐产品相关经历，用于匹配技术背景向产品迁移的相似资源"
+  );
+}
+
+function createInstitutionRoleTypeQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "institutionRoleType",
+    "你在体制内主要做哪类工作？",
+    [
+      ["admin_general", "行政 / 综合"],
+      ["education_medical", "教育 / 医疗"],
+      ["public_service", "政务 / 公共服务"],
+      ["finance_audit", "财务 / 审计"],
+      ["publicity_writing", "宣传 / 文字材料"],
+      ["other", "其他"]
+    ],
+    "补齐体制内岗位类型，用于匹配相似履历的内容转向样本"
+  );
+}
+
+function createContentDirectionQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "contentDirection",
+    "你想做哪类内容方向？",
+    [
+      ["career_experience", "职场经验"],
+      ["education_family", "教育 / 家庭"],
+      ["social_observation", "时事 / 社会观察"],
+      ["knowledge", "知识科普"],
+      ["lifestyle", "生活方式"],
+      ["undecided", "还没确定"]
+    ],
+    "补齐内容方向，用于匹配体制内转自媒体的相似主题路径"
+  );
+}
+
+function createContentFoundationQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "contentFoundation",
+    "你目前已有哪类内容基础？",
+    [
+      ["writing_expression", "写作表达"],
+      ["video_editing", "视频拍摄 / 剪辑"],
+      ["account_operation", "账号运营经验"],
+      ["domain_expertise", "专业领域积累"],
+      ["community", "朋友圈或社群资源"],
+      ["none", "几乎没有"]
+    ],
+    "补齐内容基础，用于匹配已有资源相近的转自媒体经历"
+  );
+}
+
+function createConstructionAbilityQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "engineeringAbility",
+    "你目前积累最多的是哪类工程能力？",
+    [
+      ["site_coordination", "现场协调 / 项目管理"],
+      ["cost_budget", "造价预算 / 成本"],
+      ["safety_quality_docs", "安全质量 / 资料"],
+      ["materials_supply", "材料采购 / 供应链"],
+      ["client_subcontractor", "甲方沟通 / 分包管理"],
+      ["certificate", "证书 / 工程资质"]
+    ],
+    "补齐工程行业能力，用于匹配施工单位离职后的相似转向资源"
+  );
+}
+
+function createTeacherStageQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "teacherStage",
+    "你之前主要是哪类教师？",
+    [
+      ["kindergarten", "幼儿园"],
+      ["primary_school", "小学"],
+      ["middle_high_school", "初中 / 高中"],
+      ["vocational_college", "职校 / 高校"],
+      ["training_center", "教培机构"],
+      ["other", "其他"]
+    ],
+    "补齐教师学段，用于匹配教育背景转心理咨询的相似人群"
+  );
+}
+
+function createCounselingFoundationQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "counselingFoundation",
+    "你是否有心理学或咨询相关基础？",
+    [
+      ["psychology_education_major", "心理学 / 教育学专业"],
+      ["systematic_course", "上过系统课程"],
+      ["certificate_exam", "有证书或考试基础"],
+      ["student_psychology", "做过学生心理相关工作"],
+      ["interest_only", "只有兴趣"],
+      ["none", "还没有"]
+    ],
+    "补齐心理咨询基础，用于匹配教师转咨询服务的起点差异"
+  );
+}
+
+function createCounselingRelatedExperienceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion(
+    "counselingRelatedExperience",
+    "你过去更接近哪类相关经验？",
+    [
+      ["student_comm", "学生沟通"],
+      ["home_school_comm", "家校沟通"],
+      ["case_counseling", "个案辅导"],
+      ["class_management", "班级管理"],
+      ["emotional_support", "情绪支持"],
+      ["none", "暂时没有"]
+    ],
+    "补齐相关沟通和辅导经历，用于匹配咨询能力迁移样本"
+  );
 }
 
 function createDesignSkillQuestion(): DemoClarificationQuestion {
@@ -1098,7 +1508,7 @@ function createConstructionFunctionQuestion(): DemoClarificationQuestion {
     ["materials_procurement", "材料 / 采购"],
     ["office_admin", "办公室 / 行政"],
     ["other", "其他"]
-  ]);
+  ], "补齐施工岗位类型，用于匹配工程行业内相似履历");
 }
 
 function inferObjectiveClarificationStage(normalizedQuery: string): ObjectiveClarificationStage {
@@ -1764,11 +2174,13 @@ function createClarifyingCard(
 function createClarificationQuestion(
   id: string,
   label: string,
-  options: Array<[string, string]>
+  options: Array<[string, string]>,
+  selectedReason = "补齐相似人匹配所需的身份、履历或资源槽位"
 ): DemoClarificationQuestion {
   return {
     id,
     slot: id,
+    selectedReason,
     label,
     question: label,
     type: "single_select",

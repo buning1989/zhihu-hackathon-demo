@@ -77,6 +77,7 @@ export interface DemoClarifyingCard {
 export interface DemoClarificationQuestion {
   id: string;
   slot?: string;
+  selectedReason?: string;
   label: string;
   question?: string;
   type: DemoClarificationQuestionType;
@@ -478,8 +479,16 @@ export interface DemoDebugClarificationPlan {
   intentCategory: string;
   knownSlots: Record<string, string | null>;
   missingSimilaritySlots: string[];
+  selectedQuestions: DemoDebugSelectedClarificationQuestion[];
   rejectedQuestions: DemoDebugRejectedClarificationQuestion[];
   selectedSlots: string[];
+  queryPlan?: DemoObjectiveQueryPlan;
+}
+
+export interface DemoDebugSelectedClarificationQuestion {
+  slot: string;
+  question: string;
+  selectedReason: string;
 }
 
 export interface DemoDebugRejectedClarificationQuestion {
