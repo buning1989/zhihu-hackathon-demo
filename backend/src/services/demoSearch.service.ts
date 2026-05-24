@@ -633,7 +633,7 @@ function buildRuleClarifyingCard(query: string): {
 }
 
 function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
-  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|自由职业|创业|回老家|开店|独立开发|个人开发者|indiehacker|体制内|大厂|施工单位|自媒体|工作十年|gap/.test(
+  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|自由职业|创业|回老家|开店|读研|考研|升学|一线城市|二线城市|保险经纪人|职业咨询|新能源|小红书|博主|接私单|私单|独立开发|个人开发者|indiehacker|体制内|大厂|施工单位|自媒体|工作十年|gap/.test(
     normalizedQuery
   );
 }
@@ -829,6 +829,20 @@ function appendEvaluationObjectiveQuestions(
     return;
   }
 
+  if (/读研|考研|升学/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createStudyPreparationQuestion());
+    appendClarificationQuestion(questions, createStudyFundingQuestion());
+    appendClarificationQuestion(questions, createStudyTimeCostQuestion());
+    return;
+  }
+
+  if (/一线城市|二线城市|大城市/.test(normalizedQuery) && /找工作|工作/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createCityJobBasisQuestion());
+    appendClarificationQuestion(questions, createJobSearchRunwayQuestion());
+    appendClarificationQuestion(questions, createCitySupportQuestion());
+    return;
+  }
+
   if (/回老家/.test(normalizedQuery)) {
     appendClarificationQuestion(questions, createReturnHomeResourceQuestion());
     appendClarificationQuestion(questions, createTrialBudgetQuestion("当前能承受的试错成本更接近哪种？"));
@@ -843,6 +857,48 @@ function appendEvaluationObjectiveQuestions(
       createTrialBudgetQuestion("当前能承受的开店试错成本更接近哪种？")
     );
     appendClarificationQuestion(questions, createCurrentResourceQuestion());
+    return;
+  }
+
+  if (/保险经纪人/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createBrokerBasisQuestion());
+    appendClarificationQuestion(questions, createClientResourceQuestion());
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    return;
+  }
+
+  if (/接私单|私单/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createFreelanceOrderBasisQuestion());
+    appendClarificationQuestion(questions, createCashflowSourceQuestion());
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    return;
+  }
+
+  if (/职业咨询/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createConsultingBasisQuestion());
+    appendClarificationQuestion(questions, createClientResourceQuestion());
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    return;
+  }
+
+  if (/新能源/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createTargetIndustryBasisQuestion("新能源行业目前已有的基础是什么？"));
+    appendClarificationQuestion(questions, createSkillGapQuestion());
+    appendClarificationQuestion(questions, createJobSearchRunwayQuestion());
+    return;
+  }
+
+  if (/小红书|博主/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createContentBasisQuestion());
+    appendClarificationQuestion(questions, createContentMonetizationQuestion());
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    return;
+  }
+
+  if (/考公/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createCivilServicePreparationQuestion());
+    appendClarificationQuestion(questions, createStudyTimeCostQuestion());
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
     return;
   }
 
@@ -906,6 +962,160 @@ function createIndependentDeveloperBasisQuestion(): DemoClarificationQuestion {
     ["paid_customers", "付费客户"],
     ["tech_skill", "技术能力"],
     ["none", "暂时没有"]
+  ]);
+}
+
+function createStudyPreparationQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("study_preparation", "读研目前准备到哪一步了？", [
+    ["idea_only", "只是初步想法"],
+    ["chosen_major", "确定专业方向"],
+    ["checked_schools", "了解过院校"],
+    ["started_exam_prep", "已经开始备考"],
+    ["has_offer", "已有录取机会"],
+    ["unknown", "还不确定"]
+  ]);
+}
+
+function createStudyFundingQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("study_funding", "读研期间主要经济来源更接近哪种？", [
+    ["savings", "靠存款"],
+    ["family_support", "家人支持"],
+    ["part_time", "兼职 / 项目"],
+    ["scholarship", "奖学金"],
+    ["loan", "贷款"],
+    ["unknown", "还不确定"]
+  ]);
+}
+
+function createStudyTimeCostQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("study_time_cost", "能接受多长时间没有稳定收入？", [
+    ["under_6_months", "6个月以内"],
+    ["6_to_12_months", "6-12个月"],
+    ["1_to_2_years", "1-2年"],
+    ["2_to_3_years", "2-3年"],
+    ["over_3_years", "3年以上"],
+    ["unknown", "不确定"]
+  ]);
+}
+
+function createCityJobBasisQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("city_job_basis", "去目标城市找工作，目前最明确的基础是什么？", [
+    ["target_city", "目标城市"],
+    ["target_role", "目标岗位"],
+    ["interview_leads", "面试机会"],
+    ["local_network", "当地人脉"],
+    ["place_to_stay", "落脚住处"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createJobSearchRunwayQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("job_search_runway", "能承受多久求职空窗？", [
+    ["under_1_month", "1个月以内"],
+    ["1_to_3_months", "1-3个月"],
+    ["3_to_6_months", "3-6个月"],
+    ["6_to_12_months", "6-12个月"],
+    ["over_12_months", "12个月以上"],
+    ["unknown", "不确定"]
+  ]);
+}
+
+function createCitySupportQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("city_support", "目标城市现在有什么支持条件？", [
+    ["friends", "朋友同学"],
+    ["relatives", "亲戚家人"],
+    ["housing", "可落脚住处"],
+    ["job_leads", "工作机会"],
+    ["savings", "可用存款"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createBrokerBasisQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("broker_basis", "保险经纪人现在已有的基础是什么？", [
+    ["sales_experience", "销售经验"],
+    ["client_network", "客户人脉"],
+    ["license_ready", "证书 / 资质"],
+    ["mentor_team", "团队或师傅"],
+    ["trial_order", "已试单"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createClientResourceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("client_resource", "目前客户或人脉资源更接近哪种？", [
+    ["none", "基本没有"],
+    ["friends_family", "亲友熟人"],
+    ["old_clients", "旧客户"],
+    ["industry_network", "行业人脉"],
+    ["online_leads", "线上线索"],
+    ["stable_clients", "稳定客户"]
+  ]);
+}
+
+function createFreelanceOrderBasisQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("freelance_order_basis", "接私单目前已有的基础是什么？", [
+    ["portfolio", "作品案例"],
+    ["old_clients", "老客户"],
+    ["platform_account", "平台账号"],
+    ["stable_orders", "稳定单量"],
+    ["partner_channel", "合作渠道"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createConsultingBasisQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("consulting_basis", "职业咨询现在已有的基础是什么？", [
+    ["hr_experience", "招聘 / HR经验"],
+    ["industry_cases", "行业案例"],
+    ["consulting_training", "咨询训练"],
+    ["content_account", "内容账号"],
+    ["paid_clients", "付费客户"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createTargetIndustryBasisQuestion(label: string): DemoClarificationQuestion {
+  return createClarificationQuestion("target_industry_basis", label, [
+    ["related_experience", "相关经验"],
+    ["transferable_skill", "可迁移技能"],
+    ["industry_contact", "行业人脉"],
+    ["interview_leads", "面试机会"],
+    ["learning_started", "已经学习"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createSkillGapQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("skill_gap", "目前最大的能力差距更像哪类？", [
+    ["industry_knowledge", "行业知识"],
+    ["technical_skill", "技术能力"],
+    ["project_experience", "项目经验"],
+    ["certificate", "证书资质"],
+    ["network", "没人带路"],
+    ["unknown", "不确定"]
+  ]);
+}
+
+function createContentMonetizationQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("content_monetization", "小红书方向目前最明确的变现线索是什么？", [
+    ["none", "还没有"],
+    ["brand_ads", "品牌合作"],
+    ["services", "服务咨询"],
+    ["commerce", "带货"],
+    ["course", "课程产品"],
+    ["private_domain", "私域转化"]
+  ]);
+}
+
+function createCivilServicePreparationQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("civil_service_preparation", "考公目前准备到哪一步了？", [
+    ["idea_only", "只是初步想法"],
+    ["chosen_region", "确定地区"],
+    ["chosen_role", "确定岗位"],
+    ["started_prep", "已经备考"],
+    ["taken_exam", "考过一次"],
+    ["unknown", "还不确定"]
   ]);
 }
 

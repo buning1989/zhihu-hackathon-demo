@@ -381,7 +381,21 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
     "home_resource",
     "trial_budget",
     "current_resource",
-    "content_basis"
+    "content_basis",
+    "study_preparation",
+    "study_funding",
+    "study_time_cost",
+    "city_job_basis",
+    "job_search_runway",
+    "city_support",
+    "broker_basis",
+    "client_resource",
+    "freelance_order_basis",
+    "consulting_basis",
+    "target_industry_basis",
+    "skill_gap",
+    "content_monetization",
+    "civil_service_preparation"
   ];
   const objectiveQuestionCount = questionIds.filter((id) =>
     searchableQuestionIds.includes(String(id))
@@ -470,9 +484,37 @@ async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<vo
         "独立开发现在已有的基础是什么？",
         "现在是否有稳定现金流或项目来源？"
       ]
+    },
+    {
+      query: "外企市场岗工作八年，想辞职去读研现实吗？",
+      direction: "读研",
+      expectedLabels: [
+        "读研目前准备到哪一步了？",
+        "读研期间主要经济来源更接近哪种？",
+        "能接受多长时间没有稳定收入？"
+      ]
+    },
+    {
+      query: "县城老师想离职去一线城市找工作，靠谱吗？",
+      direction: "一线城市工作",
+      expectedLabels: [
+        "去目标城市找工作，目前最明确的基础是什么？",
+        "能承受多久求职空窗？",
+        "目标城市现在有什么支持条件？"
+      ]
+    },
+    {
+      query: "32岁销售被裁后，要不要去做保险经纪人？",
+      direction: "保险经纪人",
+      expectedLabels: [
+        "保险经纪人现在已有的基础是什么？",
+        "目前客户或人脉资源更接近哪种？",
+        "目前可支撑多久没有稳定工资？"
+      ]
     }
   ];
 
+  const seenLabelSets = new Set<string>();
   for (const testCase of cases) {
     const response = await requestJson(`${baseUrl}/api/demo/search`, {
       method: "POST",
@@ -497,6 +539,10 @@ async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<vo
       assertIncludes(labels, expectedLabel, `${testCase.query}: labels`);
     }
     assertNoEvaluationStageMismatch(labels, `${testCase.query}: labels`);
+    if (seenLabelSets.has(labels)) {
+      throw new Error(`${testCase.query}: evaluation clarifying card reused an existing label set`);
+    }
+    seenLabelSets.add(labels);
   }
 }
 
