@@ -73,6 +73,7 @@ try {
   assertClarifyingCard(demoSearch.body.data.clarifyingCard, "demo clarifyingCard");
   assertObjectiveClarifyingCard(demoSearch.body.data.clarifyingCard, "demo objective clarifyingCard");
   await assertContextualObjectiveClarifyingCards(baseUrl);
+  await assertEvaluationStageClarifyingCards(baseUrl);
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -336,6 +337,10 @@ function assertClarifyingCard(value: unknown, label: string): void {
   assertMinArrayLength(value.questions, 3, `${label}.questions`);
 
   const questions = value.questions as unknown[];
+  if (questions.length > 3) {
+    throw new Error(`${label}.questions: expected <= 3 questions`);
+  }
+
   for (const [index, question] of questions.entries()) {
     if (!isRecord(question)) {
       throw new Error(`${label}.questions[${index}]: expected object`);
@@ -368,7 +373,15 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
     "city",
     "age",
     "home_plan",
-    "shop_preparation"
+    "shop_preparation",
+    "cash_runway",
+    "cashflow_source",
+    "monetizable_resource",
+    "indie_basis",
+    "home_resource",
+    "trial_budget",
+    "current_resource",
+    "content_basis"
   ];
   const objectiveQuestionCount = questionIds.filter((id) =>
     searchableQuestionIds.includes(String(id))
@@ -425,6 +438,72 @@ async function assertContextualObjectiveClarifyingCards(baseUrl: string): Promis
 
   assertIncludes(shanghaiLabels, "回老家", "contextual shanghai labels");
   assertIncludes(shopLabels, "开店", "contextual shop labels");
+  assertNoEvaluationStageMismatch(shanghaiLabels, "contextual shanghai labels");
+  assertNoEvaluationStageMismatch(shopLabels, "contextual shop labels");
+}
+
+async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<void> {
+  const cases = [
+    {
+      query: "产品经理被裁后，要不要转自由职业？",
+      direction: "自由职业",
+      expectedLabels: [
+        "目前可支撑多久没有稳定工资？",
+        "现在是否有稳定现金流或项目来源？",
+        "已有可变现资源更接近哪类？"
+      ]
+    },
+    {
+      query: "在北京工作十年，想回老家开店现实吗？",
+      direction: "回老家 开店",
+      expectedLabels: [
+        "你之前主要做什么岗位？",
+        "如果回老家，目前最明确的现实资源是什么？",
+        "当前能承受的试错成本更接近哪种？"
+      ]
+    },
+    {
+      query: "大厂程序员被裁后，去做独立开发靠谱吗？",
+      direction: "独立开发",
+      expectedLabels: [
+        "目前可支撑多久没有稳定工资？",
+        "独立开发现在已有的基础是什么？",
+        "现在是否有稳定现金流或项目来源？"
+      ]
+    }
+  ];
+
+  for (const testCase of cases) {
+    const response = await requestJson(`${baseUrl}/api/demo/search`, {
+      method: "POST",
+      body: {
+        query: testCase.query,
+        count: 3,
+        dataMode: "mock"
+      }
+    });
+
+    assertEqual(response.status, 200, `${testCase.query}: clarification status`);
+    assertEqual(
+      response.body.data.debug.intentStage.objectiveSlots.direction,
+      testCase.direction,
+      `${testCase.query}: objectiveSlots.direction`
+    );
+    const card = response.body.data.clarifyingCard;
+    assertClarifyingCard(card, `${testCase.query}: clarifyingCard`);
+    assertObjectiveClarifyingCard(card, `${testCase.query}: objective clarifyingCard`);
+    const labels = readClarifyingCardQuestionLabels(card).join("\n");
+    for (const expectedLabel of testCase.expectedLabels) {
+      assertIncludes(labels, expectedLabel, `${testCase.query}: labels`);
+    }
+    assertNoEvaluationStageMismatch(labels, `${testCase.query}: labels`);
+  }
+}
+
+function assertNoEvaluationStageMismatch(labels: string, label: string): void {
+  for (const forbidden of ["最大现实压力", "最大的现实压力", "最缺哪块准备", "考虑的方向是什么"]) {
+    assertNotIncludes(labels, forbidden, label);
+  }
 }
 
 function readClarifyingCardQuestionLabels(value: unknown): string[] {

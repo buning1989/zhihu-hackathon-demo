@@ -431,6 +431,7 @@ function extractDirection(query: string): string | null {
   const directionPairs: Array<[RegExp, string]> = [
     [/创业/, "创业"],
     [/自由职业/, "自由职业"],
+    [/独立开发|个人开发者|indie\s*hacker/i, "独立开发"],
     [/转行|换行业/, "转行"],
     [/考公/, "考公"],
     [/回老家/, "回老家"],

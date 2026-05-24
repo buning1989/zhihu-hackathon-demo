@@ -44,7 +44,7 @@ const MAX_COUNT = 20;
 const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "real"]);
 const DEMO_SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEMO_SEARCH_BUDGET_MS = 14000;
-const REQUIRED_CLARIFICATION_QUESTIONS = 4;
+const REQUIRED_CLARIFICATION_QUESTIONS = 3;
 const MAX_CLARIFICATION_OPTIONS = 6;
 const OBJECTIVE_CLARIFICATION_SLOT_ORDER: DemoObjectiveSlotName[] = [
   "role",
@@ -52,6 +52,8 @@ const OBJECTIVE_CLARIFICATION_SLOT_ORDER: DemoObjectiveSlotName[] = [
   "direction",
   "constraint"
 ];
+
+type ObjectiveClarificationStage = "evaluation" | "execution" | "exploration";
 
 interface DemoSearchCacheEntry {
   expiresAt: number;
@@ -631,7 +633,7 @@ function buildRuleClarifyingCard(query: string): {
 }
 
 function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
-  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|自由职业|创业|回老家|开店|体制内|大厂|施工单位|自媒体|工作十年|gap/.test(
+  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|自由职业|创业|回老家|开店|独立开发|个人开发者|indiehacker|体制内|大厂|施工单位|自媒体|工作十年|gap/.test(
     normalizedQuery
   );
 }
@@ -639,10 +641,11 @@ function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
 function createObjectiveSlotClarifyingCard(query: string): DemoClarifyingCard {
   const normalizedQuery = query.replace(/\s+/g, "").toLowerCase();
   const { objectiveSlots, missingSlots } = buildObjectiveSearchContext(query);
+  const stage = inferObjectiveClarificationStage(normalizedQuery);
   const questions: DemoClarificationQuestion[] = [];
 
   for (const slotName of OBJECTIVE_CLARIFICATION_SLOT_ORDER) {
-    if (!missingSlots.includes(slotName)) {
+    if (!shouldAskObjectiveSlotQuestion(slotName, missingSlots, stage)) {
       continue;
     }
 
@@ -652,14 +655,47 @@ function createObjectiveSlotClarifyingCard(query: string): DemoClarifyingCard {
     );
   }
 
-  appendContextualObjectiveQuestions(questions, normalizedQuery);
+  if (stage === "evaluation") {
+    appendEvaluationObjectiveQuestions(questions, normalizedQuery);
+  } else {
+    appendContextualObjectiveQuestions(questions, normalizedQuery);
+  }
+
   appendObjectiveSlotFillerQuestions(questions, objectiveSlots);
 
   return createClarifyingCard(
     readObjectiveClarifyingCardTitle(normalizedQuery),
-    readObjectiveClarifyingCardDescription(normalizedQuery),
+    readObjectiveClarifyingCardDescription(normalizedQuery, stage),
     questions
   );
+}
+
+function inferObjectiveClarificationStage(normalizedQuery: string): ObjectiveClarificationStage {
+  if (/已经开始|已开始|正在做|已经在做|开始做|准备开|正在开|已经开|已开|已经决定|已决定|已接单|正在接单|开始接单/.test(normalizedQuery)) {
+    return "execution";
+  }
+
+  if (/要不要|靠不靠谱|靠谱吗|现实吗|可行吗|可以吗|值不值得|值得吗|适合吗|能不能|能做吗|行不行/.test(normalizedQuery)) {
+    return "evaluation";
+  }
+
+  return "exploration";
+}
+
+function shouldAskObjectiveSlotQuestion(
+  slotName: DemoObjectiveSlotName,
+  missingSlots: DemoObjectiveSlotName[],
+  stage: ObjectiveClarificationStage
+): boolean {
+  if (!missingSlots.includes(slotName)) {
+    return false;
+  }
+
+  if (stage === "evaluation" && slotName === "constraint") {
+    return false;
+  }
+
+  return true;
 }
 
 function createObjectiveSlotQuestion(
@@ -782,6 +818,141 @@ function createConstraintClarificationQuestion(normalizedQuery: string): DemoCla
   ]);
 }
 
+function appendEvaluationObjectiveQuestions(
+  questions: DemoClarificationQuestion[],
+  normalizedQuery: string
+): void {
+  if (/独立开发|个人开发者|indiehacker/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    appendClarificationQuestion(questions, createIndependentDeveloperBasisQuestion());
+    appendClarificationQuestion(questions, createCashflowSourceQuestion());
+    return;
+  }
+
+  if (/回老家/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createReturnHomeResourceQuestion());
+    appendClarificationQuestion(questions, createTrialBudgetQuestion("当前能承受的试错成本更接近哪种？"));
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    return;
+  }
+
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    appendClarificationQuestion(
+      questions,
+      createTrialBudgetQuestion("当前能承受的开店试错成本更接近哪种？")
+    );
+    appendClarificationQuestion(questions, createCurrentResourceQuestion());
+    return;
+  }
+
+  if (/自由职业/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    appendClarificationQuestion(questions, createCashflowSourceQuestion());
+    appendClarificationQuestion(questions, createMonetizableResourceQuestion());
+    return;
+  }
+
+  if (/自媒体/.test(normalizedQuery)) {
+    appendClarificationQuestion(questions, createCashRunwayQuestion());
+    appendClarificationQuestion(questions, createContentBasisQuestion());
+    appendClarificationQuestion(questions, createCashflowSourceQuestion());
+    return;
+  }
+
+  appendClarificationQuestion(questions, createCashRunwayQuestion());
+  appendClarificationQuestion(questions, createCashflowSourceQuestion());
+  appendClarificationQuestion(questions, createMonetizableResourceQuestion());
+}
+
+function createCashRunwayQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("cash_runway", "目前可支撑多久没有稳定工资？", [
+    ["under_1_month", "1个月以内"],
+    ["1_to_3_months", "1-3个月"],
+    ["3_to_6_months", "3-6个月"],
+    ["6_to_12_months", "6-12个月"],
+    ["over_12_months", "12个月以上"],
+    ["unknown", "不确定"]
+  ]);
+}
+
+function createCashflowSourceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("cashflow_source", "现在是否有稳定现金流或项目来源？", [
+    ["none", "还没有"],
+    ["sporadic_projects", "有零散项目"],
+    ["stable_side_income", "有稳定副业"],
+    ["fixed_clients", "有固定客户"],
+    ["passive_income", "有被动收入"],
+    ["unknown", "不确定"]
+  ]);
+}
+
+function createMonetizableResourceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("monetizable_resource", "已有可变现资源更接近哪类？", [
+    ["professional_skill", "专业技能"],
+    ["portfolio", "作品案例"],
+    ["client_network", "客户人脉"],
+    ["content_account", "内容账号"],
+    ["sellable_product", "可售产品"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createIndependentDeveloperBasisQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("indie_basis", "独立开发现在已有的基础是什么？", [
+    ["idea", "产品想法"],
+    ["prototype", "可运行产品"],
+    ["early_users", "早期用户"],
+    ["paid_customers", "付费客户"],
+    ["tech_skill", "技术能力"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createReturnHomeResourceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("home_resource", "如果回老家，目前最明确的现实资源是什么？", [
+    ["housing", "住处"],
+    ["family_support", "家人支持"],
+    ["local_network", "本地人脉"],
+    ["available_money", "可用资金"],
+    ["low_cost", "低生活成本"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createTrialBudgetQuestion(label: string): DemoClarificationQuestion {
+  return createClarificationQuestion("trial_budget", label, [
+    ["light_trial_only", "只能轻量尝试"],
+    ["1_to_3_months", "1-3个月"],
+    ["3_to_6_months", "3-6个月"],
+    ["6_to_12_months", "6-12个月"],
+    ["over_12_months", "一年以上"],
+    ["unknown", "不确定"]
+  ]);
+}
+
+function createCurrentResourceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("current_resource", "目前最明确的现实资源是什么？", [
+    ["available_money", "可用资金"],
+    ["industry_experience", "行业经验"],
+    ["local_network", "本地人脉"],
+    ["partner", "合伙人"],
+    ["low_cost_trial", "低成本试错"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createContentBasisQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("content_basis", "自媒体现在已有的基础是什么？", [
+    ["topic_direction", "内容方向"],
+    ["published_content", "已发内容"],
+    ["small_account", "已有账号"],
+    ["stable_rhythm", "稳定更新"],
+    ["commercial_clue", "变现线索"],
+    ["none", "暂时没有"]
+  ]);
+}
+
 function appendContextualObjectiveQuestions(
   questions: DemoClarificationQuestion[],
   normalizedQuery: string
@@ -885,6 +1056,10 @@ function appendClarificationQuestion(
 }
 
 function readObjectiveClarifyingCardTitle(normalizedQuery: string): string {
+  if (/独立开发|个人开发者|indiehacker/.test(normalizedQuery)) {
+    return "补充独立开发背景，匹配更准";
+  }
+
   if (/开店|咖啡店/.test(normalizedQuery)) {
     return "补充开店背景，匹配更准";
   }
@@ -904,7 +1079,14 @@ function readObjectiveClarifyingCardTitle(normalizedQuery: string): string {
   return "补充客观背景，匹配更准";
 }
 
-function readObjectiveClarifyingCardDescription(normalizedQuery: string): string {
+function readObjectiveClarifyingCardDescription(
+  normalizedQuery: string,
+  stage: ObjectiveClarificationStage
+): string {
+  if (stage === "evaluation") {
+    return "先补齐当前现金、现金流和已有资源，优先匹配相似的人和处境。";
+  }
+
   if (/开店|咖啡店/.test(normalizedQuery)) {
     return "先补齐岗位、开店准备和现实约束，优先匹配相似的人和处境。";
   }
