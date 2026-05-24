@@ -72,6 +72,7 @@ try {
   assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
   assertClarifyingCard(demoSearch.body.data.clarifyingCard, "demo clarifyingCard");
   assertObjectiveClarifyingCard(demoSearch.body.data.clarifyingCard, "demo objective clarifyingCard");
+  await assertContextualObjectiveClarifyingCards(baseUrl);
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -357,10 +358,23 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
   const questionIds = questions
     .map((question) => (isRecord(question) ? question.id : ""))
     .filter(Boolean);
-  for (const expectedId of ["role", "status", "direction", "constraint"]) {
-    if (!questionIds.includes(expectedId)) {
-      throw new Error(`${label}: expected objective slot question ${expectedId}`);
-    }
+  const searchableQuestionIds = [
+    "role",
+    "status",
+    "direction",
+    "constraint",
+    "industry",
+    "companyType",
+    "city",
+    "age",
+    "home_plan",
+    "shop_preparation"
+  ];
+  const objectiveQuestionCount = questionIds.filter((id) =>
+    searchableQuestionIds.includes(String(id))
+  ).length;
+  if (objectiveQuestionCount < 3) {
+    throw new Error(`${label}: expected at least 3 searchable objective slot questions`);
   }
 
   const labels = questions
@@ -369,6 +383,58 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
   for (const forbidden of ["最担心", "怕不怕后悔", "是不是很迷茫"]) {
     assertNotIncludes(labels, forbidden, `${label}.labels`);
   }
+}
+
+async function assertContextualObjectiveClarifyingCards(baseUrl: string): Promise<void> {
+  const shanghaiResponse = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    body: {
+      query: "在上海工作很多年，想辞职回老家生活可以吗？",
+      count: 3,
+      dataMode: "mock"
+    }
+  });
+  const shopResponse = await requestJson(`${baseUrl}/api/demo/search`, {
+    method: "POST",
+    body: {
+      query: "国企上班太压抑，辞职开咖啡店现实吗？",
+      count: 3,
+      dataMode: "mock"
+    }
+  });
+
+  assertEqual(shanghaiResponse.status, 200, "contextual shanghai clarification status");
+  assertEqual(shopResponse.status, 200, "contextual shop clarification status");
+  const shanghaiCard = shanghaiResponse.body.data.clarifyingCard;
+  const shopCard = shopResponse.body.data.clarifyingCard;
+  assertEqual(
+    shopResponse.body.data.debug.intentStage.objectiveSlots.direction,
+    "开店",
+    "contextual shop objectiveSlots.direction"
+  );
+  assertClarifyingCard(shanghaiCard, "contextual shanghai clarifyingCard");
+  assertClarifyingCard(shopCard, "contextual shop clarifyingCard");
+  assertObjectiveClarifyingCard(shanghaiCard, "contextual shanghai objective clarifyingCard");
+  assertObjectiveClarifyingCard(shopCard, "contextual shop objective clarifyingCard");
+
+  const shanghaiLabels = readClarifyingCardQuestionLabels(shanghaiCard).join("\n");
+  const shopLabels = readClarifyingCardQuestionLabels(shopCard).join("\n");
+  if (shanghaiLabels === shopLabels) {
+    throw new Error("contextual objective clarifying cards should not reuse identical questions");
+  }
+
+  assertIncludes(shanghaiLabels, "回老家", "contextual shanghai labels");
+  assertIncludes(shopLabels, "开店", "contextual shop labels");
+}
+
+function readClarifyingCardQuestionLabels(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.questions)) {
+    return [];
+  }
+
+  return value.questions
+    .map((question) => (isRecord(question) ? String(question.label ?? "") : ""))
+    .filter(Boolean);
 }
 
 function assertClarifiedIntentPlan(value: unknown): void {

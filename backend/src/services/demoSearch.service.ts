@@ -13,11 +13,16 @@ import { demoSessionCacheService } from "./demoSessionCache.service.js";
 import { createDemoContextUsed } from "./userContext.service.js";
 import type { UserContext } from "../auth/session.js";
 import {
+  buildObjectiveSearchContext
+} from "../llm/searchQueryPlan.js";
+import {
   type DemoClarificationAnswers,
   type DemoClarificationQuestion,
   type DemoClarifyingCard,
   type DemoDataMode,
   type DemoDebugClarificationContext,
+  type DemoObjectiveSlotName,
+  type DemoObjectiveSlots,
   type DemoSearchDebug,
   type DemoSearchResponse
 } from "../types/demo.types.js";
@@ -41,6 +46,12 @@ const DEMO_SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEMO_SEARCH_BUDGET_MS = 14000;
 const REQUIRED_CLARIFICATION_QUESTIONS = 4;
 const MAX_CLARIFICATION_OPTIONS = 6;
+const OBJECTIVE_CLARIFICATION_SLOT_ORDER: DemoObjectiveSlotName[] = [
+  "role",
+  "status",
+  "direction",
+  "constraint"
+];
 
 interface DemoSearchCacheEntry {
   expiresAt: number;
@@ -354,7 +365,7 @@ function buildRuleClarifyingCard(query: string): {
   if (isObjectiveSlotClarificationQuery(normalized)) {
     return {
       ambiguityLevel: "high",
-      card: createObjectiveSlotClarifyingCard()
+      card: createObjectiveSlotClarifyingCard(query)
     };
   }
 
@@ -625,40 +636,284 @@ function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
   );
 }
 
-function createObjectiveSlotClarifyingCard(): DemoClarifyingCard {
+function createObjectiveSlotClarifyingCard(query: string): DemoClarifyingCard {
+  const normalizedQuery = query.replace(/\s+/g, "").toLowerCase();
+  const { objectiveSlots, missingSlots } = buildObjectiveSearchContext(query);
+  const questions: DemoClarificationQuestion[] = [];
+
+  for (const slotName of OBJECTIVE_CLARIFICATION_SLOT_ORDER) {
+    if (!missingSlots.includes(slotName)) {
+      continue;
+    }
+
+    appendClarificationQuestion(
+      questions,
+      createObjectiveSlotQuestion(slotName, normalizedQuery)
+    );
+  }
+
+  appendContextualObjectiveQuestions(questions, normalizedQuery);
+  appendObjectiveSlotFillerQuestions(questions, objectiveSlots);
+
   return createClarifyingCard(
-    "补充客观背景，匹配更准",
-    "先补齐岗位、状态、方向和现实约束，优先匹配相似的人和处境。",
-    [
-      createClarificationQuestion("role", "你之前主要做什么岗位？", [
+    readObjectiveClarifyingCardTitle(normalizedQuery),
+    readObjectiveClarifyingCardDescription(normalizedQuery),
+    questions
+  );
+}
+
+function createObjectiveSlotQuestion(
+  slotName: DemoObjectiveSlotName,
+  normalizedQuery: string
+): DemoClarificationQuestion | null {
+  switch (slotName) {
+    case "role":
+      return createClarificationQuestion("role", "你之前主要做什么岗位？", [
         ["product_operation", "产品 / 运营"],
         ["tech_rd", "技术 / 研发"],
         ["marketing_sales", "市场 / 销售"],
         ["design_content", "设计 / 内容"],
         ["other", "其他"]
-      ]),
-      createClarificationQuestion("status", "你现在是什么状态？", [
+      ]);
+    case "status":
+      return createClarificationQuestion("status", "你现在是什么状态？", [
         ["already_quit", "已经裸辞"],
         ["preparing_quit", "正准备辞职"],
         ["laid_off_unemployed", "被裁 / 待业"],
         ["employed_switch", "还在职但想换方向"]
-      ]),
-      createClarificationQuestion("direction", "你考虑的方向是什么？", [
-        ["startup", "创业"],
-        ["freelance", "自由职业"],
-        ["switch_career", "转行"],
-        ["return_home", "回老家"],
-        ["unclear", "还没想清楚"]
-      ]),
-      createClarificationQuestion("constraint", "你最大的现实约束是什么？", [
-        ["limited_savings", "存款有限"],
-        ["mortgage_family", "房贷 / 家庭压力"],
-        ["age_pressure", "年龄焦虑"],
-        ["no_project_partner", "缺少项目或合伙人"],
-        ["avoid_original_industry", "不想再回原行业"]
+      ]);
+    case "direction":
+      return createDirectionClarificationQuestion(normalizedQuery);
+    case "constraint":
+      return createConstraintClarificationQuestion(normalizedQuery);
+    default:
+      return null;
+  }
+}
+
+function createDirectionClarificationQuestion(normalizedQuery: string): DemoClarificationQuestion {
+  if (/回老家/.test(normalizedQuery)) {
+    return createClarificationQuestion("direction", "回老家后更想往哪个方向走？", [
+      ["local_job", "找本地工作"],
+      ["open_shop", "开店"],
+      ["freelance", "自由职业"],
+      ["civil_service", "考公 / 编制"],
+      ["rest_first", "先休整"]
+    ]);
+  }
+
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    return createClarificationQuestion("direction", "你考虑的开店方向是什么？", [
+      ["coffee_shop", "咖啡店"],
+      ["food_drink", "餐饮小店"],
+      ["retail_shop", "零售小店"],
+      ["community_shop", "社区店"],
+      ["unclear", "还没定"]
+    ]);
+  }
+
+  return createClarificationQuestion("direction", "你考虑的方向是什么？", [
+    ["startup", "创业"],
+    ["freelance", "自由职业"],
+    ["switch_career", "转行"],
+    ["return_home", "回老家"],
+    ["unclear", "还没想清楚"]
+  ]);
+}
+
+function createConstraintClarificationQuestion(normalizedQuery: string): DemoClarificationQuestion {
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    return createClarificationQuestion("constraint", "开店前最缺的是哪块准备？", [
+      ["startup_money", "启动资金"],
+      ["shop_location", "店铺位置"],
+      ["customer_source", "客源渠道"],
+      ["shop_experience", "餐饮 / 经营经验"],
+      ["partner_staff", "合伙人 / 人手"],
+      ["trial_time", "试错时间"]
+    ]);
+  }
+
+  if (/回老家/.test(normalizedQuery)) {
+    return createClarificationQuestion("constraint", "回老家最大的现实约束是什么？", [
+      ["local_jobs", "本地工作机会"],
+      ["income_gap", "收入落差"],
+      ["family_relation", "家庭关系"],
+      ["housing_life", "住房 / 生活适应"],
+      ["social_circle", "圈子变化"]
+    ]);
+  }
+
+  if (/自媒体/.test(normalizedQuery)) {
+    return createClarificationQuestion("constraint", "做自媒体最缺哪类准备？", [
+      ["cashflow", "现金流"],
+      ["content_direction", "内容方向"],
+      ["growth_channel", "涨粉渠道"],
+      ["execution_rhythm", "更新节奏"],
+      ["family_support", "家人支持"]
+    ]);
+  }
+
+  if (/自由职业/.test(normalizedQuery)) {
+    return createClarificationQuestion("constraint", "自由职业最大的现实压力是什么？", [
+      ["client_source", "客户来源"],
+      ["unstable_income", "收入不稳定"],
+      ["self_management", "自我管理"],
+      ["social_security", "社保医保"],
+      ["portfolio", "作品项目"]
+    ]);
+  }
+
+  if (/创业/.test(normalizedQuery)) {
+    return createClarificationQuestion("constraint", "创业前最大的现实约束是什么？", [
+      ["limited_savings", "存款有限"],
+      ["unclear_project", "项目不清晰"],
+      ["no_partner", "缺少合伙人"],
+      ["family_pressure", "家庭压力"],
+      ["age_pressure", "年龄压力"]
+    ]);
+  }
+
+  return createClarificationQuestion("constraint", "你最大的现实约束是什么？", [
+    ["limited_savings", "存款有限"],
+    ["mortgage_family", "房贷 / 家庭压力"],
+    ["age_pressure", "年龄焦虑"],
+    ["no_project_partner", "缺少项目或合伙人"],
+    ["avoid_original_industry", "不想再回原行业"]
+  ]);
+}
+
+function appendContextualObjectiveQuestions(
+  questions: DemoClarificationQuestion[],
+  normalizedQuery: string
+): void {
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    appendClarificationQuestion(
+      questions,
+      createClarificationQuestion("shop_preparation", "开店准备到哪一步了？", [
+        ["idea_only", "还在想"],
+        ["has_budget", "有预算"],
+        ["checked_location", "看过铺位"],
+        ["has_product", "有品类 / 菜单"],
+        ["has_partner", "已有合伙人"],
+        ["small_trial", "做过试水"]
       ])
-    ]
-  );
+    );
+  }
+
+  if (/回老家/.test(normalizedQuery)) {
+    appendClarificationQuestion(
+      questions,
+      createClarificationQuestion("home_plan", "回老家后更想怎么安排？", [
+        ["local_job", "找本地工作"],
+        ["family_business", "帮家里 / 做小生意"],
+        ["open_shop", "开店"],
+        ["remote_work", "远程 / 自由职业"],
+        ["rest_first", "先休整"]
+      ])
+    );
+  }
+}
+
+function appendObjectiveSlotFillerQuestions(
+  questions: DemoClarificationQuestion[],
+  slots: DemoObjectiveSlots
+): void {
+  if (!slots.companyType) {
+    appendClarificationQuestion(
+      questions,
+      createClarificationQuestion("companyType", "你之前所在组织更接近哪类？", [
+        ["big_tech", "互联网大厂"],
+        ["state_owned", "国企"],
+        ["public_sector", "体制内"],
+        ["startup_company", "创业公司"],
+        ["traditional_company", "传统企业"],
+        ["other", "其他"]
+      ])
+    );
+  }
+
+  if (!slots.industry) {
+    appendClarificationQuestion(
+      questions,
+      createClarificationQuestion("industry", "你之前主要在哪个行业？", [
+        ["internet", "互联网"],
+        ["education", "教育"],
+        ["healthcare", "医疗"],
+        ["finance", "金融"],
+        ["construction", "建筑 / 施工"],
+        ["consumer_service", "消费服务"]
+      ])
+    );
+  }
+
+  if (!slots.city) {
+    appendClarificationQuestion(
+      questions,
+      createClarificationQuestion("city", "你现在主要在哪类城市？", [
+        ["beijing_shanghai", "北京 / 上海"],
+        ["first_tier", "一线城市"],
+        ["new_first_tier", "新一线 / 省会"],
+        ["second_tier", "二线城市"],
+        ["county_home", "县城 / 老家"]
+      ])
+    );
+  }
+
+  if (!slots.age) {
+    appendClarificationQuestion(
+      questions,
+      createClarificationQuestion("age", "你现在更接近哪个阶段？", [
+        ["under_25", "25岁以下"],
+        ["around_30", "30岁左右"],
+        ["around_35", "35岁左右"],
+        ["middle_age", "中年阶段"],
+        ["graduated_three_years", "毕业三年内"]
+      ])
+    );
+  }
+}
+
+function appendClarificationQuestion(
+  target: DemoClarificationQuestion[],
+  question: DemoClarificationQuestion | null
+): void {
+  if (!question || target.some((item) => item.id === question.id)) {
+    return;
+  }
+
+  target.push(question);
+}
+
+function readObjectiveClarifyingCardTitle(normalizedQuery: string): string {
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    return "补充开店背景，匹配更准";
+  }
+
+  if (/回老家/.test(normalizedQuery)) {
+    return "补充回老家背景，匹配更准";
+  }
+
+  if (/自媒体/.test(normalizedQuery)) {
+    return "补充自媒体背景，匹配更准";
+  }
+
+  if (/自由职业/.test(normalizedQuery)) {
+    return "补充自由职业背景，匹配更准";
+  }
+
+  return "补充客观背景，匹配更准";
+}
+
+function readObjectiveClarifyingCardDescription(normalizedQuery: string): string {
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    return "先补齐岗位、开店准备和现实约束，优先匹配相似的人和处境。";
+  }
+
+  if (/回老家/.test(normalizedQuery)) {
+    return "先补齐岗位、回老家安排和现实约束，优先匹配相似的人和处境。";
+  }
+
+  return "先补齐岗位、状态、方向和现实约束，优先匹配相似的人和处境。";
 }
 
 function createClarifyingCard(
