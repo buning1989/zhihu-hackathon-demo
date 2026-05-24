@@ -1,7 +1,8 @@
+import { config } from "../config/env.js";
 import type { LlmTaskType } from "./llmRouter.js";
 
 export const LLM_TASK_TIMEOUT_MS: Record<LlmTaskType, number> = {
-  similarity_clarification_plan: 3000,
+  similarity_clarification_plan: 24000,
   intent_expand: 3000,
   candidate_rerank: 5000,
   evidence_extract: 5000,
@@ -24,6 +25,10 @@ export class LlmTaskTimeoutError extends Error {
 }
 
 export function getLlmTaskTimeoutMs(taskType: LlmTaskType): number {
+  if (taskType === "similarity_clarification_plan") {
+    return config.llm.taskTimeouts.similarityClarificationPlanMs;
+  }
+
   return LLM_TASK_TIMEOUT_MS[taskType];
 }
 

@@ -82,6 +82,12 @@ export const config = {
     baseUrl: firstNonEmpty(process.env.LLM_BASE_URL),
     model: firstNonEmpty(process.env.LLM_MODEL),
     timeoutMs: parsePositiveInteger(process.env.LLM_TIMEOUT_MS, 15000),
+    taskTimeouts: {
+      similarityClarificationPlanMs: parsePositiveInteger(
+        process.env.SIMILARITY_CLARIFICATION_TIMEOUT_MS,
+        24000
+      )
+    },
     kimi: {
       apiKey: kimiApiKey,
       baseUrl: firstNonEmpty(process.env.KIMI_BASE_URL) || DEFAULT_KIMI_BASE_URL,

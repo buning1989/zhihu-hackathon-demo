@@ -323,7 +323,7 @@ async function runPlannerLlm(
 ): Promise<RawPlannerOutput> {
   const content = await llmRouter.runJsonTask("similarity_clarification_plan", {
     temperature: 0.1,
-    maxTokens: 2400,
+    maxTokens: 4000,
     timeoutMs: getLlmTaskTimeoutMs("similarity_clarification_plan"),
     maxRetry: 0,
     messages: [
