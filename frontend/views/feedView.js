@@ -1,0 +1,188 @@
+(function () {
+  const App = window.LifeSampleApp || (window.LifeSampleApp = {});
+  App.views = App.views || {};
+
+  function renderLoading(state) {
+    const { escapeHtml, escapeAttribute } = App.utils;
+    const result = state.result || App.store.getResult();
+    const loadingStages = App.loadingStages || [
+      { label: "理解处境", message: "正在理解你的处境" },
+      { label: "寻找样本", message: "正在寻找真实内容样本" },
+      { label: "整理片段", message: "正在整理公开内容片段" },
+      { label: "整理样本", message: "正在整理样本方向" },
+      { label: "组织片段", message: "正在整理可展示内容样本" }
+    ];
+    const currentStageIndex = Math.min(
+      Math.max(Number(state.search.loadingStageIndex) || 0, 0),
+      loadingStages.length - 1
+    );
+    const currentStage = loadingStages[currentStageIndex] || loadingStages[0];
+    const phaseClass = state.transitionPhase === "loadingEntering"
+      ? "loading-enter"
+      : state.transitionPhase === "loadingExiting"
+        ? "loading-exit"
+        : "";
+    const people = (result.people || App.mockData.people).slice(0, 6);
+    const marqueeItems = people.map((person) => `
+      <span class="loading-person">
+        <span class="loading-avatar" aria-hidden="true"><img src="${escapeAttribute(person.avatar)}" alt="" /></span>
+        <span>${escapeHtml(person.name)}</span>
+      </span>
+    `).join("");
+    const marqueeGroup = `<div class="marquee-group">${marqueeItems}</div>`;
+
+    return `
+      <section class="card loading-card ${phaseClass}">
+        <h2 class="loading-title">${escapeHtml(currentStage.message)}</h2>
+        <div class="people-flow" aria-hidden="true">
+          <div class="marquee-viewport">
+            <div class="marquee-track">${marqueeGroup}${marqueeGroup}</div>
+          </div>
+          <div class="marquee-viewport">
+            <div class="marquee-track is-reverse">${marqueeGroup}${marqueeGroup}</div>
+          </div>
+        </div>
+        <ol class="loading-flow" aria-label="匹配进度">
+          ${loadingStages.map((stage, index) => {
+            const nodeClass = index < currentStageIndex
+              ? "is-completed"
+              : index === currentStageIndex
+                ? "is-active"
+                : "is-pending";
+            return `
+              <li class="loading-node ${nodeClass}" data-stage-index="${index}" ${index === currentStageIndex ? "aria-current=\"step\"" : ""}>
+                <span class="loading-node-dot" aria-hidden="true">
+                  <span class="loading-node-check">✓</span>
+                </span>
+                <span class="loading-node-label">${escapeHtml(stage.label)}</span>
+              </li>
+            `;
+          }).join("")}
+        </ol>
+      </section>
+    `;
+  }
+
+  function renderSideNav(state, result) {
+    const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
+    const allActive = state.activePathId === "all";
+    const buttons = result.paths.map((path) => {
+      const peopleCount = App.store.getPeopleForPath(path.id).length;
+      return `
+        <button class="path-nav-item ${state.activePathId === path.id ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="${escapeAttribute(path.id)}">
+          <span class="path-nav-copy">
+            ${escapeHtml(publicUiLabel(path.shortTitle || path.title, "公开片段"))}
+            <span class="path-nav-count">${peopleCount} 条</span>
+          </span>
+        </button>
+      `;
+    }).join("");
+
+    return `
+      <nav class="left-rail">
+        <p class="rail-label">样本方向</p>
+        <button class="path-nav-item ${allActive ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="all">
+          <span class="path-nav-copy">全部</span>
+        </button>
+        ${buttons}
+      </nav>
+    `;
+  }
+
+  function renderFeedSummary(result) {
+    const { escapeHtml } = App.utils;
+    const notices = [];
+    const summaryText = result.meta?.evidenceOnly
+      ? `先看 ${result.people.length} 条贴近的公开内容片段。`
+      : `先从 ${result.paths.length} 个样本方向里，看几条相关样本。`;
+    if (result.meta?.cacheHit || result.meta?.reused) {
+      notices.push("已使用近期相似结果");
+    }
+    if (result.meta?.emptyResult) {
+      notices.push("暂时没有可展示样本");
+    }
+
+    return `
+      <header class="feed-summary">
+        <p class="feed-summary-text">${escapeHtml(summaryText)}</p>
+        <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点</button>
+      </header>
+      ${notices.length ? `<div class="result-notices">${notices.map((notice) => `<span>${escapeHtml(notice)}</span>`).join("")}</div>` : ""}
+    `;
+  }
+
+  function renderError(state) {
+    const { escapeHtml } = App.utils;
+    const icon = App.components.renderIcon;
+    const error = state.task.error || {};
+    const code = error.errorCode || "";
+    const message = state.search.error || error.errorMessage || "后端暂时不可用，请稍后再试。";
+    const title = code === "RATE_LIMITED" ? "今天的任务有点多" : "暂时没能整理出样本";
+
+    return `
+      <section class="empty-panel result-empty">
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(message)}</p>
+        <button class="btn-s" type="button" data-action="open-feed">${icon("arrow-left")}返回</button>
+      </section>
+    `;
+  }
+
+  function renderEmptyResult(result) {
+    const { escapeHtml } = App.utils;
+    return `
+      <section class="empty-panel result-empty">
+        <h2>暂时没找到足够贴近的公开内容样本</h2>
+        <p>${escapeHtml("可以补充一点处境，再重新看看。")}</p>
+      </section>
+    `;
+  }
+
+  function renderLoaded(state) {
+    const result = state.result;
+    const paths = state.activePathId === "all"
+      ? result.paths
+      : result.paths.filter((path) => path.id === state.activePathId);
+    const modules = paths.map((path) => {
+      const people = result.people.filter((person) => person.pathId === path.id);
+      return App.components.renderPathModule(path, people, state);
+    }).join("");
+    const isEmpty = result.paths.length === 0 || result.people.length === 0;
+
+    return `
+      <main class="layout layout-results ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
+          ${renderSideNav(state, result)}
+          <section class="main-feed">
+            ${renderFeedSummary(result)}
+          </section>
+          <section class="feed-card-list">
+            ${isEmpty ? renderEmptyResult(result) : modules}
+          </section>
+          ${App.components.renderRightRail(state)}
+      </main>
+    `;
+  }
+
+  App.views.renderFeedView = function renderFeedView(state) {
+    const topBar = App.components.renderTopBar(state);
+
+    if (state.search.clarifyOpen || state.search.status === "clarify") {
+      const content = state.result ? renderLoaded(state) : `<main class="layout"><aside></aside><section class="main-feed">${renderLoading(state)}</section><aside></aside></main>`;
+      return `
+        ${topBar}
+        ${App.components.renderClarifyCard(state)}
+        ${state.search.status === "clarify" && !state.result ? "" : content}
+      `;
+    }
+
+    if (state.search.status === "error") {
+      return `${topBar}<main class="layout"><aside></aside><section class="main-feed">${renderError(state)}</section><aside></aside></main>`;
+    }
+
+    if (state.search.status !== "loaded" || !state.result) {
+      return `${topBar}<main class="layout"><aside></aside><section class="main-feed">${renderLoading(state)}</section><aside></aside></main>`;
+    }
+
+    return `${topBar}${renderLoaded(state)}`;
+  };
+})();
