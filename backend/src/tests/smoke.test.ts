@@ -365,37 +365,25 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
     .filter(Boolean);
   const searchableQuestionIds = [
     "role",
-    "status",
-    "direction",
-    "constraint",
+    "currentStatus",
     "industry",
     "companyType",
     "city",
     "age",
-    "home_plan",
-    "shop_preparation",
-    "cash_runway",
-    "cashflow_source",
-    "monetizable_resource",
-    "indie_basis",
-    "home_resource",
-    "trial_budget",
-    "current_resource",
-    "content_basis",
-    "study_preparation",
-    "study_funding",
-    "study_time_cost",
-    "city_job_basis",
-    "job_search_runway",
-    "city_support",
-    "broker_basis",
-    "client_resource",
-    "freelance_order_basis",
-    "consulting_basis",
-    "target_industry_basis",
+    "workYears",
+    "skillDirection",
+    "projectAsset",
+    "resourceType",
+    "projectExperience",
+    "contentAsset",
+    "function",
+    "examStage",
+    "professionalBackground",
+    "educationBackground",
+    "targetCity",
+    "localResource",
     "skill_gap",
-    "content_monetization",
-    "civil_service_preparation"
+    "content_monetization"
   ];
   const objectiveQuestionCount = questionIds.filter((id) =>
     searchableQuestionIds.includes(String(id))
@@ -409,6 +397,14 @@ function assertObjectiveClarifyingCard(value: unknown, label: string): void {
     .join("\n");
   for (const forbidden of ["最担心", "怕不怕后悔", "是不是很迷茫"]) {
     assertNotIncludes(labels, forbidden, `${label}.labels`);
+  }
+  assertNoForbiddenClarificationQuestion(labels, `${label}.labels`);
+
+  for (const [index, question] of questions.entries()) {
+    if (!isRecord(question)) {
+      continue;
+    }
+    assertNonEmptyString(question.slot, `${label}.questions[${index}].slot`);
   }
 }
 
@@ -450,66 +446,84 @@ async function assertContextualObjectiveClarifyingCards(baseUrl: string): Promis
     throw new Error("contextual objective clarifying cards should not reuse identical questions");
   }
 
-  assertIncludes(shanghaiLabels, "回老家", "contextual shanghai labels");
-  assertIncludes(shopLabels, "开店", "contextual shop labels");
-  assertNoEvaluationStageMismatch(shanghaiLabels, "contextual shanghai labels");
-  assertNoEvaluationStageMismatch(shopLabels, "contextual shop labels");
+  assertIncludes(shanghaiLabels, "目标城市", "contextual shanghai labels");
+  assertIncludes(shopLabels, "经营或线下项目经验", "contextual shop labels");
+  assertNoForbiddenClarificationQuestion(shanghaiLabels, "contextual shanghai labels");
+  assertNoForbiddenClarificationQuestion(shopLabels, "contextual shop labels");
 }
 
 async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<void> {
   const cases = [
     {
+      query: "广州设计师裸辞后接私单，能养活自己吗？",
+      direction: "接私单",
+      expectedLabels: [
+        "你主要是哪类设计师？",
+        "你大概有几年设计经验？",
+        "你目前积累最多的是哪类资源？"
+      ]
+    },
+    {
+      query: "金融公司中后台想辞职考公，值不值得？",
+      direction: "考公",
+      expectedLabels: [
+        "你之前主要做哪类中后台岗位？",
+        "你目前考公准备到哪一步？",
+        "你的背景更接近哪类？"
+      ]
+    },
+    {
+      query: "35岁从互联网大厂裸辞，要不要创业？",
+      direction: "创业",
+      expectedLabels: [
+        "你之前主要做什么岗位？",
+        "你过去主要做过哪类项目？",
+        "你现在手里更接近哪类资源？"
+      ]
+    },
+    {
       query: "产品经理被裁后，要不要转自由职业？",
       direction: "自由职业",
       expectedLabels: [
-        "目前可支撑多久没有稳定工资？",
-        "现在是否有稳定现金流或项目来源？",
-        "已有可变现资源更接近哪类？"
+        "你大概有几年相关经验？",
+        "你过去主要做过哪类项目？",
+        "你现在手里更接近哪类资源？"
       ]
     },
     {
-      query: "在北京工作十年，想回老家开店现实吗？",
+      query: "北京工作十年，想回老家开店现实吗？",
       direction: "回老家 开店",
       expectedLabels: [
         "你之前主要做什么岗位？",
-        "如果回老家，目前最明确的现实资源是什么？",
-        "当前能承受的试错成本更接近哪种？"
+        "你过去是否有经营或线下项目经验？",
+        "你过去主要做过哪类项目？"
       ]
     },
     {
-      query: "大厂程序员被裁后，去做独立开发靠谱吗？",
-      direction: "独立开发",
+      query: "施工单位正式工辞职后，不知道能做什么？",
+      direction: "出路",
       expectedLabels: [
-        "目前可支撑多久没有稳定工资？",
-        "独立开发现在已有的基础是什么？",
-        "现在是否有稳定现金流或项目来源？"
+        "你在施工单位主要做哪类工作？",
+        "你大概有几年施工或工程相关经验？",
+        "你目前积累最多的是哪类能力？"
       ]
     },
     {
       query: "外企市场岗工作八年，想辞职去读研现实吗？",
       direction: "读研",
       expectedLabels: [
-        "读研目前准备到哪一步了？",
-        "读研期间主要经济来源更接近哪种？",
-        "能接受多长时间没有稳定收入？"
+        "你的学历或专业背景更接近哪类？",
+        "读研目前准备到哪一步？",
+        "你的专业背景更接近哪类？"
       ]
     },
     {
       query: "县城老师想离职去一线城市找工作，靠谱吗？",
       direction: "一线城市工作",
       expectedLabels: [
-        "去目标城市找工作，目前最明确的基础是什么？",
-        "能承受多久求职空窗？",
-        "目标城市现在有什么支持条件？"
-      ]
-    },
-    {
-      query: "32岁销售被裁后，要不要去做保险经纪人？",
-      direction: "保险经纪人",
-      expectedLabels: [
-        "保险经纪人现在已有的基础是什么？",
-        "目前客户或人脉资源更接近哪种？",
-        "目前可支撑多久没有稳定工资？"
+        "你大概有几年相关经验？",
+        "目标城市目前更明确的是哪类？",
+        "目标城市目前已有哪类资源？"
       ]
     }
   ];
@@ -538,7 +552,8 @@ async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<vo
     for (const expectedLabel of testCase.expectedLabels) {
       assertIncludes(labels, expectedLabel, `${testCase.query}: labels`);
     }
-    assertNoEvaluationStageMismatch(labels, `${testCase.query}: labels`);
+    assertNoForbiddenClarificationQuestion(labels, `${testCase.query}: labels`);
+    assertClarificationPlanDebug(response.body.data.debug, testCase.query);
     if (seenLabelSets.has(labels)) {
       throw new Error(`${testCase.query}: evaluation clarifying card reused an existing label set`);
     }
@@ -546,10 +561,43 @@ async function assertEvaluationStageClarifyingCards(baseUrl: string): Promise<vo
   }
 }
 
-function assertNoEvaluationStageMismatch(labels: string, label: string): void {
-  for (const forbidden of ["最大现实压力", "最大的现实压力", "最缺哪块准备", "考虑的方向是什么"]) {
+function assertNoForbiddenClarificationQuestion(labels: string, label: string): void {
+  for (const forbidden of [
+    "能接受多久",
+    "承受多久",
+    "稳定工资",
+    "稳定收入",
+    "预期",
+    "预计",
+    "风险",
+    "信心",
+    "坚持",
+    "适合",
+    "值不值得",
+    "怕不怕后悔",
+    "未来",
+    "最想要什么样的生活",
+    "最大现实压力",
+    "最大的现实压力",
+    "最缺哪块准备",
+    "考虑的方向是什么"
+  ]) {
     assertNotIncludes(labels, forbidden, label);
   }
+}
+
+function assertClarificationPlanDebug(value: unknown, label: string): void {
+  if (!isRecord(value) || !isRecord(value.clarificationPlan)) {
+    throw new Error(`${label}: expected debug.clarificationPlan`);
+  }
+
+  const plan = value.clarificationPlan;
+  assertNonEmptyString(plan.intentCategory, `${label}: clarificationPlan.intentCategory`);
+  if (!isRecord(plan.knownSlots)) {
+    throw new Error(`${label}: expected clarificationPlan.knownSlots`);
+  }
+  assertNonEmptyArray(plan.missingSimilaritySlots, `${label}: clarificationPlan.missingSimilaritySlots`);
+  assertNonEmptyArray(plan.rejectedQuestions, `${label}: clarificationPlan.rejectedQuestions`);
 }
 
 function readClarifyingCardQuestionLabels(value: unknown): string[] {

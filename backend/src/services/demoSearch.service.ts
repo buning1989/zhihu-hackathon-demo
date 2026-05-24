@@ -21,6 +21,7 @@ import {
   type DemoClarifyingCard,
   type DemoDataMode,
   type DemoDebugClarificationContext,
+  type DemoDebugClarificationPlan,
   type DemoObjectiveSlotName,
   type DemoObjectiveSlots,
   type DemoSearchDebug,
@@ -240,6 +241,9 @@ function applyDemoClarificationState(
 
   const clarification = buildRuleClarifyingCard(request.query);
   response.clarifyingCard = clarification.card;
+  if (clarification.debug) {
+    response.debug.clarificationPlan = clarification.debug;
+  }
   response.clarificationStage = {
     needClarification: clarification.card.show,
     ambiguityLevel: clarification.ambiguityLevel,
@@ -329,6 +333,7 @@ function readClarificationOptionLabel(
 function buildRuleClarifyingCard(query: string): {
   card: DemoClarifyingCard;
   ambiguityLevel: "medium" | "high";
+  debug?: DemoDebugClarificationPlan;
 } {
   const normalized = query.replace(/\s+/g, "").toLowerCase();
 
@@ -365,9 +370,11 @@ function buildRuleClarifyingCard(query: string): {
   }
 
   if (isObjectiveSlotClarificationQuery(normalized)) {
+    const clarification = createObjectiveSlotClarification(query);
     return {
       ambiguityLevel: "high",
-      card: createObjectiveSlotClarifyingCard(query)
+      card: clarification.card,
+      debug: clarification.debug
     };
   }
 
@@ -638,36 +645,460 @@ function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
   );
 }
 
-function createObjectiveSlotClarifyingCard(query: string): DemoClarifyingCard {
+function createObjectiveSlotClarification(query: string): {
+  card: DemoClarifyingCard;
+  debug: DemoDebugClarificationPlan;
+} {
   const normalizedQuery = query.replace(/\s+/g, "").toLowerCase();
-  const { objectiveSlots, missingSlots } = buildObjectiveSearchContext(query);
-  const stage = inferObjectiveClarificationStage(normalizedQuery);
-  const questions: DemoClarificationQuestion[] = [];
+  const { objectiveSlots } = buildObjectiveSearchContext(query);
+  const intentCategory = inferSimilarityIntentCategory(normalizedQuery);
+  const knownSlots = buildKnownSimilaritySlots(objectiveSlots, query);
+  const candidates = buildSimilarityQuestionCandidates(
+    intentCategory,
+    normalizedQuery,
+    knownSlots
+  );
+  const questions = selectSimilarityQuestions(candidates, knownSlots);
+  const selectedSlots = questions.map((question) => question.slot ?? question.id);
 
-  for (const slotName of OBJECTIVE_CLARIFICATION_SLOT_ORDER) {
-    if (!shouldAskObjectiveSlotQuestion(slotName, missingSlots, stage)) {
+  return {
+    card: createClarifyingCard(
+      "补充一点背景，帮你找到更像你的人",
+      "我们不会直接替你判断，只是用这些信息去匹配相似处境下的真实经历。",
+      questions
+    ),
+    debug: {
+      intentCategory,
+      knownSlots,
+      missingSimilaritySlots: selectedSlots,
+      selectedSlots,
+      rejectedQuestions: buildRejectedClarificationQuestions()
+    }
+  };
+}
+
+type SimilarityIntentCategory =
+  | "career_choice"
+  | "freelance_or_self_employment"
+  | "exam_or_study"
+  | "city_migration";
+
+function inferSimilarityIntentCategory(normalizedQuery: string): SimilarityIntentCategory {
+  if (/考公|考编|考研|读研|升学|体制内|全职备考/.test(normalizedQuery)) {
+    return "exam_or_study";
+  }
+
+  if (/回老家|一线城市|二线城市|小城市|大城市|换城市|离开北京|离开上海|去.*城市/.test(normalizedQuery)) {
+    return "city_migration";
+  }
+
+  if (/创业|自由职业|接私单|私单|副业|自己干|开店|咖啡店|自媒体|独立开发|个人开发者|indiehacker|小红书|博主/.test(normalizedQuery)) {
+    return "freelance_or_self_employment";
+  }
+
+  return "career_choice";
+}
+
+function buildKnownSimilaritySlots(
+  objectiveSlots: DemoObjectiveSlots,
+  query: string
+): Record<string, string | null> {
+  return {
+    age: objectiveSlots.age,
+    city: objectiveSlots.city,
+    industry: objectiveSlots.industry,
+    companyType: objectiveSlots.companyType,
+    role: objectiveSlots.role,
+    currentStatus: objectiveSlots.status,
+    direction: objectiveSlots.direction,
+    workYears: extractKnownWorkYears(query),
+    constraint: objectiveSlots.constraint
+  };
+}
+
+function extractKnownWorkYears(query: string): string | null {
+  const match = query.match(/(?:工作|做了|从业)?\s*([一二三四五六七八九十\d]+)\s*年/);
+  return match ? `${match[1]}年` : null;
+}
+
+function buildSimilarityQuestionCandidates(
+  intentCategory: SimilarityIntentCategory,
+  normalizedQuery: string,
+  knownSlots: Record<string, string | null>
+): DemoClarificationQuestion[] {
+  switch (intentCategory) {
+    case "exam_or_study":
+      return buildExamSimilarityQuestions(normalizedQuery);
+    case "city_migration":
+      return buildCityMigrationSimilarityQuestions(normalizedQuery, knownSlots);
+    case "freelance_or_self_employment":
+      return buildSelfEmploymentSimilarityQuestions(normalizedQuery, knownSlots);
+    case "career_choice":
+    default:
+      return buildCareerChoiceSimilarityQuestions(normalizedQuery, knownSlots);
+  }
+}
+
+function buildSelfEmploymentSimilarityQuestions(
+  normalizedQuery: string,
+  knownSlots: Record<string, string | null>
+): DemoClarificationQuestion[] {
+  if (/设计师|设计/.test(normalizedQuery) && /接私单|私单/.test(normalizedQuery)) {
+    return [
+      createDesignSkillQuestion(),
+      createWorkYearsQuestion("你大概有几年设计经验？"),
+      createResourceTypeQuestion("你目前积累最多的是哪类资源？"),
+      createProjectAssetQuestion()
+    ];
+  }
+
+  if (/独立开发|个人开发者|indiehacker/.test(normalizedQuery)) {
+    return [
+      createProjectAssetQuestion("独立开发现在已有哪类项目沉淀？"),
+      createSkillDirectionQuestion("你目前积累最多的是哪类能力？"),
+      createWorkYearsQuestion(),
+      createResourceTypeQuestion("你现在手里更接近哪类资源？")
+    ];
+  }
+
+  if (/开店|咖啡店/.test(normalizedQuery)) {
+    return [
+      knownSlots.role ? createProjectAssetQuestion("你过去主要做过哪类项目？") : createRoleQuestion(),
+      createOperationExperienceQuestion(),
+      createResourceTypeQuestion("你现在手里更接近哪类资源？"),
+      createWorkYearsQuestion()
+    ];
+  }
+
+  if (/自媒体|小红书|博主/.test(normalizedQuery)) {
+    return [
+      createContentAssetQuestion(),
+      createSkillDirectionQuestion("你过去最常做哪类内容或项目？"),
+      createWorkYearsQuestion(),
+      createResourceTypeQuestion("你现在手里更接近哪类资源？")
+    ];
+  }
+
+  return [
+    knownSlots.role ? createWorkYearsQuestion() : createRoleQuestion(),
+    createProjectAssetQuestion("你过去主要做过哪类项目？"),
+    createResourceTypeQuestion("你现在手里更接近哪类资源？"),
+    createSkillDirectionQuestion("你目前积累最多的是哪类能力？")
+  ];
+}
+
+function buildExamSimilarityQuestions(normalizedQuery: string): DemoClarificationQuestion[] {
+  if (/金融|中后台/.test(normalizedQuery)) {
+    return [
+      createFinancialFunctionQuestion(),
+      createExamStageQuestion(/读研|考研|升学/.test(normalizedQuery) ? "读研目前准备到哪一步？" : "你目前考公准备到哪一步？"),
+      createFinancialBackgroundQuestion(),
+      createEducationBackgroundQuestion()
+    ];
+  }
+
+  return [
+    createEducationBackgroundQuestion(),
+    createExamStageQuestion(/读研|考研|升学/.test(normalizedQuery) ? "读研目前准备到哪一步？" : "你目前考公准备到哪一步？"),
+    createProfessionalBackgroundQuestion(),
+    createWorkYearsQuestion()
+  ];
+}
+
+function buildCityMigrationSimilarityQuestions(
+  normalizedQuery: string,
+  knownSlots: Record<string, string | null>
+): DemoClarificationQuestion[] {
+  if (/回老家/.test(normalizedQuery) && /开店|咖啡店/.test(normalizedQuery)) {
+    return [
+      knownSlots.role ? createLocalResourceQuestion("如果回老家，目前已有哪类当地资源？") : createRoleQuestion(),
+      createOperationExperienceQuestion(),
+      createProjectAssetQuestion("你过去主要做过哪类项目？"),
+      createWorkYearsQuestion()
+    ];
+  }
+
+  return [
+    knownSlots.role ? createWorkYearsQuestion() : createRoleQuestion(),
+    createTargetCityQuestion(),
+    createLocalResourceQuestion("目标城市目前已有哪类资源？"),
+    createIndustryQuestion()
+  ];
+}
+
+function buildCareerChoiceSimilarityQuestions(
+  normalizedQuery: string,
+  knownSlots: Record<string, string | null>
+): DemoClarificationQuestion[] {
+  if (/施工单位/.test(normalizedQuery)) {
+    return [
+      createConstructionFunctionQuestion(),
+      createWorkYearsQuestion("你大概有几年施工或工程相关经验？"),
+      createSkillDirectionQuestion("你目前积累最多的是哪类能力？"),
+      createCurrentStatusQuestion()
+    ];
+  }
+
+  return [
+    knownSlots.role ? createWorkYearsQuestion() : createRoleQuestion(),
+    knownSlots.industry ? createCompanyTypeQuestion() : createIndustryQuestion(),
+    createCurrentStatusQuestion(),
+    createSkillDirectionQuestion("你目前积累最多的是哪类能力？")
+  ];
+}
+
+function selectSimilarityQuestions(
+  candidates: DemoClarificationQuestion[],
+  knownSlots: Record<string, string | null>
+): DemoClarificationQuestion[] {
+  const selected: DemoClarificationQuestion[] = [];
+  for (const question of candidates) {
+    const slot = question.slot ?? question.id;
+    if (knownSlots[slot]) {
       continue;
     }
 
-    appendClarificationQuestion(
-      questions,
-      createObjectiveSlotQuestion(slotName, normalizedQuery)
-    );
+    appendClarificationQuestion(selected, question);
+    if (selected.length >= REQUIRED_CLARIFICATION_QUESTIONS) {
+      break;
+    }
   }
 
-  if (stage === "evaluation") {
-    appendEvaluationObjectiveQuestions(questions, normalizedQuery);
-  } else {
-    appendContextualObjectiveQuestions(questions, normalizedQuery);
+  for (const fallback of [
+    createWorkYearsQuestion(),
+    createProjectAssetQuestion("你过去主要做过哪类项目？"),
+    createResourceTypeQuestion("你现在手里更接近哪类资源？")
+  ]) {
+    if (selected.length >= REQUIRED_CLARIFICATION_QUESTIONS) {
+      break;
+    }
+    appendClarificationQuestion(selected, fallback);
   }
 
-  appendObjectiveSlotFillerQuestions(questions, objectiveSlots);
+  return selected.slice(0, REQUIRED_CLARIFICATION_QUESTIONS);
+}
 
-  return createClarifyingCard(
-    readObjectiveClarifyingCardTitle(normalizedQuery),
-    readObjectiveClarifyingCardDescription(normalizedQuery, stage),
-    questions
-  );
+function buildRejectedClarificationQuestions(): DemoDebugClarificationPlan["rejectedQuestions"] {
+  return [
+    {
+      question: "你能接受多久没有稳定收入？",
+      reason: "future_judgment_or_risk_tolerance"
+    },
+    {
+      question: "你预期未来月收入是多少？",
+      reason: "future_income_prediction"
+    },
+    {
+      question: "你觉得自己适合创业吗？",
+      reason: "value_judgment_or_consulting_evaluation"
+    }
+  ];
+}
+
+function createRoleQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("role", "你之前主要做什么岗位？", [
+    ["product_operation", "产品 / 运营"],
+    ["tech_rd", "技术 / 研发"],
+    ["marketing_sales", "市场 / 销售"],
+    ["design_content", "设计 / 内容"],
+    ["functional_support", "职能 / 中后台"],
+    ["other", "其他"]
+  ]);
+}
+
+function createIndustryQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("industry", "你主要在哪个行业工作？", [
+    ["internet", "互联网"],
+    ["finance", "金融"],
+    ["education", "教育"],
+    ["construction", "建筑 / 施工"],
+    ["manufacturing", "制造业"],
+    ["consumer_service", "消费服务"]
+  ]);
+}
+
+function createCompanyTypeQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("companyType", "你之前所在组织更接近哪类？", [
+    ["big_tech", "互联网大厂"],
+    ["state_owned", "国企"],
+    ["foreign_company", "外企"],
+    ["public_sector", "体制内"],
+    ["startup_company", "创业公司"],
+    ["traditional_company", "传统企业"]
+  ]);
+}
+
+function createCurrentStatusQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("currentStatus", "你现在更接近哪种状态？", [
+    ["employed", "还在职"],
+    ["preparing_quit", "准备辞职"],
+    ["already_quit", "已离职 / 裸辞"],
+    ["laid_off", "被裁 / 待业"],
+    ["started_trying", "已经开始尝试"],
+    ["idea_only", "只是有想法"]
+  ]);
+}
+
+function createWorkYearsQuestion(label = "你大概有几年相关经验？"): DemoClarificationQuestion {
+  return createClarificationQuestion("workYears", label, [
+    ["under_1_year", "1年以内"],
+    ["1_to_3_years", "1-3年"],
+    ["3_to_5_years", "3-5年"],
+    ["5_to_8_years", "5-8年"],
+    ["over_8_years", "8年以上"]
+  ]);
+}
+
+function createDesignSkillQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("skillDirection", "你主要是哪类设计师？", [
+    ["ui_ux", "UI / UX"],
+    ["brand_graphic", "平面 / 品牌"],
+    ["ecommerce_design", "电商设计"],
+    ["space_design", "室内 / 空间"],
+    ["illustration_visual", "插画 / 视觉"],
+    ["other", "其他"]
+  ]);
+}
+
+function createSkillDirectionQuestion(label: string): DemoClarificationQuestion {
+  return createClarificationQuestion("skillDirection", label, [
+    ["product_planning", "产品 / 策划"],
+    ["technical_delivery", "技术 / 交付"],
+    ["content_creation", "内容 / 表达"],
+    ["client_sales", "客户 / 销售"],
+    ["operation_management", "运营 / 管理"],
+    ["other", "其他"]
+  ]);
+}
+
+function createProjectAssetQuestion(label = "你是否有作品集、案例或项目沉淀？"): DemoClarificationQuestion {
+  return createClarificationQuestion("projectAsset", label, [
+    ["portfolio", "完整作品集"],
+    ["company_projects", "公司项目经验"],
+    ["side_projects", "副业 / 个人项目"],
+    ["public_cases", "公开案例"],
+    ["client_cases", "客户案例"],
+    ["not_sure", "还不确定"]
+  ]);
+}
+
+function createResourceTypeQuestion(label: string): DemoClarificationQuestion {
+  return createClarificationQuestion("resourceType", label, [
+    ["portfolio", "作品 / 案例"],
+    ["company_experience", "公司项目经验"],
+    ["client_communication", "客户沟通经验"],
+    ["friends_colleagues", "朋友 / 前同事资源"],
+    ["platform_account", "平台账号或个人主页"],
+    ["not_sure", "还不确定"]
+  ]);
+}
+
+function createOperationExperienceQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("projectExperience", "你过去是否有经营或线下项目经验？", [
+    ["store_operation", "门店 / 餐饮经验"],
+    ["sales_customer", "销售 / 客户经验"],
+    ["supply_chain", "供应链 / 采购"],
+    ["team_management", "团队管理"],
+    ["project_management", "项目管理"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createContentAssetQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("contentAsset", "你现在已有哪类内容资产？", [
+    ["published_posts", "已发布内容"],
+    ["small_account", "平台账号"],
+    ["stable_topic", "稳定选题方向"],
+    ["community", "社群 / 私域"],
+    ["commercial_case", "商业合作案例"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createFinancialFunctionQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("function", "你之前主要做哪类中后台岗位？", [
+    ["risk_compliance", "风控 / 合规"],
+    ["finance_audit", "财务 / 审计"],
+    ["ops_clearing", "运营 / 清算"],
+    ["hr_admin", "人力 / 行政"],
+    ["tech_data", "技术 / 数据"],
+    ["other", "其他"]
+  ]);
+}
+
+function createExamStageQuestion(label: string): DemoClarificationQuestion {
+  return createClarificationQuestion("examStage", label, [
+    ["idea_only", "只是初步想法"],
+    ["chosen_region", "已确定地区"],
+    ["chosen_role", "已确定岗位"],
+    ["started_prep", "已经备考"],
+    ["taken_exam", "考过一次"],
+    ["unknown", "还不确定"]
+  ]);
+}
+
+function createFinancialBackgroundQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("professionalBackground", "你的背景更接近哪类？", [
+    ["finance_early", "金融行业应届或早期"],
+    ["finance_3_to_5", "金融行业 3-5 年"],
+    ["finance_over_5", "金融行业 5 年以上"],
+    ["accounting_law_cs", "财会 / 法律 / 计算机背景"],
+    ["other", "其他"]
+  ]);
+}
+
+function createEducationBackgroundQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("educationBackground", "你的学历或专业背景更接近哪类？", [
+    ["liberal_arts", "文科 / 社科"],
+    ["business", "商科 / 经管"],
+    ["engineering", "理工 / 计算机"],
+    ["law_finance", "法律 / 财会"],
+    ["education_medical", "教育 / 医学"],
+    ["other", "其他"]
+  ]);
+}
+
+function createProfessionalBackgroundQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("professionalBackground", "你的专业背景更接近哪类？", [
+    ["current_major_related", "和当前工作相关"],
+    ["target_related", "和目标方向相关"],
+    ["certificate_or_exam", "有证书 / 考试基础"],
+    ["cross_major", "跨专业背景"],
+    ["not_sure", "还不确定"]
+  ]);
+}
+
+function createTargetCityQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("targetCity", "目标城市目前更明确的是哪类？", [
+    ["beijing_shanghai", "北京 / 上海"],
+    ["first_tier", "一线城市"],
+    ["new_first_tier", "新一线 / 省会"],
+    ["second_tier", "二线城市"],
+    ["hometown", "老家 / 县城"],
+    ["unclear", "还没定"]
+  ]);
+}
+
+function createLocalResourceQuestion(label: string): DemoClarificationQuestion {
+  return createClarificationQuestion("localResource", label, [
+    ["family_support", "家人支持"],
+    ["housing", "住处"],
+    ["friends_classmates", "朋友 / 同学"],
+    ["local_network", "本地人脉"],
+    ["job_or_project_leads", "工作 / 项目线索"],
+    ["none", "暂时没有"]
+  ]);
+}
+
+function createConstructionFunctionQuestion(): DemoClarificationQuestion {
+  return createClarificationQuestion("function", "你在施工单位主要做哪类工作？", [
+    ["site_engineering", "现场 / 工程"],
+    ["cost_budget", "造价 / 预算"],
+    ["safety_quality", "安全 / 质量"],
+    ["materials_procurement", "材料 / 采购"],
+    ["office_admin", "办公室 / 行政"],
+    ["other", "其他"]
+  ]);
 }
 
 function inferObjectiveClarificationStage(normalizedQuery: string): ObjectiveClarificationStage {
@@ -1313,10 +1744,17 @@ function createClarifyingCard(
   description: string,
   questions: DemoClarificationQuestion[]
 ): DemoClarifyingCard {
+  const safeTitle = title.includes("匹配更准")
+    ? "补充一点背景，帮你找到更像你的人"
+    : title;
+  const safeDescription = description.includes("匹配更准")
+    ? "我们不会直接替你判断，只是用这些信息去匹配相似处境下的真实经历。"
+    : description;
+
   return {
     show: true,
-    title,
-    description,
+    title: safeTitle,
+    description: safeDescription,
     questions: questions.slice(0, REQUIRED_CLARIFICATION_QUESTIONS),
     primaryActionText: "用这些信息重新匹配",
     skipActionText: "先跳过"
@@ -1330,7 +1768,9 @@ function createClarificationQuestion(
 ): DemoClarificationQuestion {
   return {
     id,
+    slot: id,
     label,
+    question: label,
     type: "single_select",
     required: true,
     options: options
