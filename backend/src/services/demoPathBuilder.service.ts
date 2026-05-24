@@ -25,6 +25,10 @@ interface ScenarioPathTemplate {
   stance: DemoPath["stance"];
 }
 
+interface BuildPathPlanOptions {
+  priorityKeywords?: string[];
+}
+
 interface QueryScenario {
   id: string;
   intent: string;
@@ -297,11 +301,16 @@ const QUERY_SCENARIOS: QueryScenario[] = [
 export function buildQueryAwarePathPlans(
   query: string,
   candidates: DemoPathCandidate[] = [],
-  maxCount = DEFAULT_PATH_COUNT
+  maxCount = DEFAULT_PATH_COUNT,
+  options: BuildPathPlanOptions = {}
 ): DemoPathPlan[] {
   const normalizedQuery = normalizeDemoQuery(query);
-  const scenario = selectScenario(normalizedQuery, candidates);
-  const templates = scenario?.paths ?? buildGenericPathTemplates(normalizedQuery, candidates);
+  const priorityText = normalizeDemoQuery(options.priorityKeywords?.join(" ") ?? "");
+  const scenario = selectScenario([normalizedQuery, priorityText].filter(Boolean).join(" "), candidates);
+  const templates = rankTemplatesByPriority(
+    scenario?.paths ?? buildGenericPathTemplates(normalizedQuery, candidates),
+    priorityText
+  );
   const queryKeywords = extractQueryKeywords(normalizedQuery);
   const scenarioKeywords = scenario ? [...scenario.queryKeywords, ...scenario.candidateKeywords] : [];
   const hash = hashId(normalizedQuery || "query");
@@ -316,8 +325,16 @@ export function buildQueryAwarePathPlans(
   }));
 }
 
-export function inferQueryIntent(query: string, candidates: DemoPathCandidate[] = []): string {
-  return selectScenario(normalizeDemoQuery(query), candidates)?.intent ?? "query_specific_decision";
+export function inferQueryIntent(
+  query: string,
+  candidates: DemoPathCandidate[] = [],
+  options: BuildPathPlanOptions = {}
+): string {
+  const priorityText = normalizeDemoQuery(options.priorityKeywords?.join(" ") ?? "");
+  return selectScenario(
+    [normalizeDemoQuery(query), priorityText].filter(Boolean).join(" "),
+    candidates
+  )?.intent ?? "query_specific_decision";
 }
 
 export function describePathFallbackReason(query: string, candidateCount: number): string {
@@ -376,6 +393,29 @@ function buildGenericPathTemplates(
       stance: "experience"
     }
   ];
+}
+
+function rankTemplatesByPriority(
+  templates: ScenarioPathTemplate[],
+  priorityText: string
+): ScenarioPathTemplate[] {
+  if (!priorityText) {
+    return templates;
+  }
+
+  return templates
+    .map((template, index) => ({
+      template,
+      index,
+      score: countKeywordHits(priorityText, [
+        template.title,
+        template.summary,
+        ...template.keywords,
+        ...template.variables
+      ])
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map((item) => item.template);
 }
 
 function extractFocusPhrase(query: string, candidates: DemoPathCandidate[]): string {

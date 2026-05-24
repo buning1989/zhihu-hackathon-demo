@@ -17,6 +17,7 @@ import {
   type DemoClarificationQuestion,
   type DemoClarifyingCard,
   type DemoDataMode,
+  type DemoDebugClarificationContext,
   type DemoSearchResponse
 } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
@@ -45,6 +46,11 @@ interface DemoSearchCacheEntry {
   response: DemoSearchResponse;
 }
 
+interface ClarificationLabelLookup {
+  questionLabels: Map<string, string>;
+  optionLabels: Map<string, Map<string, string>>;
+}
+
 const demoSearchResponseCache = new Map<string, DemoSearchCacheEntry>();
 
 export class DemoSearchService {
@@ -53,6 +59,9 @@ export class DemoSearchService {
     userContext?: UserContext
   ): Promise<DemoSearchResponse> {
     const startedAt = Date.now();
+    const clarificationContext = request.clarificationAnswers
+      ? buildClarificationContext(request.query, request.clarificationAnswers)
+      : null;
     const identity = createDemoSearchIdentity(request.query, {
       count: request.count,
       dataMode: request.dataMode
@@ -73,7 +82,8 @@ export class DemoSearchService {
             dataMode: request.dataMode,
             startedAt,
             requestBudgetMs: DEMO_SEARCH_BUDGET_MS,
-            userContext
+            userContext,
+            clarificationContext: clarificationContext ?? undefined
           }),
           DEMO_SEARCH_BUDGET_MS,
           "DEMO_SEARCH_BUDGET_TIMEOUT",
@@ -83,7 +93,11 @@ export class DemoSearchService {
         return cacheDemoResponse(
           writeCachedDemoResponse(
             cacheKey,
-            applyDemoClarificationState(finalizeDemoMeta(response, startedAt), request),
+            applyDemoClarificationState(
+              finalizeDemoMeta(response, startedAt),
+              request,
+              clarificationContext
+            ),
             false
           )
         );
@@ -99,7 +113,8 @@ export class DemoSearchService {
           notes: [
             "real mode fallback to mock demo data",
             formatErrorSummary(error)
-          ]
+          ],
+          clarificationContext: clarificationContext ?? undefined
         });
         response.contextUsed = createDemoContextUsed(userContext, [
           "intent_expand",
@@ -129,7 +144,11 @@ export class DemoSearchService {
         response.debug.timings = [];
         assertDemoSearchGrounding(response);
         return cacheDemoResponse(
-          writeCachedDemoResponse(cacheKey, applyDemoClarificationState(response, request), false)
+          writeCachedDemoResponse(
+            cacheKey,
+            applyDemoClarificationState(response, request, clarificationContext),
+            false
+          )
         );
       }
     }
@@ -139,13 +158,18 @@ export class DemoSearchService {
         request.dataMode === "cache_first"
           ? ["cache_first miss; query-aware deterministic mock fallback generated"]
           : ["mock demo data; query-aware deterministic paths generated without LLM or Zhihu API"],
-      pathSource: "fallback"
+      pathSource: "fallback",
+      clarificationContext: clarificationContext ?? undefined
     });
     response.contextUsed = createDemoContextUsed(userContext);
     finalizeDemoMeta(response, startedAt);
     assertDemoSearchGrounding(response);
     return cacheDemoResponse(
-      writeCachedDemoResponse(cacheKey, applyDemoClarificationState(response, request), false)
+      writeCachedDemoResponse(
+        cacheKey,
+        applyDemoClarificationState(response, request, clarificationContext),
+        false
+      )
     );
   }
 }
@@ -154,10 +178,12 @@ export const demoSearchService = new DemoSearchService();
 
 function applyDemoClarificationState(
   response: DemoSearchResponse,
-  request: DemoSearchRequest
+  request: DemoSearchRequest,
+  clarificationContext: DemoDebugClarificationContext | null = null
 ): DemoSearchResponse {
   if (request.clarificationAnswers) {
-    const context = buildClarificationContext(request.query, request.clarificationAnswers);
+    const context =
+      clarificationContext ?? buildClarificationContext(request.query, request.clarificationAnswers);
     response.clarifyingCard = buildHiddenClarifyingCard();
     response.clarificationStage = {
       needClarification: false,
@@ -167,7 +193,7 @@ function applyDemoClarificationState(
     response.debug.clarificationContext = context;
     response.debug.notes = unique([
       ...response.debug.notes,
-      "clarificationAnswers applied; full demo result response returned"
+      "clarificationAnswers consumed by intent/search/path planning; full demo result response returned"
     ]);
     return response;
   }
@@ -190,23 +216,67 @@ function applyDemoClarificationState(
 function buildClarificationContext(
   query: string,
   answers: DemoClarificationAnswers
-) {
-  const answerParts = Object.entries(answers).map(([key, value]) => `${key}: ${value}`);
-  const searchHints = unique(
-    answerParts.flatMap((part) => [
-      `${query} ${part}`,
-      `${part} 真实经历`,
-      `${part} 后来怎么样`
+): DemoDebugClarificationContext {
+  const labelLookup = buildClarificationLabelLookup(query);
+  const answerLabels = Object.fromEntries(
+    Object.entries(answers).map(([key, value]) => [
+      key,
+      readClarificationOptionLabel(labelLookup, key, value)
     ])
-  ).slice(0, 6);
+  );
+  const answerParts = Object.entries(answerLabels).map(
+    ([key, value]) => `${readClarificationQuestionLabel(labelLookup, key)}: ${value}`
+  );
+  const compactAnswerText = Object.values(answerLabels).join(" ");
+  const searchHints = unique(
+    [
+      `${query} ${compactAnswerText}`,
+      ...Object.values(answerLabels).flatMap((label) => [
+        `${query} ${label} 真实经历`,
+        `${label} 后来怎么样`,
+        `${label} 选择复盘`
+      ]),
+      ...answerParts.map((part) => `${query} ${part}`)
+    ].map((item) => item.trim())
+  ).slice(0, 8);
 
   return {
     originalQuery: query,
     answers,
+    answerLabels,
     answerSummary: answerParts.join("；"),
+    searchHints,
     applied: true,
     searchHintCount: searchHints.length
   };
+}
+
+function buildClarificationLabelLookup(query: string): ClarificationLabelLookup {
+  const card = buildRuleClarifyingCard(query).card;
+  return {
+    questionLabels: new Map(card.questions.map((question) => [question.id, question.label])),
+    optionLabels: new Map(
+      card.questions.map((question) => [
+        question.id,
+        new Map((question.options ?? []).map((option) => [option.id, option.label]))
+      ])
+    )
+  };
+}
+
+function readClarificationQuestionLabel(
+  labelLookup: ClarificationLabelLookup,
+  questionId: string
+): string {
+  return labelLookup.questionLabels.get(questionId) ?? questionId;
+}
+
+function readClarificationOptionLabel(
+  labelLookup: ClarificationLabelLookup,
+  questionId: string,
+  optionId: string
+): string {
+  return labelLookup.optionLabels.get(questionId)?.get(optionId) ?? optionId;
 }
 
 function buildRuleClarifyingCard(query: string): {

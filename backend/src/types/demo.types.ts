@@ -407,7 +407,9 @@ export interface DemoDebug {
 export interface DemoDebugClarificationContext {
   originalQuery: string;
   answers: DemoClarificationAnswers;
+  answerLabels: DemoClarificationAnswers;
   answerSummary: string;
+  searchHints: string[];
   applied: boolean;
   searchHintCount: number;
 }

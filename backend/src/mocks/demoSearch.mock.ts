@@ -3,6 +3,7 @@ import {
   DEMO_SCHEMA_VERSION,
   type DemoDataMode,
   type DemoDebugPathSource,
+  type DemoDebugClarificationContext,
   type DemoEvidence,
   type DemoPath,
   type DemoPerson,
@@ -27,6 +28,7 @@ interface MockOptions {
   resolvedDataMode?: DemoDataMode;
   pathSource?: DemoDebugPathSource;
   cacheHit?: boolean;
+  clarificationContext?: DemoDebugClarificationContext;
 }
 
 const MOCK_SOURCES: DemoSourceRef[] = [
@@ -112,7 +114,10 @@ export function createMockDemoSearchResponse(
 ): DemoSearchResponse {
   const limitedCount = Math.min(Math.max(count, 1), 20);
   const identity = createDemoSearchIdentity(query, { count, dataMode });
-  const pathPlans = buildQueryAwarePathPlans(query, [], 3);
+  const clarificationPriorityTerms = buildClarificationPriorityTerms(options.clarificationContext);
+  const pathPlans = buildQueryAwarePathPlans(query, [], 3, {
+    priorityKeywords: clarificationPriorityTerms
+  });
   const mockDataset = buildQueryAwareMockDataset(identity.normalizedQuery, pathPlans);
   const people = buildQueryAwareMockPeople(
     identity.normalizedQuery,
@@ -157,7 +162,9 @@ export function createMockDemoSearchResponse(
     },
     analysis: {
       summary: `已基于公开内容样本，将「${identity.normalizedQuery}」拆成 ${paths.length} 条可对照路径。`,
-      intent: inferQueryIntent(query),
+      intent: inferQueryIntent(query, [], {
+        priorityKeywords: clarificationPriorityTerms
+      }),
       focusTags: Array.from(new Set(pathPlans.flatMap((path) => path.variables))).slice(0, 8),
       steps: [
         {
@@ -246,6 +253,21 @@ export function createMockDemoSearchResponse(
       notes: options.notes ?? ["mock demo data; no LLM or Zhihu API required"]
     }
   };
+}
+
+function buildClarificationPriorityTerms(
+  clarificationContext: DemoDebugClarificationContext | undefined
+): string[] {
+  if (!clarificationContext) {
+    return [];
+  }
+
+  return Array.from(
+    new Set([
+      ...Object.values(clarificationContext.answerLabels),
+      clarificationContext.answerSummary
+    ].filter(Boolean))
+  );
 }
 
 function buildMockIntentStageDebug(dataMode: DemoDataMode, options: MockOptions) {

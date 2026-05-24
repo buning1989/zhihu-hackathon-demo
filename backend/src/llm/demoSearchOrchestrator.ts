@@ -26,6 +26,7 @@ import {
   type DemoContentRole,
   type DemoDebugFallbackKind,
   type DemoDebugIntentStage,
+  type DemoDebugClarificationContext,
   type DemoDebugLlmStageResult,
   type DemoDebugTiming,
   type DemoDisplayTier,
@@ -74,6 +75,7 @@ interface ComposeMultiLlmDemoSearchInput {
   startedAt: number;
   requestBudgetMs?: number;
   userContext?: UserContext;
+  clarificationContext?: DemoDebugClarificationContext;
 }
 
 interface CleanedCandidate {
@@ -257,21 +259,22 @@ export async function composeMultiLlmDemoSearchResponse(
   const timings: DemoDebugTiming[] = [];
   const guardWarnings: string[] = [];
   const budget = createPipelineBudget(input.startedAt, input.requestBudgetMs);
+  const pipelineQuery = buildClarifiedPipelineQuery(input.query, input.clarificationContext);
 
   const intentStage = await runTimedStage(() =>
-    runIntentExpandStage(input.query, input.userContext, budget)
+    runIntentExpandStage(pipelineQuery, input.userContext, budget, input.clarificationContext)
   );
   stageResults.push(intentStage.stageResult);
   timings.push(createStageTiming(intentStage));
 
   const recalledSearch = await searchByExpandedQueries(
-    input.query,
+    pipelineQuery,
     intentStage.output,
     input.count,
     input.userContext
   );
   const candidatePipeline = await runCandidatePipeline(
-    input.query,
+    pipelineQuery,
     intentStage.output,
     recalledSearch,
     input.count,
@@ -309,7 +312,7 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const candidates = buildCleanedCandidatesFromResponse(response);
   const evidenceStage = await runTimedStage(() =>
-    runEvidenceExtractStage(input.query, intentStage.output, candidates, budget)
+    runEvidenceExtractStage(pipelineQuery, intentStage.output, candidates, budget)
   );
   stageResults.push(evidenceStage.stageResult);
   timings.push(createStageTiming(evidenceStage));
@@ -321,7 +324,7 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const composeStage = await runTimedStage(() =>
     runDemoResponseComposeStage(
-      input.query,
+      pipelineQuery,
       intentStage.output,
       evidenceStage.output,
       response,
@@ -460,6 +463,24 @@ export function hasPersonaChatLlm(): boolean {
   return llmRouter.isTaskConfigured("persona_chat");
 }
 
+function buildClarifiedPipelineQuery(
+  query: string,
+  clarificationContext?: DemoDebugClarificationContext
+): string {
+  if (!clarificationContext?.answerSummary) {
+    return query;
+  }
+
+  return truncateText(
+    [
+      query,
+      `补充信息：${clarificationContext.answerSummary}`,
+      `检索提示：${clarificationContext.searchHints.slice(0, 3).join("；")}`
+    ].join("；"),
+    220
+  );
+}
+
 async function runTimedStage<T>(
   task: () => Promise<StageRunResult<T>>
 ): Promise<TimedStageRunResult<T>> {
@@ -576,7 +597,8 @@ async function runJsonTaskWithStageTimeout(
 async function runIntentExpandStage(
   query: string,
   userContext?: UserContext,
-  budget?: PipelineBudget
+  budget?: PipelineBudget,
+  clarificationContext?: DemoDebugClarificationContext
 ): Promise<StageRunResult<IntentExpandOutput>> {
   const fallback = createFallbackIntent(query);
   if (!hasBudgetForLlmStage("intent_expand", budget)) {
@@ -606,6 +628,12 @@ async function runIntentExpandStage(
           role: "user",
           content: JSON.stringify({
             query: truncateText(query, 120),
+            clarificationContext: clarificationContext
+              ? {
+                  answerSummary: clarificationContext.answerSummary,
+                  searchHints: clarificationContext.searchHints
+                }
+              : null,
             userContext: buildPromptUserContext(userContext)
           })
         }
