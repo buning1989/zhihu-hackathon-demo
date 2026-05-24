@@ -9,6 +9,10 @@ import type {
 
 export const demoRoutes = Router();
 
+demoRoutes.get("/search", (_req, res) => {
+  res.redirect(303, "/");
+});
+
 demoRoutes.post("/search", async (req, res, next) => {
   try {
     const request = parseDemoSearchRequest(req.body);

@@ -455,6 +455,23 @@ paths:
                       code: ZHIHU_RING_PUBLISH_FAILED
                       message: 知乎返回的失败信息
   /api/demo/search:
+    get:
+      tags:
+        - Demo
+      summary: Redirect browser GET requests back to the demo page
+      description: >
+        Browser-friendly fallback for accidental navigation to the API URL.
+        Search requests must still use POST /api/demo/search.
+      operationId: redirectDemoSearchGet
+      x-implementation-status: implemented
+      responses:
+        "303":
+          description: Redirects to the local demo page.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Demo page URL.
     post:
       tags:
         - Demo
