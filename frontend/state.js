@@ -25,6 +25,8 @@
       requestId: "",
       clarifyQuestions: [],
       clarifyAnswers: {},
+      clarifyCard: null,
+      clarificationStage: null,
       clarifyOpen: false,
       hasShownInitialClarify: false,
       initialClarifySkipped: false,

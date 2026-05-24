@@ -111,8 +111,10 @@
       people,
       personas: Array.isArray(result.personas) ? result.personas : [],
       sections: Array.isArray(result.sections) ? result.sections : [],
+      clarifyingCard: result.clarifyingCard || null,
+      clarificationStage: result.clarificationStage || null,
       meta: isRecord(result.meta) ? { ...result.meta } : {},
-      sourceRefs: result.sourceRefs || result.sources || [],
+      sourceRefs: result.sourceRefs || result.sources || result.meta?.sourceRefs || [],
       evidenceMap: result.evidenceMap || {}
     };
   }
@@ -836,6 +838,10 @@
     return raw;
   }
 
+  function normalizeDemoResult(raw) {
+    return normalizeDisplayResult(unwrapResult(raw) || {});
+  }
+
   function normalizeStringArray(value) {
     if (!Array.isArray(value)) {
       return [];
@@ -864,6 +870,7 @@
   }
 
   App.adapters.normalizeNeedInput = normalizeNeedInput;
+  App.adapters.normalizeDemoResult = normalizeDemoResult;
   App.adapters.normalizeAgentResult = normalizeAgentResult;
   App.adapters.isDisplayableAgentResult = isDisplayableAgentResult;
 })();

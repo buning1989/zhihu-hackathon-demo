@@ -432,6 +432,8 @@
       draft.search.message = "";
       draft.search.error = message;
       draft.search.clarifyOpen = false;
+      draft.search.clarifyCard = null;
+      draft.search.clarificationStage = null;
       draft.task = {
         ...draft.task,
         polling: false,
@@ -510,10 +512,68 @@
     return App.mockData.clarifyQuestions.slice(0, 3);
   }
 
-  async function showClarifyQuestions({ questions, requestId, pageBeforeSubmit, taskStatus = null, source = "backend" }) {
+  function normalizeClarifyingCard(card) {
+    const raw = card && typeof card === "object" ? card : {};
+    const questions = normalizeClarifyQuestions(raw.questions);
+    return {
+      show: Boolean(raw.show),
+      title: String(raw.title || "补充条件，让样本更贴近"),
+      description: String(raw.description || "这些补充条件只用于匹配更贴近的经历样本，选几项就好。"),
+      questions,
+      primaryActionText: String(raw.primaryActionText || "用补充条件匹配"),
+      skipActionText: String(raw.skipActionText || "跳过，先看样本")
+    };
+  }
+
+  function normalizeClarifyQuestions(questions) {
+    if (!Array.isArray(questions)) {
+      return [];
+    }
+
+    return questions.map((question) => {
+      const id = String(question.id || question.key || "").trim();
+      const options = Array.isArray(question.options)
+        ? question.options.map((option) => {
+          const optionId = String(option.id || option.value || option.label || "").trim();
+          return {
+            id: optionId,
+            label: String(option.label || option.text || optionId)
+          };
+        }).filter((option) => option.id && option.label)
+        : [];
+      return {
+        id,
+        text: String(question.text || question.label || question.title || id),
+        type: String(question.type || "single_select"),
+        required: question.required !== false,
+        options
+      };
+    }).filter((question) => question.id && question.text && question.options.length > 0);
+  }
+
+  function shouldShowDemoClarification(result) {
+    const card = normalizeClarifyingCard(result?.clarifyingCard);
+    return Boolean(
+      card.questions.length > 0 &&
+      (card.show || result?.clarificationStage?.needClarification)
+    );
+  }
+
+  async function showClarifyQuestions({ questions, card = null, stage = null, requestId, pageBeforeSubmit, taskStatus = null, source = "backend" }) {
     if (!isCurrentRequest(requestId)) {
       return;
     }
+
+    const normalizedCard = card ? normalizeClarifyingCard(card) : null;
+    const normalizedQuestions = normalizeClarifyQuestions(
+      questions || normalizedCard?.questions || []
+    );
+    const resolvedCard = normalizedCard
+      ? {
+        ...normalizedCard,
+        questions: normalizedQuestions
+      }
+      : null;
 
     stopLoadingStageTicker();
     App.store.update((draft) => {
@@ -521,8 +581,10 @@
       draft.search.status = "clarify";
       draft.search.message = "";
       draft.search.error = "";
-      draft.search.clarifyQuestions = questions || [];
+      draft.search.clarifyQuestions = normalizedQuestions;
       draft.search.clarifyAnswers = {};
+      draft.search.clarifyCard = resolvedCard;
+      draft.search.clarificationStage = stage || null;
       draft.search.clarifyOpen = true;
       draft.search.clarifySource = source;
       if (source === "local") {
@@ -573,6 +635,8 @@
       draft.search.requestId = requestId;
       draft.search.error = "";
       draft.search.clarifyOpen = false;
+      draft.search.clarifyCard = null;
+      draft.search.clarificationStage = null;
       if (taskStatus) {
         applyTaskState(draft, taskStatus, taskOverrides);
       }
@@ -619,6 +683,8 @@
       draft.search.message = "";
       draft.search.error = "";
       draft.search.clarifyOpen = false;
+      draft.search.clarifyCard = null;
+      draft.search.clarificationStage = null;
       draft.activePathId = "all";
       draft.selectedPersonId = null;
       draft.expandedPersonId = null;
@@ -709,6 +775,8 @@
         requestId,
         clarifyQuestions: [],
         clarifyAnswers,
+        clarifyCard: null,
+        clarificationStage: null,
         clarifyOpen: false,
         hasShownInitialClarify: false,
         initialClarifySkipped: Boolean(options.skipClarify),
@@ -720,21 +788,10 @@
       return draft;
     });
 
-    if (!options.skipClarify && !hasClarifyAnswers(clarifyAnswers)) {
-      await showInitialClarify(requestId, pageBeforeSubmit);
-      return;
-    }
-
-    if (!App.Api.isMockMode()) {
-      await startBackendTask(cleanQuery, requestId, {
-        pageBeforeSubmit,
-        answers: clarifyAnswers,
-        metadata: options.metadata || {}
-      });
-      return;
-    }
-
-    await loadResults(cleanQuery, requestId, clarifyAnswers);
+    await loadResults(cleanQuery, requestId, clarifyAnswers, {
+      pageBeforeSubmit,
+      allowClarification: !options.skipClarify
+    });
   }
 
   async function startBackendTask(query, requestId, options = {}) {
@@ -819,6 +876,8 @@
         applyLoadingStage(draft, Math.max(clampLoadingStageIndex(draft.search.loadingStageIndex), nextStageIndex));
         draft.search.error = "";
         draft.search.clarifyOpen = false;
+        draft.search.clarifyCard = null;
+        draft.search.clarificationStage = null;
         applyTaskState(draft, taskStatus, {
           polling: true,
           cacheHit: Boolean(taskData.cacheHit || context.start?.cacheHit),
@@ -943,9 +1002,10 @@
     }
   }
 
-  async function loadResults(query, requestId, answers) {
+  async function loadResults(query, requestId, answers, options = {}) {
     const timings = transitionTimings();
     const currentState = App.store.getState();
+    const pageBeforeSubmit = options.pageBeforeSubmit || currentState.page;
     if (currentState.page === "entry") {
       App.store.update((draft) => {
         draft.search.requestId = requestId;
@@ -966,6 +1026,8 @@
       applyLoadingStage(draft, 0);
       draft.search.requestId = requestId;
       draft.search.clarifyOpen = false;
+      draft.search.clarifyCard = null;
+      draft.search.clarificationStage = null;
       draft.transitionPhase = "loadingEntering";
       return draft;
     });
@@ -986,13 +1048,31 @@
     }
 
     setTransitionPhase("loading");
-    const response = await responsePromise;
+    let response;
+    try {
+      response = await responsePromise;
+    } catch (error) {
+      setTaskError(requestId, error);
+      return;
+    }
 
     if (!isCurrentRequest(requestId)) {
       return;
     }
 
-    const minimumLoadingMs = response.data?.dataMode === "mock" ? mockMinimumLoadingMs : defaultMinimumLoadingMs;
+    const result = response.data;
+    if (options.allowClarification !== false && shouldShowDemoClarification(result)) {
+      await showClarifyQuestions({
+        card: result.clarifyingCard,
+        stage: result.clarificationStage,
+        requestId,
+        pageBeforeSubmit,
+        source: "backend_demo"
+      });
+      return;
+    }
+
+    const minimumLoadingMs = result?.dataMode === "mock" ? mockMinimumLoadingMs : defaultMinimumLoadingMs;
     const remainingLoadingMs = minimumLoadingMs - (Date.now() - loadingStartedAt);
     if (remainingLoadingMs > 0) {
       await wait(remainingLoadingMs);
@@ -1014,11 +1094,14 @@
     }
 
     App.store.update((draft) => {
-      draft.result = response.data;
+      draft.page = "feed";
+      draft.result = result;
       draft.search.status = "loaded";
       draft.search.message = "";
       draft.search.error = "";
       draft.search.clarifyOpen = false;
+      draft.search.clarifyCard = result?.clarifyingCard || null;
+      draft.search.clarificationStage = result?.clarificationStage || null;
       draft.activePathId = "all";
       draft.selectedPersonId = null;
       draft.expandedPersonId = null;
@@ -1071,71 +1154,10 @@
       startLoadingStageTicker(requestId);
     }
 
-    if (!App.Api.isMockMode() && state.task?.status === "need_input" && state.task.taskId) {
-      if (options.skip) {
-        await startBackendTask(state.query || state.pendingQuery, requestId, {
-          pageBeforeSubmit: state.page,
-          answers: nextAnswers,
-          skipClarify: true,
-          metadata: {
-            ...clarifyMetadata,
-            skipNeedInput: true,
-            skippedNeedInputTaskId: state.task.taskId
-          }
-        });
-        return;
-      }
-
-      try {
-        const refined = await App.Api.refineAgentTask(state.task.taskId, {
-          answers: nextAnswers,
-          refineQuery: "",
-          readToken: state.task.readToken,
-          metadata: buildTaskMetadata({
-            source: "frontend_agent_refine",
-            ...clarifyMetadata
-          })
-        });
-
-        if (!isCurrentRequest(requestId)) {
-          return;
-        }
-
-        await handleTaskUpdate(refined, requestId, {
-          pageBeforeSubmit: state.page,
-          query: state.query || state.pendingQuery,
-          answers: nextAnswers,
-          skipClarify: true,
-          start: refined,
-          readToken: refined.readToken || ""
-        });
-      } catch (error) {
-        if (shouldUseMockFallback(error)) {
-          await fallbackToMockSearch(state.query || state.pendingQuery, requestId, nextAnswers, {
-            pageBeforeSubmit: state.page,
-            skipClarify: true
-          });
-          return;
-        }
-        setTaskError(requestId, error);
-      }
-      return;
-    }
-
-    if (!App.Api.isMockMode()) {
-      await startBackendTask(state.query || state.pendingQuery, requestId, {
-        pageBeforeSubmit: state.page,
-        answers: nextAnswers,
-        skipClarify: Boolean(options.skip),
-        metadata: {
-          ...clarifyMetadata,
-          skipClarify: Boolean(options.skip)
-        }
-      });
-      return;
-    }
-
-    await loadResults(state.query || state.pendingQuery, requestId, nextAnswers);
+    await loadResults(state.query || state.pendingQuery, requestId, nextAnswers, {
+      pageBeforeSubmit: state.page,
+      allowClarification: !options.skip
+    });
   }
 
   async function mockLogin() {
@@ -1195,6 +1217,8 @@
       draft.search.clarifyOpen = false;
       draft.search.hasShownInitialClarify = false;
       draft.search.initialClarifySkipped = false;
+      draft.search.clarifyCard = null;
+      draft.search.clarificationStage = null;
       draft.search.clarifySource = "";
       draft.search.error = "";
       draft.task = emptyTaskState();

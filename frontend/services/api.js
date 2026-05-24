@@ -208,6 +208,45 @@
     });
   }
 
+  async function demoSearch({ query, answers = {}, count = 5, signal } = {}) {
+    const body = {
+      query,
+      count,
+      dataMode: resolveDemoDataMode()
+    };
+    if (hasAnswers(answers)) {
+      body.clarificationAnswers = answers;
+    }
+
+    const data = await requestJson("/api/demo/search", {
+      method: "POST",
+      signal,
+      body: JSON.stringify(body)
+    });
+
+    return {
+      status: "loaded",
+      data: App.adapters.normalizeDemoResult
+        ? App.adapters.normalizeDemoResult(data)
+        : data,
+      rawData: data
+    };
+  }
+
+  function resolveDemoDataMode() {
+    const configured =
+      window.LifeSampleAppConfig?.demoDataMode ||
+      window.localStorage.getItem("lifeSampleDemoDataMode") ||
+      "mock";
+    return ["mock", "cache_first", "real"].includes(configured) ? configured : "mock";
+  }
+
+  function hasAnswers(answers) {
+    return Object.values(answers || {}).some((value) =>
+      Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && String(value).trim() !== ""
+    );
+  }
+
   function agentReadTokenHeaders(readToken) {
     const token = String(readToken || "").trim();
     return token ? { "X-Agent-Read-Token": token } : {};
@@ -326,6 +365,7 @@
   }
 
   App.BackendApi = {
+    demoSearch,
     createTask,
     getTaskStatus,
     getTaskView,
@@ -345,7 +385,9 @@
     prepareSearch: (...args) => mockMode
       ? App.MockApi.prepareSearch(...args)
       : Promise.resolve({ status: "ready" }),
-    search: (...args) => App.MockApi.search(...args),
+    search: (...args) => mockMode
+      ? App.MockApi.search(...args)
+      : demoSearch(...args),
     sendPersonaMessage: (...args) => App.MockApi.sendPersonaMessage(...args),
     createAgentTask: createTask,
     getAgentTaskStatus: getTaskStatus,
