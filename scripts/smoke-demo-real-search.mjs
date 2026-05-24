@@ -4,10 +4,16 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const DEFAULT_QUERY = decodeURIComponent(
-  "%E4%B8%BA%E4%BA%86%E5%B7%A5%E4%BD%9C%E8%83%BD%E8%BF%BD%E6%B1%82%E8%87%AA%E5%B7%B1%E6%83%B3%E5%81%9A%E7%9A%84%E4%BA%8B%EF%BC%8C%E9%95%BF%E6%9C%9F%E5%BC%82%E5%9C%B0%E6%81%8B%E7%9C%9F%E7%9A%84%E5%80%BC%E5%BE%97%E5%90%97%EF%BC%9F"
-);
-const DEFAULT_QUERIES = [DEFAULT_QUERY];
+const DEFAULT_QUERIES = [
+  "35岁从互联网大厂裸辞，要不要创业？",
+  "30岁女生从体制内辞职去做自媒体靠谱吗？",
+  "产品经理被裁后，要不要转自由职业？",
+  "在北京工作十年，想回老家开店现实吗？",
+  "施工单位正式工辞职后，不知道能做什么？"
+];
+const GENERIC_PRIMARY_RE = /真实经历|后悔吗|怎么办|值得吗|迷茫/;
+const OBJECTIVE_WORD_RE = /[2-6]\d岁|互联网|教育|医疗|施工单位|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工|裸辞|辞职|离职|被裁|待业|失业|不工作|在职|工作十年|创业|自由职业|转行|回老家|开店|自媒体|出路/;
+const BACKGROUND_IDENTITY_RE = /[2-6]\d岁|互联网|教育|医疗|施工单位|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工/;
 const RELATIONSHIP_SIGNAL_RE = /异地恋|恋爱|距离|伴侣|男友|女友|城市|分开|团聚|见面|未来规划|工作选择|职业发展|工作机会/;
 const CAREER_TRADEOFF_RE = /为了工作|工作机会|职业选择|职业发展|追求自己|想做的事|追求梦想|梦想|高薪|裸辞|稳定工作|工作调动/;
 const GENERIC_WORK_REVIEW_RE = /复盘|效率|方法|目标|成长|管理|提升|曾国藩|工作复盘/;
@@ -74,6 +80,7 @@ async function runDemoSearch(baseUrl, query, count, label) {
   const debug = readRecord(data.debug, `${label} data.debug`);
   const search = readRecord(debug.search, `${label} data.debug.search`);
   assertSearchDebug(search, `${label} data.debug.search`);
+  assertObjectiveIntentDebug(debug, search, `${label} data.debug`);
   assertCandidateQuality(debug, query, `${label} data.debug`);
 
   return {
@@ -114,6 +121,11 @@ function assertSearchDebug(search, label) {
     assertNonEmptyString(item.queryUsed, `${label}.candidates[${index}].queryUsed`);
   });
 
+  const isRelationshipRun = search.queriesUsed.some((query) => RELATIONSHIP_SIGNAL_RE.test(String(query)));
+  if (!isRelationshipRun) {
+    return;
+  }
+
   const topRelationshipCount = candidates.slice(0, 3).filter((candidate) => {
     const item = readRecord(candidate, `${label}.topCandidate`);
     return RELATIONSHIP_SIGNAL_RE.test(
@@ -125,6 +137,45 @@ function assertSearchDebug(search, label) {
 
   if (topRelationshipCount < 2) {
     throw new Error(`${label}.candidates top 3 expected at least 2 relationship-related candidates.`);
+  }
+}
+
+function assertObjectiveIntentDebug(debug, search, label) {
+  const intentStage = readRecord(debug.intentStage, `${label}.intentStage`);
+  const objectiveSlots = readRecord(intentStage.objectiveSlots, `${label}.intentStage.objectiveSlots`);
+  const missingSlots = assertArray(intentStage.missingSlots, `${label}.intentStage.missingSlots`);
+  const queryPlan = readRecord(intentStage.queryPlan, `${label}.intentStage.queryPlan`);
+  const primary = assertNonEmptyArray(queryPlan.primary, `${label}.intentStage.queryPlan.primary`);
+  const secondary = assertArray(queryPlan.secondary, `${label}.intentStage.queryPlan.secondary`);
+  const fallback = assertArray(queryPlan.fallback, `${label}.intentStage.queryPlan.fallback`);
+
+  if (!missingSlots.every((item) => typeof item === "string")) {
+    throw new Error(`${label}.intentStage.missingSlots expected string array.`);
+  }
+
+  for (const slotName of ["age", "industry", "companyType", "role", "city", "status", "direction", "constraint"]) {
+    if (!(slotName in objectiveSlots)) {
+      throw new Error(`${label}.intentStage.objectiveSlots missing ${slotName}.`);
+    }
+  }
+
+  const firstThreePrimary = primary.slice(0, 3).join(" | ");
+  if (GENERIC_PRIMARY_RE.test(firstThreePrimary)) {
+    throw new Error(`${label}.queryPlan.primary first 3 contained generic problem words: ${firstThreePrimary}`);
+  }
+
+  const objectivePrimaryCount = primary.filter((query) => OBJECTIVE_WORD_RE.test(String(query))).length;
+  if (primary.length > 0 && objectivePrimaryCount / primary.length < 0.7) {
+    throw new Error(`${label}.queryPlan.primary expected >=70% objective queries, got ${objectivePrimaryCount}/${primary.length}.`);
+  }
+
+  const identityQueryCount = search.queriesUsed.filter((query) => BACKGROUND_IDENTITY_RE.test(String(query))).length;
+  if (identityQueryCount < 2) {
+    throw new Error(`${label}.search.queriesUsed expected at least 2 objective identity/background queries.`);
+  }
+
+  if (!fallback.every((query) => typeof query === "string") || !secondary.every((query) => typeof query === "string")) {
+    throw new Error(`${label}.queryPlan secondary/fallback expected string arrays.`);
   }
 }
 
@@ -152,10 +203,18 @@ function assertCandidateQuality(debug, query, label) {
 
 function printSearchInspection(run) {
   const search = run.search;
+  const intentStage = isRecord(run.debug.intentStage) ? run.debug.intentStage : {};
+  const queryPlan = isRecord(intentStage.queryPlan) ? intentStage.queryPlan : {};
   const candidates = Array.isArray(search.candidates) ? search.candidates : [];
   console.log(
     `searchSmoke ${run.label} query="${run.query}" durationMs=${run.durationMs} queriesUsed=${search.queriesUsed.length} searchRounds=${search.searchRounds.length} totalRawResults=${search.totalRawResults} totalDedupedCandidates=${search.totalDedupedCandidates} degraded=${search.degraded === true} fallbackReason=${search.fallbackReason || ""}`
   );
+  console.log(`  objectiveSlots=${JSON.stringify(intentStage.objectiveSlots || {})}`);
+  console.log(`  missingSlots=${Array.isArray(intentStage.missingSlots) ? intentStage.missingSlots.join(" | ") : "[]"}`);
+  console.log(`  queryPlan.primary=${Array.isArray(queryPlan.primary) ? queryPlan.primary.join(" | ") : "[]"}`);
+  console.log(`  queryPlan.secondary=${Array.isArray(queryPlan.secondary) ? queryPlan.secondary.join(" | ") : "[]"}`);
+  console.log(`  queryPlan.fallback=${Array.isArray(queryPlan.fallback) ? queryPlan.fallback.join(" | ") : "[]"}`);
+  console.log(`  queriesUsed=${Array.isArray(search.queriesUsed) ? search.queriesUsed.join(" | ") : "[]"}`);
   console.log(`  failedQueries=${Array.isArray(search.failedQueries) && search.failedQueries.length ? search.failedQueries.join(" | ") : "[]"}`);
   console.log(`  emptyQueries=${Array.isArray(search.emptyQueries) && search.emptyQueries.length ? search.emptyQueries.join(" | ") : "[]"}`);
   candidates.slice(0, 3).forEach((candidate, index) => {

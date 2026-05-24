@@ -18,6 +18,7 @@ import {
 } from "../services/demoPathBuilder.service.js";
 import { enforceDemoPathDiversity } from "../services/demoPathDiversity.service.js";
 import { createDemoSearchIdentity } from "../services/demoQueryIdentity.service.js";
+import { buildObjectiveSearchContext } from "../llm/searchQueryPlan.js";
 
 interface MockOptions {
   fallbackUsed?: boolean;
@@ -245,7 +246,7 @@ export function createMockDemoSearchResponse(
       composerFallbackTriggered: options.fallbackUsed ?? dataMode !== "real",
       pathDuplicateFound: pathDiversityCheck.duplicateFound,
       pathDiversityCheck,
-      intentStage: buildMockIntentStageDebug(dataMode, options),
+      intentStage: buildMockIntentStageDebug(identity.originalQuery, dataMode, options),
       fallbackUsed: options.fallbackUsed ?? false,
       fallbackKind: "",
       fallbackReason,
@@ -270,19 +271,29 @@ function buildClarificationPriorityTerms(
   );
 }
 
-function buildMockIntentStageDebug(dataMode: DemoDataMode, options: MockOptions) {
+function buildMockIntentStageDebug(
+  query: string,
+  dataMode: DemoDataMode,
+  options: MockOptions
+) {
   const fallbackReason =
     options.fallbackReason ||
     (dataMode === "cache_first"
       ? "cache_first uses query-aware deterministic analysis on cache miss; no LLM intent planner invoked"
       : "mock mode uses query-aware deterministic analysis; no LLM intent planner invoked");
+  const objectiveContext = buildObjectiveSearchContext(
+    [query, options.clarificationContext?.answerSummary].filter(Boolean).join(" ")
+  );
 
   return {
     mode: options.fallbackUsed ? "fallback" : "rule",
     llmUsed: false,
     fallbackReason,
     intentSource: "rule",
-    focusTagsSource: "rule"
+    focusTagsSource: "rule",
+    objectiveSlots: objectiveContext.objectiveSlots,
+    missingSlots: objectiveContext.missingSlots,
+    queryPlan: objectiveContext.queryPlan
   } as const;
 }
 

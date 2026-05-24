@@ -101,7 +101,23 @@
       "llmUsed": false,
       "provider": "deepseek",
       "model": "deepseek-chat",
-      "fallbackReason": "DeepSeek not configured; deterministic search plan fallback used"
+      "fallbackReason": "DeepSeek not configured; deterministic search plan fallback used",
+      "objectiveSlots": {
+        "age": "35岁",
+        "industry": "互联网",
+        "companyType": "大厂",
+        "role": null,
+        "city": null,
+        "status": "裸辞",
+        "direction": "创业",
+        "constraint": null
+      },
+      "missingSlots": ["role", "constraint"],
+      "queryPlan": {
+        "primary": ["35岁 大厂 裸辞", "互联网大厂 裸辞 创业", "大厂 裸辞 创业"],
+        "secondary": ["35岁 裸辞 创业", "互联网 裸辞 创业"],
+        "fallback": ["裸辞 创业 后悔", "大厂裸辞 复盘"]
+      }
     }
   },
   "demo_search_success_response": {
@@ -610,6 +626,29 @@
     },
     "debug": {
       "stubbed": true,
+      "intentStage": {
+        "mode": "rule",
+        "llmUsed": false,
+        "fallbackReason": "mock mode uses query-aware deterministic analysis; no LLM intent planner invoked",
+        "intentSource": "rule",
+        "focusTagsSource": "rule",
+        "objectiveSlots": {
+          "age": "35岁",
+          "industry": "互联网",
+          "companyType": "大厂",
+          "role": null,
+          "city": null,
+          "status": "裸辞",
+          "direction": "创业",
+          "constraint": null
+        },
+        "missingSlots": ["role", "constraint"],
+        "queryPlan": {
+          "primary": ["35岁 大厂 裸辞", "互联网大厂 裸辞 创业", "大厂 裸辞 创业"],
+          "secondary": ["35岁 裸辞 创业", "互联网 裸辞 创业"],
+          "fallback": ["裸辞 创业 后悔", "大厂裸辞 复盘"]
+        }
+      },
       "searchQueries": [
         "不工作了 新西兰 生活 真实经历",
         "裸辞 后 去远方 回来 复盘",

@@ -39,7 +39,7 @@ const MAX_COUNT = 20;
 const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "real"]);
 const DEMO_SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEMO_SEARCH_BUDGET_MS = 14000;
-const REQUIRED_CLARIFICATION_QUESTIONS = 3;
+const REQUIRED_CLARIFICATION_QUESTIONS = 4;
 const MAX_CLARIFICATION_OPTIONS = 6;
 
 interface DemoSearchCacheEntry {
@@ -255,16 +255,23 @@ function buildClarificationContext(
     ([key, value]) => `${readClarificationQuestionLabel(labelLookup, key)}: ${value}`
   );
   const compactAnswerText = Object.values(answerLabels).join(" ");
+  const role = answerLabels.role;
+  const status = answerLabels.status;
+  const direction = answerLabels.direction;
+  const constraint = answerLabels.constraint;
   const searchHints = unique(
     [
+      [query, role, status, direction].filter(Boolean).join(" "),
+      [role, status, direction].filter(Boolean).join(" "),
+      [query, status, direction, constraint].filter(Boolean).join(" "),
+      [status, direction, "复盘"].filter(Boolean).join(" "),
       `${query} ${compactAnswerText}`,
       ...Object.values(answerLabels).flatMap((label) => [
-        `${query} ${label} 真实经历`,
-        `${label} 后来怎么样`,
+        `${query} ${label}`,
         `${label} 选择复盘`
       ]),
       ...answerParts.map((part) => `${query} ${part}`)
-    ].map((item) => item.trim())
+    ].map((item) => item.trim()).filter(Boolean)
   ).slice(0, 8);
 
   return {
@@ -344,7 +351,14 @@ function buildRuleClarifyingCard(query: string): {
     };
   }
 
-  if (/不工作|不上班|裸辞|失业|离职|gap/.test(normalized)) {
+  if (isObjectiveSlotClarificationQuery(normalized)) {
+    return {
+      ambiguityLevel: "high",
+      card: createObjectiveSlotClarifyingCard()
+    };
+  }
+
+  if (/不工作|不上班|裸辞|失业|离职|辞职|被裁|裁员|gap/.test(normalized)) {
     return {
       ambiguityLevel: "high",
       card: createClarifyingCard(
@@ -603,6 +617,48 @@ function buildRuleClarifyingCard(query: string): {
       ]
     )
   };
+}
+
+function isObjectiveSlotClarificationQuery(normalizedQuery: string): boolean {
+  return /裸辞|离职|辞职|被裁|裁员|失业|待业|不工作|不上班|转行|自由职业|创业|回老家|开店|体制内|大厂|施工单位|自媒体|工作十年|gap/.test(
+    normalizedQuery
+  );
+}
+
+function createObjectiveSlotClarifyingCard(): DemoClarifyingCard {
+  return createClarifyingCard(
+    "补充客观背景，匹配更准",
+    "先补齐岗位、状态、方向和现实约束，优先匹配相似的人和处境。",
+    [
+      createClarificationQuestion("role", "你之前主要做什么岗位？", [
+        ["product_operation", "产品 / 运营"],
+        ["tech_rd", "技术 / 研发"],
+        ["marketing_sales", "市场 / 销售"],
+        ["design_content", "设计 / 内容"],
+        ["other", "其他"]
+      ]),
+      createClarificationQuestion("status", "你现在是什么状态？", [
+        ["already_quit", "已经裸辞"],
+        ["preparing_quit", "正准备辞职"],
+        ["laid_off_unemployed", "被裁 / 待业"],
+        ["employed_switch", "还在职但想换方向"]
+      ]),
+      createClarificationQuestion("direction", "你考虑的方向是什么？", [
+        ["startup", "创业"],
+        ["freelance", "自由职业"],
+        ["switch_career", "转行"],
+        ["return_home", "回老家"],
+        ["unclear", "还没想清楚"]
+      ]),
+      createClarificationQuestion("constraint", "你最大的现实约束是什么？", [
+        ["limited_savings", "存款有限"],
+        ["mortgage_family", "房贷 / 家庭压力"],
+        ["age_pressure", "年龄焦虑"],
+        ["no_project_partner", "缺少项目或合伙人"],
+        ["avoid_original_industry", "不想再回原行业"]
+      ])
+    ]
+  );
 }
 
 function createClarifyingCard(

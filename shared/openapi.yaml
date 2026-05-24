@@ -1174,6 +1174,14 @@ components:
         latencyMs:
           type: integer
           minimum: 0
+        objectiveSlots:
+          $ref: "#/components/schemas/DemoObjectiveSlots"
+        missingSlots:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoObjectiveSlotName"
+        queryPlan:
+          $ref: "#/components/schemas/DemoObjectiveQueryPlan"
         notes:
           type: array
           items:
@@ -2298,6 +2306,72 @@ components:
         fallbackSummary:
           type: string
           description: Rule/text fallback kept for debugging only; do not show as primary experienceSummary.
+    DemoObjectiveSlotName:
+      type: string
+      enum:
+        - age
+        - industry
+        - companyType
+        - role
+        - city
+        - status
+        - direction
+        - constraint
+    DemoObjectiveSlots:
+      type: object
+      required:
+        - age
+        - industry
+        - companyType
+        - role
+        - city
+        - status
+        - direction
+        - constraint
+      properties:
+        age:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+        companyType:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        direction:
+          type: string
+          nullable: true
+        constraint:
+          type: string
+          nullable: true
+    DemoObjectiveQueryPlan:
+      type: object
+      required:
+        - primary
+        - secondary
+        - fallback
+      properties:
+        primary:
+          type: array
+          items:
+            type: string
+        secondary:
+          type: array
+          items:
+            type: string
+        fallback:
+          type: array
+          items:
+            type: string
     DemoDebugIntentStage:
       type: object
       required:
@@ -2332,3 +2406,11 @@ components:
           enum:
             - rule
             - llm
+        objectiveSlots:
+          $ref: "#/components/schemas/DemoObjectiveSlots"
+        missingSlots:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoObjectiveSlotName"
+        queryPlan:
+          $ref: "#/components/schemas/DemoObjectiveQueryPlan"

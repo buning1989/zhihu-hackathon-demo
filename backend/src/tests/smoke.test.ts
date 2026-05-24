@@ -71,6 +71,7 @@ try {
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
   assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
   assertClarifyingCard(demoSearch.body.data.clarifyingCard, "demo clarifyingCard");
+  assertObjectiveClarifyingCard(demoSearch.body.data.clarifyingCard, "demo objective clarifyingCard");
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -217,6 +218,7 @@ try {
   await assertDeepSeekResponseFormatFallback();
   await assertLoggedInUserContextInRealComposer();
   await assertCandidateQualityPrefersExperience();
+  await assertObjectiveQueryExpansionCases();
   await assertNoLlmConfigFallbackKind();
   await assertPartialLlmFallbackKind();
   await assertGroundingGuardInvalidFallback();
@@ -343,6 +345,29 @@ function assertClarifyingCard(value: unknown, label: string): void {
     if (Array.isArray(question.options) && question.options.length > 6) {
       throw new Error(`${label}.questions[${index}].options: expected <= 6 options`);
     }
+  }
+}
+
+function assertObjectiveClarifyingCard(value: unknown, label: string): void {
+  if (!isRecord(value)) {
+    throw new Error(`${label}: expected clarifying card object`);
+  }
+
+  const questions = Array.isArray(value.questions) ? value.questions : [];
+  const questionIds = questions
+    .map((question) => (isRecord(question) ? question.id : ""))
+    .filter(Boolean);
+  for (const expectedId of ["role", "status", "direction", "constraint"]) {
+    if (!questionIds.includes(expectedId)) {
+      throw new Error(`${label}: expected objective slot question ${expectedId}`);
+    }
+  }
+
+  const labels = questions
+    .map((question) => (isRecord(question) ? String(question.label) : ""))
+    .join("\n");
+  for (const forbidden of ["最担心", "怕不怕后悔", "是不是很迷茫"]) {
+    assertNotIncludes(labels, forbidden, `${label}.labels`);
   }
 }
 
@@ -662,6 +687,101 @@ async function assertCandidateQualityPrefersExperience(): Promise<void> {
   );
 }
 
+async function assertObjectiveQueryExpansionCases(): Promise<void> {
+  const cases = [
+    {
+      query: "35岁从互联网大厂裸辞，要不要创业？",
+      slots: { age: "35岁", industry: "互联网", companyType: "大厂", status: "裸辞", direction: "创业" },
+      primaryIncludes: ["35岁 大厂 裸辞", "互联网大厂 裸辞 创业", "大厂 裸辞 创业"]
+    },
+    {
+      query: "30岁女生从体制内辞职去做自媒体靠谱吗？",
+      slots: { age: "30岁", companyType: "体制内", status: "辞职", direction: "自媒体" },
+      primaryIncludes: ["30岁 体制内 辞职", "体制内 辞职 自媒体"]
+    },
+    {
+      query: "产品经理被裁后，要不要转自由职业？",
+      slots: { role: "产品经理", status: "被裁", direction: "自由职业" },
+      primaryIncludes: ["产品经理 被裁 自由职业"]
+    },
+    {
+      query: "在北京工作十年，想回老家开店现实吗？",
+      slots: { city: "北京", status: "工作十年", direction: "回老家 开店" },
+      primaryIncludes: ["北京 工作十年 回老家 开店"]
+    },
+    {
+      query: "施工单位正式工辞职后，不知道能做什么？",
+      slots: { industry: "施工单位", companyType: "正式工", role: "正式工", status: "辞职", direction: "出路" },
+      primaryIncludes: ["施工单位正式工 辞职 出路", "施工单位 正式工 辞职"]
+    }
+  ];
+
+  for (const [index, testCase] of cases.entries()) {
+    const response = await withStubbedOrchestrator({
+      configuredTasks: new Set(),
+      outputs: {},
+      query: testCase.query,
+      count: 1,
+      searchItems: [createObjectiveSearchItem(index, testCase.query)]
+    });
+
+    const intentStage = response.debug.intentStage;
+    if (!intentStage.objectiveSlots || !intentStage.queryPlan) {
+      throw new Error(`${testCase.query}: expected objective intent debug`);
+    }
+
+    for (const [slotName, expectedValue] of Object.entries(testCase.slots)) {
+      assertEqual(
+        intentStage.objectiveSlots[slotName as keyof typeof intentStage.objectiveSlots],
+        expectedValue,
+        `${testCase.query}: objectiveSlots.${slotName}`
+      );
+    }
+
+    const primary = intentStage.queryPlan.primary;
+    assertNonEmptyArray(primary, `${testCase.query}: queryPlan.primary`);
+    for (const expectedQuery of testCase.primaryIncludes) {
+      if (!primary.includes(expectedQuery)) {
+        throw new Error(`${testCase.query}: primary query missing ${expectedQuery}; got ${primary.join(" | ")}`);
+      }
+    }
+
+    assertPrimaryQueryQuality(primary, `${testCase.query}: queryPlan.primary`);
+    const queriesUsed = response.debug.search?.queriesUsed ?? [];
+    assertNonEmptyArray(queriesUsed, `${testCase.query}: debug.search.queriesUsed`);
+    assertPrimaryQueryQuality(queriesUsed.slice(0, 3), `${testCase.query}: debug.search.queriesUsed first3`);
+    const identityQueryCount = queriesUsed.filter(hasBackgroundIdentityWord).length;
+    if (identityQueryCount < 2) {
+      throw new Error(`${testCase.query}: expected at least 2 objective queriesUsed, got ${queriesUsed.join(" | ")}`);
+    }
+  }
+}
+
+function assertPrimaryQueryQuality(queries: string[], label: string): void {
+  const genericWords = ["真实经历", "后悔吗", "怎么办", "值得吗", "迷茫"];
+  const firstThree = queries.slice(0, 3).join(" | ");
+  for (const word of genericWords) {
+    assertNotIncludes(firstThree, word, label);
+  }
+
+  const objectiveCount = queries.filter(hasObjectiveIdentityWord).length;
+  if (queries.length > 0 && objectiveCount / queries.length < 0.7) {
+    throw new Error(`${label}: expected >=70% objective queries, got ${objectiveCount}/${queries.length}`);
+  }
+}
+
+function hasObjectiveIdentityWord(query: string): boolean {
+  return /[2-6]\d岁|互联网|教育|医疗|施工单位|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工|裸辞|辞职|离职|被裁|待业|失业|不工作|在职|工作十年|创业|自由职业|转行|回老家|开店|自媒体|出路/.test(
+    query
+  );
+}
+
+function hasBackgroundIdentityWord(query: string): boolean {
+  return /[2-6]\d岁|互联网|教育|医疗|施工单位|建筑|体制内|大厂|国企|外企|创业公司|产品经理|运营|程序员|技术|研发|设计|销售|市场|北京|上海|深圳|广州|杭州|成都|老家|县城|一线城市|二线城市|正式工/.test(
+    query
+  );
+}
+
 async function assertNoLlmConfigFallbackKind(): Promise<void> {
   const response = await withStubbedOrchestrator({
     configuredTasks: new Set(),
@@ -829,6 +949,10 @@ function createLoggedInSessionCookie(): string {
 }
 
 function assertSearchPlanDebug(response: Awaited<ReturnType<typeof withStubbedOrchestrator>>, query: string): void {
+  if (!response.debug.intentStage.objectiveSlots || !response.debug.intentStage.queryPlan) {
+    throw new Error("debug.intentStage must include objectiveSlots and queryPlan");
+  }
+
   const searchQueries = response.debug.searchQueries;
   assertNonEmptyArray(searchQueries, "debug.searchQueries");
   if (!searchQueries || searchQueries.length < 8) {
@@ -966,6 +1090,29 @@ function createHighQualityExperienceSearchItem(): SearchItem {
         provider: "zhihu",
         url: "https://www.zhihu.com/question/stub/answer/high"
       }
+    }
+  };
+}
+
+function createObjectiveSearchItem(index: number, query: string): SearchItem {
+  return {
+    ...createStubSearchItem(),
+    id: `objective_query_${index}`,
+    title: `${query} 相似经历复盘`,
+    text:
+      `${query} 这类处境里，我先记录了自己的岗位、当前状态、选择方向和现金流约束，再去看相似背景的人如何处理。` +
+      "后来我发现真正有参考价值的不是泛泛建议，而是年龄、行业、城市、离职状态和下一步方向都接近的公开经历。",
+    url: `https://www.zhihu.com/question/stub/answer/objective-${index}`,
+    evidence: {
+      text: `${query} 需要优先对照年龄、行业、城市、状态和方向都接近的公开经历。`,
+      source: {
+        provider: "zhihu",
+        url: `https://www.zhihu.com/question/stub/answer/objective-${index}`
+      }
+    },
+    source: {
+      provider: "zhihu",
+      url: `https://www.zhihu.com/question/stub/answer/objective-${index}`
     }
   };
 }

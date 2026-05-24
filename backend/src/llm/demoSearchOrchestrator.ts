@@ -67,7 +67,11 @@ import {
   parseGroundingGuardOutput,
   parseIntentExpandOutput
 } from "./schemas/taskSchemas.js";
-import { buildFallbackSearchQueryPlan, sortSearchQueryPlans } from "./searchQueryPlan.js";
+import {
+  buildFallbackSearchQueryPlan,
+  buildObjectiveSearchContext,
+  sortSearchQueryPlans
+} from "./searchQueryPlan.js";
 import { enforceDemoPathDiversity } from "../services/demoPathDiversity.service.js";
 
 interface ComposeMultiLlmDemoSearchInput {
@@ -435,7 +439,8 @@ export async function composeMultiLlmDemoSearchResponse(
     intentStage: buildIntentStageDebug(
       intentStage.stageResult,
       composeStage.stageResult,
-      applyStats.focusTagCount > 0
+      applyStats.focusTagCount > 0,
+      intentStage.output
     ),
     fallbackUsed: fallbackSummary.used,
     fallbackKind: fallbackSummary.kind,
@@ -2266,6 +2271,7 @@ function createFallbackIntent(query: string): IntentExpandOutput {
   const intentTags = inferIntentTags(query);
   const userNeedSummary = `用户正在探索「${truncateText(query, 40)}」相关的公开经验与可行路径。`;
   const searchQueries = buildFallbackSearchQueryPlan(query);
+  const objectiveContext = buildObjectiveSearchContext(query);
   const dynamicTopicSignals = buildDynamicTopicSignals({
     originalQuery: query,
     userCoreQuestion: userNeedSummary,
@@ -2288,6 +2294,9 @@ function createFallbackIntent(query: string): IntentExpandOutput {
     focusTags: intentTags,
     topicSignals,
     searchQueries,
+    objectiveSlots: objectiveContext.objectiveSlots,
+    missingSlots: objectiveContext.missingSlots,
+    queryPlan: objectiveContext.queryPlan,
     intentTags,
     userNeedSummary
   };
@@ -2944,7 +2953,8 @@ function summarizeFallbackDetails(stageResults: DemoDebugLlmStageResult[]): stri
 function buildIntentStageDebug(
   intentStageResult: DemoDebugLlmStageResult,
   composeStageResult: DemoDebugLlmStageResult,
-  focusTagsUpdatedByLlm: boolean
+  focusTagsUpdatedByLlm: boolean,
+  intentOutput: IntentExpandOutput
 ): DemoDebugIntentStage {
   const intentExpandLlmUsed = intentStageResult.succeeded > 0;
   const focusTagsLlmUsed = focusTagsUpdatedByLlm && composeStageResult.succeeded > 0;
@@ -2963,7 +2973,10 @@ function buildIntentStageDebug(
       focusTagsLlmUsed
     ),
     intentSource: "rule",
-    focusTagsSource: focusTagsLlmUsed ? "llm" : "rule"
+    focusTagsSource: focusTagsLlmUsed ? "llm" : "rule",
+    objectiveSlots: intentOutput.objectiveSlots,
+    missingSlots: intentOutput.missingSlots,
+    queryPlan: intentOutput.queryPlan
   };
 }
 

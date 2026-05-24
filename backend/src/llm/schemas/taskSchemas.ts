@@ -1,9 +1,12 @@
 import type {
   DemoContentRole,
+  DemoObjectiveQueryPlan,
+  DemoObjectiveSlotName,
+  DemoObjectiveSlots,
   DemoPath,
   DemoSearchQueryPlan
 } from "../../types/demo.types.js";
-import { normalizeSearchQueryPlans } from "../searchQueryPlan.js";
+import { buildObjectiveSearchContext, normalizeSearchQueryPlans } from "../searchQueryPlan.js";
 
 export type LlmTaskSchemaName =
   | "intent_expand"
@@ -26,6 +29,9 @@ export interface IntentExpandOutput {
   focusTags: string[];
   topicSignals: string[];
   searchQueries: DemoSearchQueryPlan[];
+  objectiveSlots: DemoObjectiveSlots;
+  missingSlots: DemoObjectiveSlotName[];
+  queryPlan: DemoObjectiveQueryPlan;
   intentTags: string[];
   userNeedSummary: string;
 }
@@ -183,7 +189,12 @@ export class LlmSchemaError extends Error {
 
 export function parseIntentExpandOutput(content: string, fallbackQuery: string): IntentExpandOutput {
   const record = parseJsonObject(content);
-  const searchQueries = normalizeSearchQueryPlans(fallbackQuery, record.searchQueries);
+  const objectiveContext = buildObjectiveSearchContext(fallbackQuery, record.objectiveSlots);
+  const searchQueries = normalizeSearchQueryPlans(
+    fallbackQuery,
+    record.searchQueries,
+    objectiveContext.objectiveSlots
+  );
   const focusTags = unique([
     ...readStringArray(record.focusTags),
     ...readStringArray(record.intentTags)
@@ -209,6 +220,9 @@ export function parseIntentExpandOutput(content: string, fallbackQuery: string):
       rawTopicSignals: readStringArray(record.topicSignals)
     }),
     searchQueries,
+    objectiveSlots: objectiveContext.objectiveSlots,
+    missingSlots: objectiveContext.missingSlots,
+    queryPlan: objectiveContext.queryPlan,
     intentTags: focusTags,
     userNeedSummary
   };

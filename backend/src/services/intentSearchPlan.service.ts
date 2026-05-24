@@ -3,6 +3,10 @@ import { llmRouter } from "../llm/llmRouter.js";
 import { getLlmTaskTimeoutMs } from "../llm/llmTimeout.js";
 import { CLARIFIED_INTENT_SEARCH_PLAN_SYSTEM_PROMPT } from "../llm/prompts/clarifiedIntentSearchPlanPrompt.js";
 import {
+  buildObjectiveSearchContext,
+  type ObjectiveSearchContext
+} from "../llm/searchQueryPlan.js";
+import {
   type DemoClarificationAnswers,
   type DemoContextUsed,
   type DemoIntentSearchPlan,
@@ -24,6 +28,7 @@ interface ParsedIntentSearchPlan {
   intentSummary: string;
   focusTags: string[];
   searchPlan: DemoIntentSearchPlan;
+  objectiveContext: ObjectiveSearchContext;
 }
 
 const CORE_QUERY_MIN_COUNT = 3;
@@ -146,6 +151,9 @@ function attachDebug(
       ...(options.fallbackReason ? { fallbackReason: options.fallbackReason } : {}),
       clarificationAnswerKeys: options.clarificationAnswerKeys,
       latencyMs: Date.now() - options.startedAt,
+      objectiveSlots: response.objectiveContext.objectiveSlots,
+      missingSlots: response.objectiveContext.missingSlots,
+      queryPlan: response.objectiveContext.queryPlan,
       notes: [
         "clarificationAnswers detected; full demo result composition skipped",
         options.llmUsed
@@ -166,6 +174,13 @@ function parseIntentSearchPlanOutput(
 ): ParsedIntentSearchPlan {
   const record = parseJsonRecord(content);
   const searchPlanRecord = isRecord(record.searchPlan) ? record.searchPlan : {};
+  const objectiveContext = buildObjectiveSearchContext(
+    [
+      fallback.objectiveContext.queryPlan.primary.join(" "),
+      fallback.objectiveContext.queryPlan.secondary.join(" ")
+    ].join(" "),
+    record.objectiveSlots
+  );
 
   return {
     intent: sanitizeIntent(readString(record.intent)) || fallback.intent,
@@ -179,15 +194,15 @@ function parseIntentSearchPlanOutput(
     ),
     searchPlan: {
       coreQueries: completeQueryList(
-        readStringArray(searchPlanRecord.coreQueries),
         fallback.searchPlan.coreQueries,
+        readStringArray(searchPlanRecord.coreQueries),
         CORE_QUERY_MIN_COUNT,
         CORE_QUERY_MAX_COUNT,
         18
       ),
       expandedQueries: completeQueryList(
-        readStringArray(searchPlanRecord.expandedQueries),
         fallback.searchPlan.expandedQueries,
+        readStringArray(searchPlanRecord.expandedQueries),
         EXPANDED_QUERY_MIN_COUNT,
         EXPANDED_QUERY_MAX_COUNT,
         22
@@ -219,7 +234,8 @@ function parseIntentSearchPlanOutput(
         EXPECTED_EVIDENCE_MIN_COUNT,
         EXPECTED_EVIDENCE_MAX_COUNT
       )
-    }
+    },
+    objectiveContext
   };
 }
 
@@ -230,6 +246,7 @@ function buildFallbackIntentSearchPlan(
     input.query,
     ...Object.values(input.clarificationAnswers)
   ].join(" "));
+  const objectiveContext = buildObjectiveSearchContext(combinedText);
 
   if (isRelationshipCareerTradeoff(combinedText)) {
     return {
@@ -282,40 +299,54 @@ function buildFallbackIntentSearchPlan(
           "职业选择后悔或不后悔的回答",
           "关系与人生选择的长文讨论"
         ]
-      }
+      },
+      objectiveContext
     };
   }
 
   const corePhrase = extractGenericCorePhrase(input.query);
   const focusTags = inferGenericFocusTags(combinedText);
+  const objectiveQueries = objectiveContext.queryPlan;
 
   return {
     intent: inferGenericIntent(combinedText),
     intentSummary: `用户想围绕「${corePhrase}」判断真实经历、选择代价和后续结果，需要先准备适合知乎召回的搜索计划。`,
     focusTags,
     searchPlan: {
-      coreQueries: [
-        `${corePhrase} 真实经历`,
-        `${corePhrase} 后悔`,
-        `${corePhrase} 怎么选`
-      ],
-      expandedQueries: [
-        `${corePhrase} 后来怎么样`,
-        `${corePhrase} 失败复盘`,
-        `${corePhrase} 经验`
-      ],
-      exploratoryQueries: [`${corePhrase}到底值不值得`],
+      coreQueries: completeQueryList(
+        objectiveQueries.primary,
+        [`${corePhrase} 选择`, `${corePhrase} 出路`, `${corePhrase} 路径`],
+        CORE_QUERY_MIN_COUNT,
+        CORE_QUERY_MAX_COUNT,
+        18
+      ),
+      expandedQueries: completeQueryList(
+        objectiveQueries.secondary,
+        [`${corePhrase} 真实经历`, `${corePhrase} 失败复盘`, `${corePhrase} 经验`],
+        EXPANDED_QUERY_MIN_COUNT,
+        EXPANDED_QUERY_MAX_COUNT,
+        22
+      ),
+      exploratoryQueries: completeQueryList(
+        objectiveQueries.fallback,
+        [`${corePhrase} 后悔`],
+        EXPLORATORY_QUERY_MIN_COUNT,
+        EXPLORATORY_QUERY_MAX_COUNT,
+        30
+      ),
       rankingSignals: [
         "真实经历",
         "选择成本",
         "长期结果",
         "后悔",
         "不后悔",
-        ...focusTags
+        ...focusTags,
+        ...Object.values(objectiveContext.objectiveSlots).filter((item): item is string => Boolean(item))
       ],
       negativeHints: GENERIC_NEGATIVE_HINTS,
       expectedEvidenceTypes: GENERIC_EXPECTED_EVIDENCE_TYPES
-    }
+    },
+    objectiveContext
   };
 }
 

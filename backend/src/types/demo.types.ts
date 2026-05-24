@@ -32,6 +32,23 @@ export type DemoDebugFallbackKind =
   | "partial_llm_fallback"
   | "all_llm_failed";
 export type DemoDebugPathSource = "llm" | "rule" | "fallback";
+export type DemoObjectiveSlotName =
+  | "age"
+  | "industry"
+  | "companyType"
+  | "role"
+  | "city"
+  | "status"
+  | "direction"
+  | "constraint";
+
+export type DemoObjectiveSlots = Record<DemoObjectiveSlotName, string | null>;
+
+export interface DemoObjectiveQueryPlan {
+  primary: string[];
+  secondary: string[];
+  fallback: string[];
+}
 
 export interface DemoSearchRequestBody {
   query?: unknown;
@@ -103,6 +120,9 @@ export interface DemoIntentSearchPlanDebug {
   fallbackReason?: string;
   clarificationAnswerKeys: string[];
   latencyMs: number;
+  objectiveSlots?: DemoObjectiveSlots;
+  missingSlots?: DemoObjectiveSlotName[];
+  queryPlan?: DemoObjectiveQueryPlan;
   notes: string[];
 }
 
@@ -565,6 +585,9 @@ export interface DemoDebugIntentStage {
   fallbackReason: string;
   intentSource: "rule" | "llm";
   focusTagsSource: "rule" | "llm";
+  objectiveSlots?: DemoObjectiveSlots;
+  missingSlots?: DemoObjectiveSlotName[];
+  queryPlan?: DemoObjectiveQueryPlan;
 }
 
 export interface DemoDebugLlmStageResult {

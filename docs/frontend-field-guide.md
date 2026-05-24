@@ -284,7 +284,9 @@ people[].experienceSummary
 
 ## debug.candidateQuality
 
-real 模式下，`debug.searchQueries[]` 会列出 intent_expand 生成的知乎搜索召回计划；每项包含 `query / type / priority / purpose`。`debug.searchQueryResults[]` 会按 query 展示本次真实搜索返回数量，`mergedCandidateCount / dedupedCandidateCount / validCandidateCount` 分别表示合并前候选数、去重后候选数和进入核心证据筛选后的有效候选数。
+real 模式下，`debug.intentStage.objectiveSlots` 会列出 intent_expand 抽取的客观槽位，例如年龄、行业、公司类型、岗位、城市、状态、方向和现实约束；`debug.intentStage.missingSlots` 表示更值得澄清的槽位；`debug.intentStage.queryPlan.primary / secondary / fallback` 展示分层后的搜索策略。前端可把这些字段放在联调面板，不应作为用户可见事实文案。
+
+`debug.searchQueries[]` 会列出 intent_expand 生成的知乎搜索召回计划；每项包含 `query / type / priority / purpose`。`debug.searchQueryResults[]` 会按 query 展示本次真实搜索返回数量，`mergedCandidateCount / dedupedCandidateCount / validCandidateCount` 分别表示合并前候选数、去重后候选数和进入核心证据筛选后的有效候选数。
 
 `debug.candidateQuality[]` 会列出本次召回候选的质量判断，方便联调筛选结果：
 
