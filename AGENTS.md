@@ -18,6 +18,7 @@
 1. 先阅读 `README.md`，确认当前技术栈、启动方式和分支规则。
 2. 再按任务阅读相关文档：
    - 当前状态和交接：`docs/AI_HANDOFF.md`
+   - 开发汇报与验收规范：`docs/codex-reporting-standard.md`
    - AI 分身产品层：`docs/backend-ai-persona-integration-plan.md`
    - 前端字段协作：`docs/frontend-field-guide.md`
    - 既有搜索链路：`docs/backend-next-step-plan.md`
@@ -123,5 +124,6 @@ git diff --check
 
 - 如果用户只是要求阅读、评估、规划，不要擅自开始开发。
 - 如果用户明确要求开发，则完成实现、验证、提交和推送。
+- 每次开发任务结束后，必须按 `docs/codex-reporting-standard.md` 输出验收报告。
 - 不确定时不要隐藏困惑；说清楚卡点、可选方案和推荐路径。
 - 对明显过度复杂的需求，可以提出更简单的替代方案，并说明代价。
