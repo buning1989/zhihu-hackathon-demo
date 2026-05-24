@@ -5,7 +5,6 @@ PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 BACKEND_HEALTH_URL="http://127.0.0.1:${BACKEND_PORT}/health"
-AUTH_LOGIN_URL="http://127.0.0.1:${BACKEND_PORT}/auth/zhihu/login"
 DEMO_URL="http://127.0.0.1:${FRONTEND_PORT}/?dataMode=cache_first"
 LEGACY_DEMO_URL="http://127.0.0.1:${FRONTEND_PORT}/frontend/index.html?dataMode=cache_first"
 
@@ -89,9 +88,8 @@ fi
 wait_for_url "backend" "${BACKEND_HEALTH_URL}" 30 1
 wait_for_url "frontend" "${DEMO_URL}" 30 1
 
-log "Opening Zhihu OAuth login: ${AUTH_LOGIN_URL}"
-log "After authorization, the backend will redirect back to the frontend demo."
-open "${AUTH_LOGIN_URL}"
+log "Opening demo: ${DEMO_URL}"
+open "${DEMO_URL}"
 
 if [ -n "${backend_job}${frontend_job}" ]; then
   log "Demo is running. Keep this Terminal window open to keep services started here alive."

@@ -57,7 +57,7 @@ docker compose -f infra/docker-compose.yml up
 启动后默认地址：
 
 - 后端健康检查：`http://localhost:8000/health`
-- 知乎 OAuth 登录入口：`http://localhost:8000/auth/zhihu/login`
+- 知乎 OAuth 登录入口：本地 demo 已关闭，避免活动结束后跳转授权页
 - 前端占位首页：`http://localhost:3000/`
 - OpenAPI 契约：`shared/openapi.yaml`
 - 前端字段样例：`shared/demo-response.sample.json`

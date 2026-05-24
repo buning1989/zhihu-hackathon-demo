@@ -74,25 +74,16 @@ paths:
     get:
       tags:
         - Auth
-      summary: Start Zhihu OAuth login
+      summary: Zhihu OAuth login is disabled for the local demo
       description: >
-        Implemented. Creates a short-lived OAuth state, stores it in an
-        HttpOnly cookie and server memory, then redirects the browser to
-        Zhihu's authorization endpoint. ZHIHU_APP_ID and ZHIHU_APP_KEY are
-        required only when this endpoint is called, so the server can still
-        start without local OAuth credentials.
+        Disabled in the local demo to avoid sending users into the closed
+        Zhihu OAuth activity flow. The callback/token exchange code remains
+        in place for compatibility if an existing OAuth callback returns.
       operationId: loginWithZhihu
-      x-implementation-status: implemented
+      x-implementation-status: disabled
       responses:
-        "302":
-          description: Redirects to Zhihu authorization page.
-          headers:
-            Location:
-              schema:
-                type: string
-              description: Zhihu authorization URL.
-        "500":
-          description: Missing local Zhihu OAuth credentials.
+        "410":
+          description: Zhihu OAuth login is disabled for the local demo.
           content:
             application/json:
               schema:

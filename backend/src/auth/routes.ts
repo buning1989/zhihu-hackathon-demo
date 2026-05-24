@@ -4,7 +4,6 @@ import { HttpError } from "../utils/httpError.js";
 import { getRequiredAuthSession, requireAuth } from "./requireAuth.js";
 import {
   createAuthSession,
-  createOAuthState,
   destroyAuthSession,
   randomId,
   toPublicAuthSession,
@@ -12,22 +11,20 @@ import {
   type AuthSessionUser
 } from "./session.js";
 import {
-  assertZhihuOAuthConfigured,
-  buildZhihuAuthorizationUrl,
   exchangeCodeForToken,
   fetchZhihuUserInfo
 } from "./zhihuOAuth.js";
 
 export const authRoutes = Router();
 
-authRoutes.get("/zhihu/login", (_req, res, next) => {
-  try {
-    assertZhihuOAuthConfigured();
-    const state = createOAuthState(res);
-    res.redirect(302, buildZhihuAuthorizationUrl(state));
-  } catch (error) {
-    next(error);
-  }
+authRoutes.get("/zhihu/login", (_req, res) => {
+  res.status(410).json({
+    success: false,
+    error: {
+      code: "AUTH_DISABLED",
+      message: "Zhihu OAuth login is disabled for the local demo."
+    }
+  });
 });
 
 authRoutes.get("/zhihu/callback", async (req, res, next) => {

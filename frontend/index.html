@@ -2722,7 +2722,6 @@
       ? "http://127.0.0.1:8000"
       : window.location.origin;
     const API_BASE = window.LIFE_PATH_API_BASE || DEFAULT_API_BASE;
-    const AUTH_LOGIN_URL = new URL("/auth/zhihu/login", API_BASE).toString();
     const PAGE_PARAMS = new URLSearchParams(window.location.search);
     const ALLOWED_DATA_MODES = new Set(["mock", "cache_first", "real"]);
 
@@ -2745,8 +2744,6 @@
 
     const API_CONFIG = {
       apiBase: API_BASE,
-      loginUrl: AUTH_LOGIN_URL,
-      meEndpoint: "/auth/me",
       searchEndpoint: "/api/demo/search",
       demoSearchEndpoint: "/api/demo/search",
       saveEndpoint: "/api/samples/save",
@@ -2754,8 +2751,7 @@
       chatEndpoint: "/api/personas/chat",
       dataMode: resolveDataMode(PAGE_PARAMS.get("dataMode")),
       requestTimeoutMs: 12000,
-      useMockFallback: true,
-      useMockUserFallback: PAGE_PARAMS.get("mockAuth") === "1"
+      useMockFallback: true
     };
 
     const mockZhihuUser = {
@@ -3565,35 +3561,12 @@
       state.authSource = source;
     }
 
-    function redirectToZhihuLogin() {
-      window.location.href = API_CONFIG.loginUrl;
-    }
-
     async function checkSession() {
-      state.sessionChecked = false;
-      render();
-      try {
-        const payload = await getJson(API_CONFIG.meEndpoint);
-        const user = normalizeZhihuUser(payload);
-        if (user) {
-          applyUser(user, "real");
-          return true;
-        }
-        redirectToZhihuLogin();
-        return false;
-      } catch (error) {
-        if (error?.status === 401 || error?.status === 403) {
-          redirectToZhihuLogin();
-          return false;
-        }
-        console.warn("Zhihu session API unavailable, using mock user fallback.", error);
-        if (API_CONFIG.useMockUserFallback) {
-          applyUser(mockZhihuUser, "mock");
-          return true;
-        }
-        redirectToZhihuLogin();
-        return false;
-      }
+      state.loggedIn = false;
+      state.sessionChecked = true;
+      state.user = null;
+      state.authSource = "disabled";
+      return true;
     }
 
     function applySearchData(data, query) {
@@ -3873,35 +3846,7 @@
     function updateTopbar() {
       const authSlot = document.getElementById("authSlot");
       if (!authSlot) return;
-      if (!state.sessionChecked) {
-        authSlot.innerHTML = `
-          <button class="avatar-button" type="button" aria-label="正在检查知乎登录状态" disabled>
-            <span class="avatar-skeleton" aria-hidden="true"></span>
-          </button>
-        `;
-        return;
-      }
-      const user = state.user || mockZhihuUser;
-      const avatar = user.avatar
-        ? `<img src="${escapeHtml(user.avatar)}" alt="">`
-        : `<span class="avatar-initial" aria-hidden="true">${escapeHtml((user.name || "知").slice(0, 1))}</span>`;
-      const profileLabel = user.profileUrl
-        ? "知乎个人主页"
-        : user.isTemporary
-          ? "知乎已授权，资料待同步"
-          : "知乎已授权";
-      const profileAction = user.profileUrl ? ' data-action="profile"' : "";
-      authSlot.innerHTML = `
-        <span class="auth-avatar-wrap">
-          <button class="avatar-button" type="button"${profileAction} aria-label="${escapeHtml(profileLabel)}">
-            ${avatar}
-          </button>
-          <span class="auth-avatar-popover" role="tooltip">
-            <strong>${escapeHtml(user.name)}</strong>
-            <span>${escapeHtml(profileLabel)}</span>
-          </span>
-        </span>
-      `;
+      authSlot.innerHTML = "";
     }
 
     function renderCrowd() {
@@ -4892,11 +4837,7 @@
             setPage(state.hasSubmittedQuestion ? "paths" : "home");
           }
           if (action === "publish-community") {
-            if (!state.loggedIn) {
-              redirectToZhihuLogin();
-            } else {
-              showToast("Demo 不会真实发布。正式版会打开知乎圈子编辑器。");
-            }
+            showToast("Demo 不会真实发布。正式版会打开知乎圈子编辑器。");
           }
           if (action === "save-community") {
             if (state.pathExpanded) setPage("paths");

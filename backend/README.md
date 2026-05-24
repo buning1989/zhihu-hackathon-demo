@@ -149,8 +149,9 @@ curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
 
 ### GET /auth/zhihu/login
 
-前端跳转到这个后端入口开始知乎 OAuth 登录。后端生成 `state`，写入 HttpOnly
-Cookie 和临时内存状态，然后 302 跳转到知乎授权页。`app_key` 不会出现在前端。
+本地 demo 已关闭知乎 OAuth 登录入口，避免活动结束后继续跳转到知乎授权页。
+该接口现在返回 `410 AUTH_DISABLED`。callback/token 交换代码仍保留，便于已有回调
+或后续恢复时复用。
 
 ```bash
 curl -i "http://127.0.0.1:8000/auth/zhihu/login"
