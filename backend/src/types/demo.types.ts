@@ -341,7 +341,51 @@ export interface DemoSearchQueryPlan {
 
 export interface DemoSearchQueryResultDebug extends DemoSearchQueryPlan {
   returnedCount: number;
+  roundIndex?: number;
+  success?: boolean;
+  rawResultCount?: number;
+  errorCode?: string;
+  errorMessage?: string;
   error?: string;
+  isEmptyResult?: boolean;
+}
+
+export interface DemoSearchRoundDebug {
+  query: string;
+  roundIndex: number;
+  success: boolean;
+  rawResultCount: number;
+  errorCode?: string;
+  errorMessage?: string;
+  isEmptyResult?: boolean;
+}
+
+export interface DemoSearchCandidate {
+  sourceId: string;
+  title: string;
+  url: string;
+  authorName?: string;
+  snippet?: string;
+  excerpt?: string;
+  rawContent?: string;
+  text?: string;
+  sourceType?: string;
+  queryUsed: string;
+  searchRound: number;
+  rawPayload?: unknown;
+}
+
+export interface DemoSearchDebug {
+  dataMode: string;
+  queriesUsed: string[];
+  searchRounds: DemoSearchRoundDebug[];
+  totalRawResults: number;
+  totalDedupedCandidates: number;
+  failedQueries: string[];
+  emptyQueries: string[];
+  degraded: boolean;
+  fallbackReason?: string;
+  candidates?: DemoSearchCandidate[];
 }
 
 export interface DemoDebug {
@@ -379,6 +423,7 @@ export interface DemoDebug {
   topicSignals?: string[];
   searchQueries?: DemoSearchQueryPlan[];
   searchQueryResults?: DemoSearchQueryResultDebug[];
+  search?: DemoSearchDebug;
   rawCandidateCount?: number;
   mergedCandidateCount?: number;
   dedupedCandidateCount?: number;

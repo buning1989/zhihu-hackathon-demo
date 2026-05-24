@@ -34,6 +34,8 @@ import {
   type DemoExperienceSummaryDebug,
   type DemoPerson,
   type DemoPersona,
+  type DemoSearchCandidate,
+  type DemoSearchDebug,
   type DemoSearchQueryPlan,
   type DemoSearchQueryResultDebug,
   type DemoSearchQueryType,
@@ -163,6 +165,7 @@ interface SearchByExpandedQueriesResult {
   items: SearchItem[];
   searchQueries: DemoSearchQueryPlan[];
   searchQueryResults: DemoSearchQueryResultDebug[];
+  searchDebug: DemoSearchDebug;
   rawCandidateCount: number;
   mergedCandidateCount: number;
   dedupedCandidateCount: number;
@@ -194,7 +197,19 @@ interface PipelineBudget {
   budgetMs: number;
 }
 
-const MAX_SEARCH_QUERIES = 12;
+class RealSearchDegradedError extends HttpError {
+  public readonly searchDebug: DemoSearchDebug;
+
+  constructor(code: string, message: string, searchDebug: DemoSearchDebug) {
+    super(502, code, message);
+    this.name = "RealSearchDegradedError";
+    this.searchDebug = searchDebug;
+  }
+}
+
+const MAX_SEARCH_PLAN_QUERIES = 12;
+const MIN_SEARCH_ROUNDS = 3;
+const MAX_SEARCH_ROUNDS = 6;
 const MAX_REAL_ITEMS = 12;
 const MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES = 5;
 const EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET = 4200;
@@ -271,8 +286,19 @@ export async function composeMultiLlmDemoSearchResponse(
     pipelineQuery,
     intentStage.output,
     input.count,
+    input.dataMode,
     input.userContext
   );
+  if (recalledSearch.items.length === 0) {
+    const fallbackReason =
+      recalledSearch.searchDebug.fallbackReason ?? "real search returned no usable candidates";
+    throw new RealSearchDegradedError(
+      "REAL_SEARCH_DEGRADED",
+      fallbackReason,
+      recalledSearch.searchDebug
+    );
+  }
+
   const candidatePipeline = await runCandidatePipeline(
     pipelineQuery,
     intentStage.output,
@@ -293,10 +319,11 @@ export async function composeMultiLlmDemoSearchResponse(
 
   const cleanedSearchItems = candidatePipeline.items;
   if (cleanedSearchItems.length === 0) {
-    throw new HttpError(
-      502,
+    const fallbackReason = "no_effective_candidates_after_candidate_pipeline";
+    throw new RealSearchDegradedError(
       "REAL_SEARCH_EMPTY_AFTER_CLEANING",
-      "real search returned no usable items after rule cleaning"
+      "real search returned no usable items after rule cleaning",
+      markSearchDebugDegraded(recalledSearch.searchDebug, fallbackReason)
     );
   }
 
@@ -418,6 +445,7 @@ export async function composeMultiLlmDemoSearchResponse(
     topicSignals: intentStage.output.topicSignals,
     searchQueries: recalledSearch.searchQueries,
     searchQueryResults: recalledSearch.searchQueryResults,
+    search: recalledSearch.searchDebug,
     rawCandidateCount: recalledSearch.rawCandidateCount,
     mergedCandidateCount: recalledSearch.mergedCandidateCount,
     dedupedCandidateCount: recalledSearch.dedupedCandidateCount,
@@ -1029,55 +1057,264 @@ async function searchByExpandedQueries(
   _originalQuery: string,
   intent: IntentExpandOutput,
   count: number,
+  dataMode: DemoDataMode,
   _userContext?: UserContext
 ): Promise<SearchByExpandedQueriesResult> {
-  const normalizedQueries = sortSearchQueryPlans(intent.searchQueries).slice(0, MAX_SEARCH_QUERIES);
-  const perQueryCount = Math.min(Math.max(count, 3), 3);
+  const plannedQueries = sortSearchQueryPlans(intent.searchQueries).slice(0, MAX_SEARCH_PLAN_QUERIES);
+  const searchRoundQueries = selectExecutableSearchQueries(plannedQueries);
+  const perQueryCount = Math.min(Math.max(count, 3), 5);
   const items: SearchItem[] = [];
-  const errors: string[] = [];
   const searchQueryResults: DemoSearchQueryResultDebug[] = [];
+  const searchRounds: DemoSearchDebug["searchRounds"] = [];
 
-  for (const queryPlan of normalizedQueries) {
+  for (const [index, queryPlan] of searchRoundQueries.entries()) {
+    const roundIndex = index + 1;
     try {
       const result = await searchService.search(queryPlan.query, perQueryCount);
+      const rawResultCount = result.items.length;
       const queryItems = result.items
         .slice(0, perQueryCount)
-        .map((item) => attachMatchedQuery(item, queryPlan));
+        .map((item) => attachMatchedQuery(item, queryPlan, roundIndex));
       items.push(...queryItems);
+      searchRounds.push({
+        query: queryPlan.query,
+        roundIndex,
+        success: true,
+        rawResultCount,
+        isEmptyResult: rawResultCount === 0
+      });
       searchQueryResults.push({
         ...queryPlan,
-        returnedCount: queryItems.length
+        roundIndex,
+        returnedCount: queryItems.length,
+        success: true,
+        rawResultCount,
+        isEmptyResult: rawResultCount === 0
       });
     } catch (error) {
-      const errorSummary = formatErrorSummary(error);
-      errors.push(`${queryPlan.query}: ${errorSummary}`);
+      const errorCode = readSearchErrorCode(error);
+      const errorMessage = readSearchErrorMessage(error);
+      searchRounds.push({
+        query: queryPlan.query,
+        roundIndex,
+        success: false,
+        rawResultCount: 0,
+        errorCode,
+        errorMessage,
+        isEmptyResult: false
+      });
       searchQueryResults.push({
         ...queryPlan,
+        roundIndex,
         returnedCount: 0,
-        error: errorSummary
+        success: false,
+        rawResultCount: 0,
+        errorCode,
+        errorMessage,
+        error: `${errorCode}: ${errorMessage}`,
+        isEmptyResult: false
       });
     }
   }
 
-  const dedupedItems = dedupeSearchItems(items);
-  if (dedupedItems.length === 0) {
-    throw new HttpError(
-      502,
-      "REAL_SEARCH_EMPTY",
-      errors.length > 0
-        ? `real search returned no items: ${errors.slice(0, 2).join("; ")}`
-        : "real search returned no items"
-    );
-  }
+  const validItems = items.filter(isUsableSearchItem);
+  const dedupedItems = dedupeSearchItems(validItems);
+  const totalRawResults = searchRounds.reduce((total, round) => total + round.rawResultCount, 0);
+  const failedQueries = searchRounds
+    .filter((round) => !round.success)
+    .map((round) => round.query);
+  const emptyQueries = searchRounds
+    .filter((round) => round.success && round.rawResultCount === 0)
+    .map((round) => round.query);
+  const fallbackReason = buildSearchFallbackReason({
+    searchRounds,
+    totalRawResults,
+    totalDedupedCandidates: dedupedItems.length
+  });
+  const searchDebug: DemoSearchDebug = {
+    dataMode,
+    queriesUsed: searchRoundQueries.map((plan) => plan.query),
+    searchRounds,
+    totalRawResults,
+    totalDedupedCandidates: dedupedItems.length,
+    failedQueries,
+    emptyQueries,
+    degraded: Boolean(fallbackReason),
+    fallbackReason,
+    candidates: dedupedItems.map(toSearchCandidate)
+  };
 
   return {
     items: dedupedItems,
-    searchQueries: normalizedQueries,
+    searchQueries: plannedQueries,
     searchQueryResults,
-    rawCandidateCount: items.length,
-    mergedCandidateCount: items.length,
+    searchDebug,
+    rawCandidateCount: totalRawResults,
+    mergedCandidateCount: validItems.length,
     dedupedCandidateCount: dedupedItems.length
   };
+}
+
+function selectExecutableSearchQueries(plannedQueries: DemoSearchQueryPlan[]): DemoSearchQueryPlan[] {
+  const result: DemoSearchQueryPlan[] = [];
+  const originalPlan = plannedQueries.find((plan) => plan.type === "original");
+  const nonOriginalPlans = plannedQueries.filter((plan) => plan.type !== "original");
+  const shortPlans = nonOriginalPlans.filter((plan) => isShortSearchQuery(plan.query));
+
+  for (const plan of shortPlans) {
+    appendExecutableQuery(result, plan);
+    if (result.length >= MAX_SEARCH_ROUNDS) {
+      return result;
+    }
+  }
+
+  for (const plan of nonOriginalPlans) {
+    if (result.length >= MIN_SEARCH_ROUNDS) {
+      break;
+    }
+    appendExecutableQuery(result, plan);
+  }
+
+  if (result.length < MIN_SEARCH_ROUNDS && originalPlan) {
+    appendExecutableQuery(result, originalPlan);
+  }
+
+  for (const plan of plannedQueries) {
+    if (result.length >= MAX_SEARCH_ROUNDS) {
+      break;
+    }
+    appendExecutableQuery(result, plan);
+  }
+
+  return result.slice(0, MAX_SEARCH_ROUNDS);
+}
+
+function appendExecutableQuery(result: DemoSearchQueryPlan[], plan: DemoSearchQueryPlan): void {
+  const normalized = normalizeText(plan.query);
+  if (!normalized || normalized.length < 2) {
+    return;
+  }
+
+  if (result.some((item) => normalizeText(item.query) === normalized)) {
+    return;
+  }
+
+  result.push(plan);
+}
+
+function isShortSearchQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  return normalized.length >= 4 && normalized.length <= 28;
+}
+
+function isUsableSearchItem(item: SearchItem): boolean {
+  return Boolean(
+    normalizeText(item.title) &&
+      normalizeText(readSearchItemUrl(item)) &&
+      normalizeText(readSearchItemText(item)).length >= MIN_CONTENT_LENGTH
+  );
+}
+
+function readSearchItemUrl(item: SearchItem): string {
+  return item.url || item.source.url || "";
+}
+
+function readSearchItemText(item: SearchItem): string {
+  return item.text || item.evidence.text || "";
+}
+
+function buildSearchFallbackReason(input: {
+  searchRounds: DemoSearchDebug["searchRounds"];
+  totalRawResults: number;
+  totalDedupedCandidates: number;
+}): string | undefined {
+  if (input.searchRounds.length === 0) {
+    return "no_search_queries_selected";
+  }
+
+  if (input.searchRounds.every((round) => !round.success)) {
+    const errorSummary = input.searchRounds
+      .slice(0, 2)
+      .map((round) => `${round.query}: ${round.errorCode ?? "ERROR"}`)
+      .join("; ");
+    return `all_search_queries_failed${errorSummary ? `: ${errorSummary}` : ""}`;
+  }
+
+  if (input.totalRawResults === 0) {
+    return "all_search_queries_returned_empty";
+  }
+
+  if (input.totalDedupedCandidates === 0) {
+    return "no_usable_candidates_after_filtering";
+  }
+
+  return undefined;
+}
+
+function markSearchDebugDegraded(
+  searchDebug: DemoSearchDebug,
+  fallbackReason: string
+): DemoSearchDebug {
+  return {
+    ...searchDebug,
+    degraded: true,
+    fallbackReason
+  };
+}
+
+function toSearchCandidate(item: SearchItem): DemoSearchCandidate {
+  const matchedQuery = findPrimaryMatchedQuery(item);
+  const text = readSearchItemText(item);
+  const url = readSearchItemUrl(item);
+
+  return {
+    sourceId: item.id || url || `candidate_${hashString(`${item.title}:${text}`)}`,
+    title: item.title,
+    url,
+    authorName: item.author.name || undefined,
+    snippet: text ? truncateText(text, 180) : undefined,
+    excerpt: text ? truncateText(text, 180) : undefined,
+    rawContent: text || undefined,
+    text: text || undefined,
+    sourceType: item.type || undefined,
+    queryUsed: matchedQuery.query || item.matchedQuery || "",
+    searchRound: matchedQuery.roundIndex ?? item.searchRound ?? 0
+  };
+}
+
+function findPrimaryMatchedQuery(item: SearchItem): { query: string; roundIndex?: number } {
+  const matched = item.matchedQueries?.[0];
+  if (matched?.query) {
+    return {
+      query: matched.query,
+      roundIndex: matched.roundIndex
+    };
+  }
+
+  return {
+    query: item.matchedQuery ?? "",
+    roundIndex: item.searchRound
+  };
+}
+
+function readSearchErrorCode(error: unknown): string {
+  if (error instanceof HttpError) {
+    return error.code;
+  }
+
+  if (error instanceof Error && "code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+
+  return error instanceof Error && error.name ? error.name : "UNKNOWN_ERROR";
+}
+
+function readSearchErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return truncateText(error.message, 180);
+  }
+
+  return "Unknown search error";
 }
 
 async function runCandidatePipeline(
@@ -1297,13 +1534,18 @@ function dedupeSearchItems(items: SearchItem[]): SearchItem[] {
   return Array.from(groups.values()).sort(compareDedupeItems);
 }
 
-function attachMatchedQuery(item: SearchItem, queryPlan: DemoSearchQueryPlan): SearchItem {
+function attachMatchedQuery(
+  item: SearchItem,
+  queryPlan: DemoSearchQueryPlan,
+  roundIndex?: number
+): SearchItem {
   const matchedQueries = [
     ...(item.matchedQueries ?? []),
     {
       query: queryPlan.query,
       type: queryPlan.type,
-      purpose: queryPlan.purpose
+      purpose: queryPlan.purpose,
+      roundIndex
     }
   ];
 
@@ -1312,6 +1554,7 @@ function attachMatchedQuery(item: SearchItem, queryPlan: DemoSearchQueryPlan): S
     matchedQuery: queryPlan.query,
     queryType: queryPlan.type,
     queryPurpose: queryPlan.purpose,
+    searchRound: roundIndex,
     matchedQueries: uniqueMatchedQueries(matchedQueries)
   };
 }
@@ -1669,7 +1912,7 @@ function dedupePreferenceScore(item: SearchItem): number {
 }
 
 function uniqueMatchedQueries(
-  values: Array<{ query?: string; type?: string; purpose?: string }>
+  values: Array<{ query?: string; type?: string; purpose?: string; roundIndex?: number }>
 ): NonNullable<SearchItem["matchedQueries"]> {
   const seen = new Set<string>();
   const result: NonNullable<SearchItem["matchedQueries"]> = [];
@@ -1689,7 +1932,8 @@ function uniqueMatchedQueries(
     result.push({
       query,
       type: value.type,
-      purpose: value.purpose
+      purpose: value.purpose,
+      roundIndex: value.roundIndex
     });
   }
 

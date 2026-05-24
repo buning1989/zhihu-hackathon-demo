@@ -2019,8 +2019,112 @@ components:
                   returnedCount:
                     type: integer
                     minimum: 0
+                  roundIndex:
+                    type: integer
+                    minimum: 1
+                  success:
+                    type: boolean
+                  rawResultCount:
+                    type: integer
+                    minimum: 0
+                  errorCode:
+                    type: string
+                  errorMessage:
+                    type: string
                   error:
                     type: string
+                  isEmptyResult:
+                    type: boolean
+        search:
+          type: object
+          description: Real Zhihu multi-round search debug and standardized candidate preview.
+          additionalProperties: true
+          properties:
+            dataMode:
+              type: string
+            queriesUsed:
+              type: array
+              items:
+                type: string
+            searchRounds:
+              type: array
+              items:
+                type: object
+                required:
+                  - query
+                  - roundIndex
+                  - success
+                  - rawResultCount
+                properties:
+                  query:
+                    type: string
+                  roundIndex:
+                    type: integer
+                    minimum: 1
+                  success:
+                    type: boolean
+                  rawResultCount:
+                    type: integer
+                    minimum: 0
+                  errorCode:
+                    type: string
+                  errorMessage:
+                    type: string
+                  isEmptyResult:
+                    type: boolean
+            totalRawResults:
+              type: integer
+              minimum: 0
+            totalDedupedCandidates:
+              type: integer
+              minimum: 0
+            failedQueries:
+              type: array
+              items:
+                type: string
+            emptyQueries:
+              type: array
+              items:
+                type: string
+            degraded:
+              type: boolean
+            fallbackReason:
+              type: string
+            candidates:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+                required:
+                  - sourceId
+                  - title
+                  - url
+                  - queryUsed
+                  - searchRound
+                properties:
+                  sourceId:
+                    type: string
+                  title:
+                    type: string
+                  url:
+                    type: string
+                  authorName:
+                    type: string
+                  snippet:
+                    type: string
+                  excerpt:
+                    type: string
+                  rawContent:
+                    type: string
+                  text:
+                    type: string
+                  sourceType:
+                    type: string
+                  queryUsed:
+                    type: string
+                  searchRound:
+                    type: integer
+                    minimum: 1
         mergedCandidateCount:
           type: integer
           minimum: 0

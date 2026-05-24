@@ -615,6 +615,55 @@
         "裸辞 后 去远方 回来 复盘",
         "不上班 自由职业 现金流 知乎"
       ],
+      "search": {
+        "dataMode": "real",
+        "queriesUsed": [
+          "异地恋 工作 追求自己 真实经历",
+          "为了工作 长期异地恋 值得吗",
+          "异地恋 职业选择 后悔吗"
+        ],
+        "searchRounds": [
+          {
+            "query": "异地恋 工作 追求自己 真实经历",
+            "roundIndex": 1,
+            "success": true,
+            "rawResultCount": 3,
+            "isEmptyResult": false
+          },
+          {
+            "query": "为了工作 长期异地恋 值得吗",
+            "roundIndex": 2,
+            "success": true,
+            "rawResultCount": 2,
+            "isEmptyResult": false
+          },
+          {
+            "query": "异地恋 职业选择 后悔吗",
+            "roundIndex": 3,
+            "success": true,
+            "rawResultCount": 1,
+            "isEmptyResult": false
+          }
+        ],
+        "totalRawResults": 6,
+        "totalDedupedCandidates": 3,
+        "failedQueries": [],
+        "emptyQueries": [],
+        "degraded": false,
+        "candidates": [
+          {
+            "sourceId": "zhihu_answer_sample_001",
+            "title": "离开工作后的一段低成本休整",
+            "url": "https://www.zhihu.com/question/mock/answer/001",
+            "authorName": "阿禾",
+            "snippet": "这条公开回答讨论了离开工作结构后的方向感、收入和生活节奏问题。",
+            "text": "这条公开回答讨论了离开工作结构后的方向感、收入和生活节奏问题。",
+            "sourceType": "answer",
+            "queryUsed": "异地恋 工作 追求自己 真实经历",
+            "searchRound": 1
+          }
+        ]
+      },
       "warnings": [
         "Mock response only. Replace with real Zhihu search and deterministic composer in P0 implementation.",
         "Persona chat is a grounded stub until a real LLM client is explicitly enabled."

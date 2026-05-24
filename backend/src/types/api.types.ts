@@ -45,6 +45,7 @@ export interface SearchMatchedQuery {
   query: string;
   type?: string;
   purpose?: string;
+  roundIndex?: number;
 }
 
 export interface SearchItem {
@@ -56,6 +57,7 @@ export interface SearchItem {
   matchedQuery?: string;
   queryType?: string;
   queryPurpose?: string;
+  searchRound?: number;
   matchedQueries?: SearchMatchedQuery[];
   roughScore?: number;
   relevanceScore?: number;

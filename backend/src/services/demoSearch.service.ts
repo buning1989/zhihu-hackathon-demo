@@ -18,6 +18,7 @@ import {
   type DemoClarifyingCard,
   type DemoDataMode,
   type DemoDebugClarificationContext,
+  type DemoSearchDebug,
   type DemoSearchResponse
 } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
@@ -104,6 +105,7 @@ export class DemoSearchService {
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
 
+        const realSearchDebug = readSearchDebugFromError(error);
         const response = createMockDemoSearchResponse(request.query, request.count, "mock", {
           fallbackUsed: true,
           fallbackReason: formatErrorSummary(error),
@@ -116,6 +118,31 @@ export class DemoSearchService {
           ],
           clarificationContext: clarificationContext ?? undefined
         });
+        if (realSearchDebug) {
+          response.debug.search = realSearchDebug;
+          response.debug.rawCandidateCount = realSearchDebug.totalRawResults;
+          response.debug.mergedCandidateCount = realSearchDebug.totalDedupedCandidates;
+          response.debug.dedupedCandidateCount = realSearchDebug.totalDedupedCandidates;
+          response.debug.validCandidateCount = realSearchDebug.totalDedupedCandidates;
+          response.debug.searchQueryResults = realSearchDebug.searchRounds.map((round) => ({
+            query: round.query,
+            type: "original",
+            purpose: "real search degraded before product composition",
+            priority: 1,
+            roundIndex: round.roundIndex,
+            returnedCount: round.rawResultCount,
+            success: round.success,
+            rawResultCount: round.rawResultCount,
+            errorCode: round.errorCode,
+            errorMessage: round.errorMessage,
+            error: round.errorCode ? `${round.errorCode}: ${round.errorMessage ?? ""}` : undefined,
+            isEmptyResult: round.isEmptyResult
+          }));
+          response.debug.notes = unique([
+            ...response.debug.notes,
+            "real Zhihu search degraded; mock product response kept the page shape while preserving debug.search"
+          ]);
+        }
         response.contextUsed = createDemoContextUsed(userContext, [
           "intent_expand",
           "search_query_expand",
@@ -698,6 +725,32 @@ function readString(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readSearchDebugFromError(error: unknown): DemoSearchDebug | undefined {
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  const searchDebug = error.searchDebug;
+  return isSearchDebug(searchDebug) ? searchDebug : undefined;
+}
+
+function isSearchDebug(value: unknown): value is DemoSearchDebug {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.dataMode === "string" &&
+    Array.isArray(value.queriesUsed) &&
+    Array.isArray(value.searchRounds) &&
+    typeof value.totalRawResults === "number" &&
+    typeof value.totalDedupedCandidates === "number" &&
+    Array.isArray(value.failedQueries) &&
+    Array.isArray(value.emptyQueries) &&
+    typeof value.degraded === "boolean"
+  );
 }
 
 function logRealSearchFallback(

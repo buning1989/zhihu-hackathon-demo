@@ -126,16 +126,16 @@ function genericFallbackPlans(query: string): DemoSearchQueryPlan[] {
   const core = extractCorePhrase(query);
 
   return [
-    plan(`${core}真实经历`, "real_experience", "召回真实经历", 2),
-    plan(`${core}后来怎么样`, "real_experience", "召回后续状态", 2),
-    plan(`${core}有哪些路径`, "life_path", "召回可行路径", 3),
-    plan(`${core}怎么开始`, "life_path", "召回行动路径", 3),
-    plan(`${core}失败复盘`, "failure_review", "召回失败和代价", 4),
-    plan(`${core}后悔吗`, "failure_review", "召回后悔与风险讨论", 4),
-    plan(`${core}怎么选`, "decision_conflict", "召回决策困境", 5),
-    plan(`要不要${core}`, "decision_conflict", "召回是否行动的讨论", 5),
-    plan(`${core}还有什么选择`, "alternative_solution", "召回替代方案", 6),
-    plan(`${core}怎么办`, "alternative_solution", "召回可执行替代方案", 6)
+    plan(`${core} 真实经历`, "real_experience", "召回真实经历", 2),
+    plan(`${core} 后来怎么样`, "real_experience", "召回后续状态", 2),
+    plan(`${core} 有哪些路径`, "life_path", "召回可行路径", 3),
+    plan(`${core} 怎么开始`, "life_path", "召回行动路径", 3),
+    plan(`${core} 失败复盘`, "failure_review", "召回失败和代价", 4),
+    plan(`${core} 后悔吗`, "failure_review", "召回后悔与风险讨论", 4),
+    plan(`${core} 怎么选`, "decision_conflict", "召回决策困境", 5),
+    plan(`要不要 ${core}`, "decision_conflict", "召回是否行动的讨论", 5),
+    plan(`${core} 还有什么选择`, "alternative_solution", "召回替代方案", 6),
+    plan(`${core} 怎么办`, "alternative_solution", "召回可执行替代方案", 6)
   ];
 }
 
@@ -152,7 +152,7 @@ function sanitizeSearchQueryPlan(
   rawPlan: RawSearchQueryPlan,
   fallbackPriority: number
 ): DemoSearchQueryPlan | undefined {
-  const query = truncateText(normalizeText(rawPlan.query), 40);
+  const query = truncateSearchQuery(normalizeText(rawPlan.query), 40);
   if (!isUsableSearchQuery(query)) {
     return undefined;
   }
@@ -322,7 +322,12 @@ function extractCorePhrase(query: string): string {
     return "这个选择";
   }
 
-  return truncateText(normalized, 18);
+  const keywordPhrase = extractKeywordPhrase(normalized);
+  if (keywordPhrase) {
+    return keywordPhrase;
+  }
+
+  return truncateSearchQuery(normalized, 18);
 }
 
 function isUsableSearchQuery(query: string): boolean {
@@ -357,6 +362,53 @@ function truncateText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function truncateSearchQuery(value: string, maxLength: number): string {
+  const normalized = normalizeText(value);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return normalized.slice(0, maxLength).trim();
+}
+
+function extractKeywordPhrase(query: string): string {
+  const keywords = [
+    "长期异地恋",
+    "异地恋",
+    "追求自己",
+    "想做的事",
+    "工作",
+    "职业",
+    "梦想",
+    "裸辞",
+    "不工作",
+    "不上班",
+    "转行",
+    "读研",
+    "回老家",
+    "父母",
+    "朋友",
+    "断联",
+    "新西兰",
+    "北京",
+    "上海",
+    "深圳",
+    "后悔",
+    "值得"
+  ].filter((keyword) => query.includes(keyword));
+  const result: string[] = [];
+
+  for (const keyword of keywords) {
+    if (result.some((existing) => existing.includes(keyword))) {
+      continue;
+    }
+
+    result.push(keyword);
+  }
+
+  return result.slice(0, 4).join(" ");
 }
 
 function readString(value: unknown): string {

@@ -844,11 +844,40 @@ function assertSearchPlanDebug(response: Awaited<ReturnType<typeof withStubbedOr
 
   const searchQueryResults = response.debug.searchQueryResults;
   assertNonEmptyArray(searchQueryResults, "debug.searchQueryResults");
-  assertEqual(searchQueryResults?.length, searchQueries.length, "debug.searchQueryResults length");
+  const searchDebug = response.debug.search;
+  if (!searchDebug) {
+    throw new Error("debug.search missing");
+  }
+  assertNonEmptyArray(searchDebug.queriesUsed, "debug.search.queriesUsed");
+  if (searchDebug.queriesUsed.length < 3 || searchDebug.queriesUsed.length > 6) {
+    throw new Error(`debug.search.queriesUsed expected 3-6 items, got ${searchDebug.queriesUsed.length}`);
+  }
+  assertNonEmptyArray(searchDebug.searchRounds, "debug.search.searchRounds");
+  assertEqual(
+    searchDebug.searchRounds.length,
+    searchDebug.queriesUsed.length,
+    "debug.search.searchRounds length"
+  );
+  assertEqual(searchQueryResults?.length, searchDebug.searchRounds.length, "debug.searchQueryResults length");
   for (const result of searchQueryResults ?? []) {
     if (!Number.isFinite(result.returnedCount)) {
       throw new Error(`debug.searchQueryResults returnedCount missing for ${result.query}`);
     }
+  }
+  if (!Number.isFinite(searchDebug.totalRawResults) || searchDebug.totalRawResults <= 0) {
+    throw new Error("debug.search.totalRawResults expected > 0");
+  }
+  if (!Number.isFinite(searchDebug.totalDedupedCandidates) || searchDebug.totalDedupedCandidates <= 0) {
+    throw new Error("debug.search.totalDedupedCandidates expected > 0");
+  }
+  if (typeof searchDebug.degraded !== "boolean") {
+    throw new Error("debug.search.degraded expected boolean");
+  }
+  assertNonEmptyArray(searchDebug.candidates, "debug.search.candidates");
+  for (const candidate of searchDebug.candidates ?? []) {
+    assertNonEmptyString(candidate.title, "debug.search.candidates.title");
+    assertNonEmptyString(candidate.url, "debug.search.candidates.url");
+    assertNonEmptyString(candidate.queryUsed, "debug.search.candidates.queryUsed");
   }
 
   if (

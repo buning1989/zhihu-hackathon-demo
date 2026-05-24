@@ -1,5 +1,49 @@
 # AI Handoff
 
+## 2026-05-24 - demo real multi-round Zhihu search candidates
+
+本轮目标：在 `/api/demo/search` real 链路中，把 intent/search query 计划真正执行为多轮知乎搜索，并产出可供 `evidence_extract` / `demo_response_compose` 消费的标准候选内容。
+
+已完成：
+
+- real 链路从完整搜索计划中默认选择 3-6 条更适合知乎站内搜索的短 query 执行。
+- 每条 query 独立调用知乎搜索；单条失败会记录在 debug 中，不中断其他 query。
+- 搜索结果在进入候选质量/证据链路前会按标题、链接、可读文本过滤，并按 `url/sourceId/title` 轻量去重。
+- 新增 `debug.search`：
+  - `dataMode`
+  - `queriesUsed`
+  - `searchRounds`
+  - `totalRawResults`
+  - `totalDedupedCandidates`
+  - `failedQueries`
+  - `emptyQueries`
+  - `degraded`
+  - `fallbackReason`
+  - `candidates[]` 调试预览，含 `sourceId/title/url/authorName/snippet/text/sourceType/queryUsed/searchRound`
+- 所有 query 失败、所有 query 为空、或候选管线清洗为空时，保留 `debug.search.degraded=true` 和原因；产品层仍可 fallback 到 mock 形状，避免前端页面崩掉。
+- `scripts/smoke-demo-real-key.mjs` 已补充 `debug.search` 断言和输出字段。
+- `shared/openapi.yaml` 和 `shared/demo-response.sample.json` 已同步 `debug.search` 结构。
+
+验证记录：
+
+- `npm run build -w backend` 通过。
+- 指定 query「为了工作能追求自己想做的事，长期异地恋真的值得吗？」在 real 模式下返回：
+  - `queriesUsed=6`
+  - `searchRounds=6`
+  - `totalRawResults=30`
+  - `totalDedupedCandidates=25`
+  - `failedQueries=[]`
+  - `emptyQueries=[]`
+  - `degraded=false`
+- 本地 stub 验证：
+  - 全部 query 失败时返回 `debug.search.degraded=true`，`fallbackReason=all_search_queries_failed...`
+  - 全部 query 空结果时返回 `debug.search.degraded=true`，`fallbackReason=all_search_queries_returned_empty`
+
+已知限制：
+
+- `npm run smoke:demo-real` 仍会因为既有脚本要求至少一个 LLM `experienceSummary` ready 而失败；失败来自 DeepSeek/Kimi 超时后的旧断言，不是本轮搜索召回字段缺失。
+- 当前不做复杂 ranking；候选质量和最终路径仍沿用既有规则/LLM fallback。
+
 ## 2026-05-13 - Zhihu ring publish/pin backend integration
 
 本轮目标：接入知乎 OpenAPI `POST /openapi/publish/pin`，让后端可以手动把内容发布到指定知乎圈子；不接入 `/api/demo/search` 主链路。

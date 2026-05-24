@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEFAULT_QUERY = decodeURIComponent(
-  "%E4%B8%8D%E5%B7%A5%E4%BD%9C%E4%BA%86%E8%83%BD%E5%8E%BB%E5%93%AA%E5%84%BF"
+  "%E4%B8%BA%E4%BA%86%E5%B7%A5%E4%BD%9C%E8%83%BD%E8%BF%BD%E6%B1%82%E8%87%AA%E5%B7%B1%E6%83%B3%E5%81%9A%E7%9A%84%E4%BA%8B%EF%BC%8C%E9%95%BF%E6%9C%9F%E5%BC%82%E5%9C%B0%E6%81%8B%E7%9C%9F%E7%9A%84%E5%80%BC%E5%BE%97%E5%90%97%EF%BC%9F"
 );
 const VALIDATION_QUERIES = [
   DEFAULT_QUERY,
@@ -353,7 +353,32 @@ function assertSearchPlan(debug, originalQuery, label) {
   }
 
   const searchQueryResults = assertNonEmptyArray(debug.searchQueryResults, `${label}.searchQueryResults`);
-  assertEqual(searchQueryResults.length, searchQueries.length, `${label}.searchQueryResults length`);
+  const searchDebug = readRecord(debug.search, `${label}.search`);
+  const queriesUsed = assertNonEmptyArray(searchDebug.queriesUsed, `${label}.search.queriesUsed`);
+  const searchRounds = assertNonEmptyArray(searchDebug.searchRounds, `${label}.search.searchRounds`);
+  if (queriesUsed.length < 3 || queriesUsed.length > 6) {
+    throw new Error(`${label}.search.queriesUsed expected 3-6 items, got ${queriesUsed.length}.`);
+  }
+  assertEqual(searchRounds.length, queriesUsed.length, `${label}.search.searchRounds length`);
+  assertEqual(searchQueryResults.length, searchRounds.length, `${label}.searchQueryResults length`);
+  if (!Number.isFinite(searchDebug.totalRawResults) || searchDebug.totalRawResults <= 0) {
+    throw new Error(`${label}.search.totalRawResults expected > 0.`);
+  }
+  if (!Number.isFinite(searchDebug.totalDedupedCandidates) || searchDebug.totalDedupedCandidates <= 0) {
+    throw new Error(`${label}.search.totalDedupedCandidates expected > 0.`);
+  }
+  assertArray(searchDebug.failedQueries, `${label}.search.failedQueries`);
+  assertArray(searchDebug.emptyQueries, `${label}.search.emptyQueries`);
+  if (typeof searchDebug.degraded !== "boolean") {
+    throw new Error(`${label}.search.degraded expected boolean.`);
+  }
+  const candidates = assertNonEmptyArray(searchDebug.candidates, `${label}.search.candidates`);
+  candidates.slice(0, 3).forEach((candidate, index) => {
+    const item = readRecord(candidate, `${label}.search.candidates[${index}]`);
+    assertNonEmptyString(item.title, `${label}.search.candidates[${index}].title`);
+    assertNonEmptyString(item.url, `${label}.search.candidates[${index}].url`);
+    assertNonEmptyString(item.queryUsed, `${label}.search.candidates[${index}].queryUsed`);
+  });
   searchQueryResults.forEach((item, index) => {
     const result = readRecord(item, `${label}.searchQueryResults[${index}]`);
     if (!Number.isFinite(result.returnedCount)) {
@@ -557,6 +582,12 @@ function printSearchPlan(run) {
   const debug = readRecord(run.data.debug, `${run.label} debug`);
   const searchQueries = assertNonEmptyArray(debug.searchQueries, `${run.label} data.debug.searchQueries`);
   const searchQueryResults = Array.isArray(debug.searchQueryResults) ? debug.searchQueryResults : [];
+  const searchDebug = isRecord(debug.search) ? debug.search : {};
+  const queriesUsed = Array.isArray(searchDebug.queriesUsed) ? searchDebug.queriesUsed : [];
+  const searchRounds = Array.isArray(searchDebug.searchRounds) ? searchDebug.searchRounds : [];
+  const failedQueries = Array.isArray(searchDebug.failedQueries) ? searchDebug.failedQueries : [];
+  const emptyQueries = Array.isArray(searchDebug.emptyQueries) ? searchDebug.emptyQueries : [];
+  const candidates = Array.isArray(searchDebug.candidates) ? searchDebug.candidates : [];
   const focusTags = Array.isArray(run.data.analysis?.focusTags) ? run.data.analysis.focusTags.join(",") : "";
   const topicSignals = Array.isArray(debug.topicSignals) ? debug.topicSignals.join(",") : "";
   console.log(
@@ -565,6 +596,19 @@ function printSearchPlan(run) {
   console.log(
     `  counts raw=${formatNumber(debug.rawCandidateCount)} merged=${formatNumber(debug.mergedCandidateCount)} deduped=${formatNumber(debug.dedupedCandidateCount)} valid=${formatNumber(debug.validCandidateCount)} fallbackReason=${debug.fallbackReason || ""}`
   );
+  console.log(
+    `searchDebug ${run.label} originalQuery="${debug.originalQuery || run.query}" intent="${run.data.analysis?.intent || ""}" queriesUsed=${queriesUsed.length} searchRounds=${searchRounds.length} totalRawResults=${formatNumber(searchDebug.totalRawResults)} totalDedupedCandidates=${formatNumber(searchDebug.totalDedupedCandidates)} degraded=${searchDebug.degraded === true} fallbackReason=${searchDebug.fallbackReason || ""}`
+  );
+  console.log(`  queriesUsed=${queriesUsed.join(" | ")}`);
+  console.log(`  failedQueries=${failedQueries.join(" | ") || "[]"}`);
+  console.log(`  emptyQueries=${emptyQueries.join(" | ") || "[]"}`);
+
+  candidates.slice(0, 3).forEach((candidate, index) => {
+    if (!isRecord(candidate)) return;
+    console.log(
+      `  topCandidate[${index + 1}] title=${candidate.title || ""} url=${candidate.url || ""} queryUsed=${candidate.queryUsed || ""}`
+    );
+  });
 
   searchQueries.forEach((plan, index) => {
     const item = readRecord(plan, `${run.label} data.debug.searchQueries[${index}]`);
