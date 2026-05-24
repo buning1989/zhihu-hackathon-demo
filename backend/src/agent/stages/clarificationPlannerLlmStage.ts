@@ -13,9 +13,9 @@ import { llmRouter } from "../../llm/llmRouter.js";
 import { CLARIFICATION_PLANNER_SYSTEM_PROMPT } from "../../llm/prompts/clarificationPlannerPrompt.js";
 import type { IntentExpandOutput } from "../../llm/schemas/taskSchemas.js";
 
-const MAX_QUESTIONS = 3;
-const MAX_OPTIONS = 3;
-const MIN_OPTIONS = 3;
+const REQUIRED_QUESTIONS = 3;
+const MAX_QUESTIONS = REQUIRED_QUESTIONS;
+const MAX_OPTIONS = 6;
 const MAX_HINTS = 6;
 
 export interface ClarificationPlannerOutput {
@@ -199,7 +199,7 @@ function parseClarificationPlannerOutput(
   const context = buildClarificationContext(input.query, answers);
   const needClarification = readBoolean(parsed.needClarification, fallback.card.show);
   const ambiguityLevel = readAmbiguityLevel(parsed.ambiguityLevel, fallback.stage.ambiguityLevel);
-  const questions = ensureThreeOptionQuestions(
+  const questions = ensureMinimumClarificationQuestions(
     readQuestions(parsed.questions),
     fallback.card.questions
   );
@@ -249,7 +249,8 @@ function buildRuleClarifyingCard(query: string): {
             options: [
               { id: "early", label: "刚开始" },
               { id: "stable", label: "稳定关系" },
-              { id: "marriage", label: "谈婚论嫁" }
+              { id: "marriage", label: "谈婚论嫁" },
+              { id: "separated", label: "已经分开" }
             ]
           },
           {
@@ -260,7 +261,22 @@ function buildRuleClarifyingCard(query: string): {
             options: [
               { id: "career", label: "工作机会" },
               { id: "city", label: "城市距离" },
-              { id: "future", label: "未来时间表" }
+              { id: "future", label: "未来时间表" },
+              { id: "family", label: "家庭期待" },
+              { id: "money", label: "经济压力" }
+            ]
+          },
+          {
+            id: "sample_preference",
+            label: "更想先看哪类经历？",
+            type: "single_select",
+            required: true,
+            options: [
+              { id: "similar", label: "情况相似" },
+              { id: "continued", label: "坚持下来" },
+              { id: "separated", label: "选择分开" },
+              { id: "reunited", label: "后来团聚" },
+              { id: "tradeoff", label: "代价复盘" }
             ]
           }
         ],
@@ -286,7 +302,9 @@ function buildRuleClarifyingCard(query: string): {
             options: [
               { id: "burnout", label: "想休息" },
               { id: "unemployed", label: "已失业" },
-              { id: "exploring", label: "找新方向" }
+              { id: "exploring", label: "找新方向" },
+              { id: "employed", label: "在职观望" },
+              { id: "already_gap", label: "已经空窗" }
             ]
           },
           {
@@ -297,7 +315,23 @@ function buildRuleClarifyingCard(query: string): {
             options: [
               { id: "cashflow", label: "现金流" },
               { id: "place", label: "去哪生活" },
-              { id: "career", label: "再就业" }
+              { id: "career", label: "再就业" },
+              { id: "health", label: "身体状态" },
+              { id: "family", label: "家庭压力" },
+              { id: "insurance", label: "社保医保" }
+            ]
+          },
+          {
+            id: "sample_preference",
+            label: "更想先参考哪类样本？",
+            type: "single_select",
+            required: true,
+            options: [
+              { id: "low_cost_place", label: "低成本停靠" },
+              { id: "cashflow_plan", label: "空窗现金流" },
+              { id: "career_return", label: "再就业回流" },
+              { id: "remote_city", label: "换城市生活" },
+              { id: "failure_review", label: "失败复盘" }
             ]
           }
         ],
@@ -335,18 +369,24 @@ function readQuestions(value: unknown): ClarificationQuestion[] {
     .slice(0, MAX_QUESTIONS);
 }
 
-function ensureThreeOptionQuestions(
+function ensureMinimumClarificationQuestions(
   questions: ClarificationQuestion[],
   fallbackQuestions: ClarificationQuestion[]
 ): ClarificationQuestion[] {
-  return questions
+  const mergedQuestions = uniqueQuestions([
+    ...questions,
+    ...fallbackQuestions,
+    ...defaultClarificationQuestions()
+  ]).slice(0, MAX_QUESTIONS);
+
+  return mergedQuestions
     .map((question, index) => {
       const fallbackQuestion =
         fallbackQuestions.find((item) => item.id === question.id) ?? fallbackQuestions[index];
       const options = uniqueOptions([
         ...(question.options ?? []),
-        ...(fallbackQuestion?.options ?? []),
-        ...defaultClarificationOptions(question.id)
+        ...((question.options?.length ?? 0) > 0 ? [] : fallbackQuestion?.options ?? []),
+        ...((question.options?.length ?? 0) > 0 ? [] : defaultClarificationOptions(question.id))
       ]).slice(0, MAX_OPTIONS);
 
       return {
@@ -355,7 +395,21 @@ function ensureThreeOptionQuestions(
         options
       };
     })
-    .filter((question) => (question.options?.length ?? 0) >= MIN_OPTIONS);
+    .filter((question) => (question.options?.length ?? 0) > 0)
+    .slice(0, REQUIRED_QUESTIONS);
+}
+
+function uniqueQuestions(questions: ClarificationQuestion[]): ClarificationQuestion[] {
+  const seen = new Set<string>();
+  const result: ClarificationQuestion[] = [];
+  for (const question of questions) {
+    if (!question.id || seen.has(question.id)) {
+      continue;
+    }
+    seen.add(question.id);
+    result.push(question);
+  }
+  return result;
 }
 
 function uniqueOptions(options: Array<{ id: string; label: string }>): Array<{
@@ -381,22 +435,37 @@ function defaultClarificationOptions(questionId: string): Array<{ id: string; la
     current_state: [
       { id: "burnout", label: "想休息" },
       { id: "unemployed", label: "已失业" },
-      { id: "exploring", label: "找新方向" }
+      { id: "exploring", label: "找新方向" },
+      { id: "employed", label: "在职观望" },
+      { id: "already_gap", label: "已经空窗" }
     ],
     main_constraint: [
       { id: "cashflow", label: "现金流" },
       { id: "place", label: "去哪生活" },
-      { id: "career", label: "再就业" }
+      { id: "career", label: "再就业" },
+      { id: "health", label: "身体状态" },
+      { id: "family", label: "家庭压力" },
+      { id: "insurance", label: "社保医保" }
+    ],
+    sample_preference: [
+      { id: "low_cost_place", label: "低成本停靠" },
+      { id: "cashflow_plan", label: "空窗现金流" },
+      { id: "career_return", label: "再就业回流" },
+      { id: "remote_city", label: "换城市生活" },
+      { id: "failure_review", label: "失败复盘" }
     ],
     relationship_stage: [
       { id: "early", label: "刚开始" },
       { id: "stable", label: "稳定关系" },
-      { id: "marriage", label: "谈婚论嫁" }
+      { id: "marriage", label: "谈婚论嫁" },
+      { id: "separated", label: "已经分开" }
     ],
     core_constraint: [
       { id: "career", label: "工作机会" },
       { id: "city", label: "城市距离" },
-      { id: "future", label: "未来时间表" }
+      { id: "future", label: "未来时间表" },
+      { id: "family", label: "家庭期待" },
+      { id: "money", label: "经济压力" }
     ]
   };
 
@@ -404,6 +473,32 @@ function defaultClarificationOptions(questionId: string): Array<{ id: string; la
     { id: "similar", label: "相似经历" },
     { id: "resolved", label: "已经走出" },
     { id: "tradeoff", label: "代价边界" }
+  ];
+}
+
+function defaultClarificationQuestions(): ClarificationQuestion[] {
+  return [
+    {
+      id: "current_state",
+      label: "你现在更接近哪种状态？",
+      type: "single_select",
+      required: true,
+      options: defaultClarificationOptions("current_state")
+    },
+    {
+      id: "main_constraint",
+      label: "最需要先考虑什么？",
+      type: "single_select",
+      required: true,
+      options: defaultClarificationOptions("main_constraint")
+    },
+    {
+      id: "sample_preference",
+      label: "更想先参考哪类样本？",
+      type: "single_select",
+      required: true,
+      options: defaultClarificationOptions("sample_preference")
+    }
   ];
 }
 

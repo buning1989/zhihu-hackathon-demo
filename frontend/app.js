@@ -13,6 +13,8 @@
   const loadingStageIntervalMs = 900;
   const entryPlaceholderTypeMs = 90;
   const entryPlaceholderHoldTicks = 36;
+  const requiredClarifyQuestions = 3;
+  const maxClarifyOptions = 6;
   const entryPlaceholderExamples = [
     "为了工作长期异地恋，真的值得吗？",
     "毕业后留在大城市，还是回老家？",
@@ -509,7 +511,7 @@
   }
 
   function getLocalClarifyQuestions() {
-    return App.mockData.clarifyQuestions.slice(0, 3);
+    return App.mockData.clarifyQuestions.slice(0, requiredClarifyQuestions);
   }
 
   function normalizeClarifyingCard(card) {
@@ -526,11 +528,8 @@
   }
 
   function normalizeClarifyQuestions(questions) {
-    if (!Array.isArray(questions)) {
-      return [];
-    }
-
-    return questions.map((question) => {
+    const rawQuestions = Array.isArray(questions) ? questions : [];
+    const normalizedQuestions = rawQuestions.map((question) => {
       const id = String(question.id || question.key || "").trim();
       const options = Array.isArray(question.options)
         ? question.options.map((option) => {
@@ -546,21 +545,38 @@
         text: String(question.text || question.label || question.title || id),
         type: String(question.type || "single_select"),
         required: question.required !== false,
-        options: ensureThreeClarifyOptions(id, options)
+        options: normalizeClarifyOptions(id, options)
       };
     }).filter((question) => question.id && question.text && question.options.length > 0);
+
+    return uniqueClarifyQuestions([
+      ...normalizedQuestions,
+      ...defaultClarifyQuestions()
+    ]).slice(0, requiredClarifyQuestions);
   }
 
-  function ensureThreeClarifyOptions(questionId, options) {
+  function uniqueClarifyQuestions(questions) {
     const seen = new Set();
-    const merged = [...options, ...defaultClarifyOptions(questionId)].filter((option) => {
+    return questions.filter((question) => {
+      if (!question.id || seen.has(question.id)) {
+        return false;
+      }
+      seen.add(question.id);
+      return true;
+    });
+  }
+
+  function normalizeClarifyOptions(questionId, options) {
+    const seen = new Set();
+    const sourceOptions = options.length ? options : defaultClarifyOptions(questionId);
+    const normalizedOptions = sourceOptions.filter((option) => {
       if (!option.id || !option.label || seen.has(option.id)) {
         return false;
       }
       seen.add(option.id);
       return true;
     });
-    return merged.slice(0, 3);
+    return normalizedOptions.slice(0, maxClarifyOptions);
   }
 
   function defaultClarifyOptions(questionId) {
@@ -568,28 +584,69 @@
       current_state: [
         { id: "burnout", label: "想休息" },
         { id: "unemployed", label: "已失业" },
-        { id: "exploring", label: "找新方向" }
+        { id: "exploring", label: "找新方向" },
+        { id: "employed", label: "在职观望" },
+        { id: "already_gap", label: "已经空窗" }
       ],
       main_constraint: [
         { id: "cashflow", label: "现金流" },
         { id: "place", label: "去哪生活" },
-        { id: "career", label: "再就业" }
+        { id: "career", label: "再就业" },
+        { id: "health", label: "身体状态" },
+        { id: "family", label: "家庭压力" },
+        { id: "insurance", label: "社保医保" }
+      ],
+      sample_preference: [
+        { id: "low_cost_place", label: "低成本停靠" },
+        { id: "cashflow_plan", label: "空窗现金流" },
+        { id: "career_return", label: "再就业回流" },
+        { id: "remote_city", label: "换城市生活" },
+        { id: "failure_review", label: "失败复盘" }
       ],
       relationship_stage: [
         { id: "early", label: "刚开始" },
         { id: "stable", label: "稳定关系" },
-        { id: "marriage", label: "谈婚论嫁" }
+        { id: "marriage", label: "谈婚论嫁" },
+        { id: "separated", label: "已经分开" }
       ],
       core_constraint: [
         { id: "career", label: "工作机会" },
         { id: "city", label: "城市距离" },
-        { id: "future", label: "未来时间表" }
+        { id: "future", label: "未来时间表" },
+        { id: "family", label: "家庭期待" },
+        { id: "money", label: "经济压力" }
       ]
     };
     return defaults[questionId] || [
       { id: "similar", label: "相似经历" },
       { id: "resolved", label: "已经走出" },
       { id: "tradeoff", label: "代价边界" }
+    ];
+  }
+
+  function defaultClarifyQuestions() {
+    return [
+      {
+        id: "current_state",
+        text: "你现在更接近哪种状态？",
+        type: "single_select",
+        required: true,
+        options: defaultClarifyOptions("current_state")
+      },
+      {
+        id: "main_constraint",
+        text: "最需要先考虑什么？",
+        type: "single_select",
+        required: true,
+        options: defaultClarifyOptions("main_constraint")
+      },
+      {
+        id: "sample_preference",
+        text: "更想先参考哪类样本？",
+        type: "single_select",
+        required: true,
+        options: defaultClarifyOptions("sample_preference")
+      }
     ];
   }
 
@@ -1354,7 +1411,7 @@
     App.store.update((draft) => {
       draft.search.clarifyQuestions = draft.search.clarifyQuestions.length
         ? draft.search.clarifyQuestions
-        : App.mockData.clarifyQuestions.slice(0, 3);
+        : App.mockData.clarifyQuestions.slice(0, requiredClarifyQuestions);
       draft.search.clarifyOpen = true;
       draft.search.clarifySource = "local";
       draft.search.hasShownInitialClarify = true;
