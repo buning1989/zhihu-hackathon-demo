@@ -970,7 +970,7 @@
     }
 
     function renderTimings(run) {
-      const timings = run.data?.debug?.timings;
+      const timings = readTimingRows(run);
       if (!Array.isArray(timings) || timings.length === 0) {
         return "";
       }
@@ -997,7 +997,7 @@
                 ${timings.map((item) => `
                   <tr>
                     <td class="mono">${escapeHtml(item.stageName || "-")}</td>
-                    <td>${escapeHtml(item.durationMs ?? "-")}ms</td>
+                    <td>${escapeHtml(formatDuration(item.durationMs))}</td>
                     <td>${escapeHtml(item.provider || "-")}</td>
                     <td>${escapeHtml(item.model || "-")}</td>
                     <td><span class="pill ${item.llmUsed ? "ok" : "warn"}">${item.llmUsed ? "used" : "no"}</span></td>
@@ -1009,6 +1009,34 @@
           </div>
         </section>
       `;
+    }
+
+    function readTimingRows(run) {
+      const data = run.data || {};
+      const rawTimings = Array.isArray(data.debug?.timings) ? data.debug.timings : [];
+      const hasClarificationTiming = rawTimings.some((item) =>
+        item?.stageName === "similarity_clarification_plan"
+      );
+      if (hasClarificationTiming || !data.clarificationStage) {
+        return rawTimings;
+      }
+
+      return [
+        {
+          stageName: "similarity_clarification_plan",
+          durationMs: undefined,
+          provider: undefined,
+          model: undefined,
+          llmUsed: Boolean(data.clarificationStage.llmUsed),
+          fallbackUsed: !data.clarificationStage.llmUsed,
+          fallbackReason:
+            data.clarificationStage.fallbackReason ||
+            (data.clarificationStage.llmUsed
+              ? "reported by clarificationStage"
+              : "clarificationStage reported deterministic planner")
+        },
+        ...rawTimings
+      ];
     }
 
     function renderRaw(run) {
@@ -1097,6 +1125,10 @@
 
     function numberOrNull(value) {
       return Number.isFinite(value) ? value : null;
+    }
+
+    function formatDuration(value) {
+      return Number.isFinite(value) ? `${value}ms` : "-";
     }
 
     function showError(error) {

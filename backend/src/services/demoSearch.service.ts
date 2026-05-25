@@ -15,6 +15,7 @@ import type { UserContext } from "../auth/session.js";
 import {
   buildObjectiveSearchContext
 } from "../llm/searchQueryPlan.js";
+import { llmRouter } from "../llm/llmRouter.js";
 import {
   createDeterministicSimilarityClarificationPlan,
   readClarificationAnswerResolution,
@@ -27,6 +28,7 @@ import {
   type DemoDataMode,
   type DemoDebugClarificationContext,
   type DemoDebugClarificationPlan,
+  type DemoDebugTiming,
   type DemoObjectiveQueryPlan,
   type DemoObjectiveSlotName,
   type DemoObjectiveSlots,
@@ -223,6 +225,8 @@ async function applyDemoClarificationState(
   request: DemoSearchRequest,
   clarificationContext: DemoDebugClarificationContext | null = null
 ): Promise<DemoSearchResponse> {
+  const clarificationStartedAt = Date.now();
+
   if (request.clarificationAnswers) {
     const context =
       clarificationContext ?? buildClarificationContext(request.query, request.clarificationAnswers);
@@ -238,6 +242,12 @@ async function applyDemoClarificationState(
     };
     response.debug.clarificationContext = context;
     response.debug.clarificationPlan = answeredPlan.debug;
+    upsertClarificationTiming(response, {
+      durationMs: Date.now() - clarificationStartedAt,
+      llmUsed: false,
+      fallbackUsed: true,
+      fallbackReason: "clarificationAnswers supplied; similarity clarification planner LLM not invoked"
+    });
     response.debug.notes = unique([
       ...response.debug.notes,
       "clarificationAnswers consumed by intent/search/path planning; full demo result response returned"
@@ -257,6 +267,14 @@ async function applyDemoClarificationState(
     llmUsed: clarification.llmUsed,
     ...(clarification.fallbackReason ? { fallbackReason: clarification.fallbackReason } : {})
   };
+  upsertClarificationTiming(response, {
+    durationMs: Date.now() - clarificationStartedAt,
+    llmUsed: clarification.llmUsed,
+    fallbackUsed: !clarification.llmUsed,
+    fallbackReason:
+      clarification.fallbackReason ||
+      (clarification.llmUsed ? "" : "deterministic similarity clarification planner used")
+  });
   response.debug.notes = unique([
     ...response.debug.notes,
     clarification.llmUsed
@@ -264,6 +282,25 @@ async function applyDemoClarificationState(
       : "deterministic similarity clarification planner attached to demo search response"
   ]);
   return response;
+}
+
+function upsertClarificationTiming(
+  response: DemoSearchResponse,
+  timing: Pick<DemoDebugTiming, "durationMs" | "llmUsed" | "fallbackUsed" | "fallbackReason">
+): void {
+  const stageName: DemoDebugTiming["stageName"] = "similarity_clarification_plan";
+  const existingTimings = response.debug.timings ?? [];
+  const withoutClarification = existingTimings.filter((item) => item.stageName !== stageName);
+
+  response.debug.timings = [
+    {
+      stageName,
+      provider: llmRouter.getProviderForTask(stageName),
+      model: llmRouter.getModelForTask(stageName),
+      ...timing
+    },
+    ...withoutClarification
+  ];
 }
 
 function buildClarificationContext(
