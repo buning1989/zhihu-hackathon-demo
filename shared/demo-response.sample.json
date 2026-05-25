@@ -7,8 +7,8 @@
   "notes": [
     "people[] is the primary data source for person/sample cards.",
     "people[].aiPersona is the AI persona entry point.",
-    "top-level personas[] is an optional shortcut index and must not duplicate full person data; derive it from people[].aiPersona when absent.",
-    "sections[] is optional weak layout metadata; render from analysis, paths, people, and derived personas when absent.",
+    "top-level personas[] is optional and omitted by default in main responses; derive it from people[].aiPersona when absent.",
+    "sections[] is optional and omitted by default in main responses; render from analysis, paths, people, and derived personas when absent.",
     "AI is not a fact source; persona answers must be grounded in public content and evidence.",
     "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
     "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
@@ -37,8 +37,6 @@
     ],
     "P0_5_recommended": [
       "POST /api/personas/chat",
-      "personas",
-      "sections",
       "debug",
       "persona grounded mock answer"
     ],
@@ -526,130 +524,6 @@
             "evidenceRequired": true
           }
         }
-      }
-    ],
-    "personas": [
-      {
-        "personaId": "persona_person_return_home",
-        "personId": "person_return_home",
-        "displayName": "阿禾的经验分身",
-        "fitReason": "这个追问入口只用于继续理解已命中的公开回答片段，不代表作者本人。",
-        "entryType": "chat"
-      },
-      {
-        "personaId": "persona_person_small_city",
-        "personId": "person_small_city",
-        "displayName": "陈岚的经验分身",
-        "entryType": "chat"
-      },
-      {
-        "personaId": "persona_person_freelance",
-        "personId": "person_freelance",
-        "displayName": "林澈的经验分身",
-        "entryType": "chat"
-      }
-    ],
-    "sections": [
-      {
-        "id": "analysis-section",
-        "type": "analysis",
-        "title": "问题拆解",
-        "description": "先把问题拆成可比较的路径和样本。",
-        "cards": [
-          {
-            "id": "analysis-card-main",
-            "type": "analysis",
-            "title": "不是只问地点",
-            "summary": "这个问题还包含现金流、工作边界和回流代价。"
-          }
-        ]
-      },
-      {
-        "id": "paths-section",
-        "type": "path_map",
-        "title": "几种可能的走法",
-        "description": "路径图来自 mock 聚类，P0 后续可由真实内容聚类替换。",
-        "cards": [
-          {
-            "id": "path-card-return-home",
-            "type": "path",
-            "targetId": "return-home",
-            "title": "去了又回来",
-            "summary": "看清代价后回流。"
-          },
-          {
-            "id": "path-card-small-city",
-            "type": "path",
-            "targetId": "small-city",
-            "title": "换个城市生活",
-            "summary": "降低成本重排生活。"
-          },
-          {
-            "id": "path-card-freelance",
-            "type": "path",
-            "targetId": "freelance-transition",
-            "title": "自由职业过渡",
-            "summary": "换自由也换压力。"
-          }
-        ]
-      },
-      {
-        "id": "people-section",
-        "type": "people_samples",
-        "title": "和你处境相似的人",
-        "description": "人物样本以 people[] 为准。",
-        "cards": [
-          {
-            "id": "people-card-return-home",
-            "type": "person",
-            "targetId": "person_return_home",
-            "title": "阿禾",
-            "summary": "地点可以给人喘息，但真正要重建的是工作边界。"
-          },
-          {
-            "id": "people-card-small-city",
-            "type": "person",
-            "targetId": "person_small_city",
-            "title": "陈岚",
-            "summary": "先降低生活成本，可能比直接彻底离开工作更可控。"
-          },
-          {
-            "id": "people-card-freelance",
-            "type": "person",
-            "targetId": "person_freelance",
-            "title": "林澈",
-            "summary": "自由职业把组织压力换成了获客和自律压力。"
-          }
-        ]
-      },
-      {
-        "id": "persona-section",
-        "type": "ai_personas",
-        "title": "可以继续追问的经验分身",
-        "description": "这里只放快捷入口，完整人物数据仍读取 people[]。",
-        "cards": [
-          {
-            "id": "persona-card-return-home",
-            "type": "persona",
-            "targetId": "persona_person_return_home",
-            "title": "阿禾的经验分身",
-            "summary": "基于公开内容生成，不代表作者本人。"
-          },
-          {
-            "id": "persona-card-small-city",
-            "type": "persona",
-            "targetId": "persona_person_small_city",
-            "title": "陈岚的经验分身",
-            "summary": "基于公开内容生成，不代表作者本人。"
-          },
-          {
-            "id": "persona-card-freelance",
-            "type": "persona",
-            "targetId": "persona_person_freelance",
-            "title": "林澈的经验分身",
-            "summary": "基于公开内容生成，不代表作者本人。"
-          }
-        ]
       }
     ],
     "meta": {

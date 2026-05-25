@@ -88,14 +88,15 @@ async function main() {
     );
 
     const demoData = validationRuns[0].data;
-    const personas = assertNonEmptyArray(demoData.personas, "data.personas");
+    const people = assertNonEmptyArray(demoData.people, "data.people");
     for (const run of validationRuns) {
       printDemoRunDetails(run);
     }
     printDemoRunDetails(cacheHitRun);
 
-    const firstPersona = readRecord(personas[0], "data.personas[0]");
-    const personaId = readString(firstPersona.id, "data.personas[0].id");
+    const firstPerson = readRecord(people[0], "data.people[0]");
+    const firstPersona = readRecord(firstPerson.aiPersona, "data.people[0].aiPersona");
+    const personaId = readString(firstPersona.personaId, "data.people[0].aiPersona.personaId");
     const queryId = readString(demoData.queryId, "data.queryId");
 
     const chatRuns = [];
@@ -123,7 +124,7 @@ async function main() {
     }
 
     console.log("PASS demo real LLM/persona smoke");
-    console.log(`demo counts paths=${demoData.paths.length} people=${demoData.people.length} personas=${personas.length}`);
+    console.log(`demo counts paths=${demoData.paths.length} people=${demoData.people.length} derivedPersonas=${people.length}`);
     console.log(
       `demo stages ${REQUIRED_DEMO_STAGES.map((stage) => `${stage}=recorded`).join(" ")}`
     );
@@ -151,7 +152,8 @@ async function runDemoSearch(baseUrl, query, count, label) {
   const data = readRecord(demoSearch.body.data, `${label} data`);
   assertNonEmptyArray(data.paths, `${label} data.paths`);
   assertNonEmptyArray(data.people, `${label} data.people`);
-  assertNonEmptyArray(data.personas, `${label} data.personas`);
+  assertDerivedTopLevelFieldsOmitted(data, `${label} data`);
+  assertPeoplePersonaEntries(data.people, `${label} data.people`);
   const debug = readRecord(data.debug, `${label} data.debug`);
   const stageResults = assertNonEmptyArray(
     debug.llmStageResults,
@@ -176,6 +178,24 @@ async function runDemoSearch(baseUrl, query, count, label) {
     durationMs,
     data
   };
+}
+
+function assertDerivedTopLevelFieldsOmitted(data, label) {
+  if ("personas" in data) {
+    throw new Error(`${label}.personas should be omitted; derive from people[].aiPersona.`);
+  }
+
+  if ("sections" in data) {
+    throw new Error(`${label}.sections should be omitted; derive layout on the client.`);
+  }
+}
+
+function assertPeoplePersonaEntries(people, label) {
+  for (const [index, value] of people.entries()) {
+    const person = readRecord(value, `${label}[${index}]`);
+    const aiPersona = readRecord(person.aiPersona, `${label}[${index}].aiPersona`);
+    readString(aiPersona.personaId, `${label}[${index}].aiPersona.personaId`);
+  }
 }
 
 function assertCandidatePipelineDebug(debug, label) {

@@ -83,8 +83,8 @@ Content-Type: application/json
 | `analysis` | object | 问题理解和步骤说明。 | 半稳定 |
 | `paths` | array | 路径聚合结果。 | 稳定 |
 | `people` | array | 人物/内容样本主数据。 | 稳定 |
-| `personas` | array | 可选；`people[].aiPersona` 的快捷索引，缺失时可从 `people[]` 派生。 | 半稳定 |
-| `sections` | array | 可选；弱绑定布局分组，缺失时按默认顺序渲染。 | 半稳定 |
+| `personas` | array | 可选兼容字段；主响应默认省略，前端从 `people[].aiPersona` 派生。 | 半稳定 |
+| `sections` | array | 可选兼容字段；主响应默认省略，前端按默认顺序渲染。 | 半稳定 |
 | `meta` | object | 来源、证据数量、生成时间、耗时和 fallback 状态。 | 半稳定 |
 | `debug` | object | composer、缓存、LLM stage、候选质量等调试信息。 | 调试 |
 
@@ -187,7 +187,7 @@ Content-Type: application/json
 | `grounding.evidenceRequired` | boolean | 当前固定为 `true`。 | 稳定 |
 | `grounding.sourceRefs` | string[] | 来源引用 id。 | 稳定 |
 
-`personas[]`：
+`personas[]`（兼容字段，主响应默认不返回）：
 
 | 字段 | 类型 | 说明 | 稳定性 |
 | --- | --- | --- | --- |
@@ -351,7 +351,7 @@ Content-Type: application/json
 - 先执行 `npm run build -w backend`。
 - 使用当前 `backend/dist/app.js` 临时启动本地 app。
 - 请求 `POST /api/demo/search`，body 为 `{"query":"不工作了能去哪儿","count":1,"dataMode":"mock"}`。
-- 使用上一步响应里的 `data.queryId` 和 `data.personas[0].id` 请求 `POST /api/personas/chat`。
+- 使用上一步响应里的 `data.queryId` 和 `data.people[0].aiPersona.personaId` 请求 `POST /api/personas/chat`。
 - 当前本机环境中 persona chat LLM 可用，因此聊天样例为 `meta.mode: "real"`。
 
 ### `POST /api/demo/search` 样例

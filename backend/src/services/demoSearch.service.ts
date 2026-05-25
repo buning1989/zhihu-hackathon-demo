@@ -2450,10 +2450,20 @@ function writeCachedDemoResponse(
 ): DemoSearchResponse {
   pruneExpiredDemoSearchCache();
   response.debug.cacheHit = cacheHit;
+  omitDerivedTopLevelFields(response);
   demoSearchResponseCache.set(cacheKey, {
     expiresAt: Date.now() + DEMO_SEARCH_CACHE_TTL_MS,
     response: cloneDemoSearchResponse(response)
   });
+  return response;
+}
+
+function omitDerivedTopLevelFields(response: DemoSearchResponse): DemoSearchResponse {
+  response.debug.personaCount =
+    response.debug.personaCount ??
+    response.people.filter((person) => person.aiPersona.personaId).length;
+  delete response.personas;
+  delete response.sections;
   return response;
 }
 

@@ -292,7 +292,7 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 
 ## 8. personas 快捷索引
 
-顶层 `personas[]` 只作为前端快捷索引：
+顶层 `personas[]` 只作为前端快捷索引；当前主响应默认省略，前端从 `people[].aiPersona` 派生：
 
 ```json
 {
@@ -305,13 +305,13 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 
 要求：
 
-- 不在 `personas[]` 里重复完整人物数据。
+- 不在主响应里默认返回 `personas[]`，避免形成第二套派生数据。
 - 不让 `personas[]` 成为第二套主数据。
 - 需要完整信息时，前端回到 `people[]` 读取。
 
 ## 9. sections 弱绑定层
 
-`sections[]` 用于保留前端改版空间，不替代主数据：
+`sections[]` 用于保留前端改版空间，不替代主数据；当前主响应默认省略：
 
 ```json
 [
@@ -336,7 +336,7 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 ]
 ```
 
-前端 P0 优先读主数据字段，`sections[]` 只做布局辅助。
+前端 P0 优先读主数据字段，缺少 `sections[]` 时按默认顺序渲染。
 
 ## 10. P0 / P0.5 / P1 切分
 
@@ -347,7 +347,7 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 - 返回 `analysis.steps` 和 `analysis.focusTags`。
 - 返回 2-5 条 `paths[]`。
 - 返回 `people[]`，并保证每个 people 至少有一条 article、match、aiPersona。
-- 返回顶层 `personas[]` 快捷索引。
+- 保留 `people[].aiPersona`，前端可据此派生快捷入口。
 - 无知乎 API Key 时 mock 跑通。
 - 无 LLM Key 时 deterministic stub 跑通。
 - 保留 `GET /api/search` 既有契约。
@@ -357,7 +357,7 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 - 新增 `POST /api/personas/chat`。
 - 支持一次 grounded mock answer。
 - 每次聊天响应带 `boundary`、`citedArticleIds`、`evidence`。
-- 返回 `sections[]` 和 dev `debug`，方便联调。
+- 返回 dev `debug`，`sections[]` 仅作为可选兼容字段。
 - 保存样本可先由前端 localStorage 或 mock 完成。
 
 ### P1 暂缓
@@ -376,7 +376,7 @@ P0 可规则生成，但每条 reason 必须能从公开内容或 mock evidence 
 - `shared/demo-response.sample.json` 能被 JSON parser 读取。
 - OpenAPI 中保留 `GET /api/search`。
 - OpenAPI 中新增或修正 `POST /api/demo/search` 和 `POST /api/personas/chat`。
-- 样例中 `people[]` 是主数据，`personas[]` 只引用 `people[].aiPersona`。
+- 样例中 `people[]` 是主数据，默认不再要求顶层 `personas[]`。
 
 后续实现验收：
 

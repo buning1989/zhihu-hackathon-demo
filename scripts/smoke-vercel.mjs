@@ -70,7 +70,7 @@ async function checkDemoSearch() {
   assertNonEmptyArray(data.paths, "demo paths");
   assertNonEmptyArray(data.people, "demo people");
 
-  const personaId = data.personas?.[0]?.id || data.people?.[0]?.aiPersona?.personaId;
+  const personaId = data.people?.[0]?.aiPersona?.personaId || data.personas?.[0]?.id;
   assertNonEmptyString(personaId, "demo personaId");
 
   logOk("POST /api/demo/search");

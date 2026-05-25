@@ -77,6 +77,11 @@ async function runDemoSearch(baseUrl, query, count, label) {
 
   assertSuccess(response, `POST /api/demo/search ${label}`);
   const data = readRecord(response.body.data, `${label} data`);
+  assertDerivedTopLevelFieldsOmitted(data, `${label} data`);
+  assertPeoplePersonaEntries(
+    assertNonEmptyArray(data.people, `${label} data.people`),
+    `${label} data.people`
+  );
   const debug = readRecord(data.debug, `${label} data.debug`);
   const search = readRecord(debug.search, `${label} data.debug.search`);
   assertSearchDebug(search, `${label} data.debug.search`);
@@ -198,6 +203,24 @@ function assertCandidateQuality(debug, query, label) {
         `${label}.candidateQuality generic work-review candidate became core evidence: ${item.title}`
       );
     }
+  }
+}
+
+function assertDerivedTopLevelFieldsOmitted(data, label) {
+  if ("personas" in data) {
+    throw new Error(`${label}.personas should be omitted; derive from people[].aiPersona.`);
+  }
+
+  if ("sections" in data) {
+    throw new Error(`${label}.sections should be omitted; derive layout on the client.`);
+  }
+}
+
+function assertPeoplePersonaEntries(people, label) {
+  for (const [index, value] of people.entries()) {
+    const person = readRecord(value, `${label}[${index}]`);
+    const aiPersona = readRecord(person.aiPersona, `${label}[${index}].aiPersona`);
+    assertNonEmptyString(aiPersona.personaId, `${label}[${index}].aiPersona.personaId`);
   }
 }
 

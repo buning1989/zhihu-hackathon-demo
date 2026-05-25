@@ -66,7 +66,7 @@ curl -s -X POST "http://127.0.0.1:8000/api/demo/search" \
 - [ ] `data.features.personaChat` 是 `mock`。
 - [ ] `data.paths` 非空，且每条 path 有 `evidenceIds` 和 `sourceRefs`。
 - [ ] `data.people` 非空，且每个人物有 `articles`、`match`、`aiPersona`。
-- [ ] `data.personas` 非空，且每个 persona 可用 `personId` 回查到 `people[]`。
+- [ ] `data.people[].aiPersona.personaId` 非空；顶层 `data.personas` 可缺省，由前端派生。
 - [ ] `data.meta.sourceRefs` 非空，且每个 source 有 `url`、`title`、`author`、`evidenceIds`。
 - [ ] 所有事实性展示都能回到 `evidenceIds` / `sourceRefs`，没有把 AI 回答当成事实来源。
 

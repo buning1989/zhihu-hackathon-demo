@@ -18,7 +18,7 @@
 | [AI_HANDOFF.md](./AI_HANDOFF.md) | 项目交接记录，记录最近更新、未完成事项、风险和检查结果。 | 每次接手开发或判断下一步优先级时。 |
 | [codex-reporting-standard.md](./codex-reporting-standard.md) | Codex 开发汇报与验收规范，定义目标、修改摘要、验收表、证据、阻塞点和下一步格式。 | 每次开发任务完成、准备给用户或 ChatGPT 审查时。 |
 | [backend-ai-persona-integration-plan.md](./backend-ai-persona-integration-plan.md) | 后端 AI 分身产品层规划，定义 `analysis + paths + people + personas + sections + meta` 的目标结构。 | 开发 `POST /api/demo/search`、`POST /api/personas/chat` 或调整 AI 分身字段时。 |
-| [frontend-field-guide.md](./frontend-field-guide.md) | 前端字段协作指南，说明 `people[]` 主数据、`personas[]` 快捷索引、文章和 evidence fallback。 | 前端接接口、后端改返回字段、对齐 UI 状态时。 |
+| [frontend-field-guide.md](./frontend-field-guide.md) | 前端字段协作指南，说明 `people[]` 主数据、可派生 `personas[]` 快捷索引、文章和 evidence fallback。 | 前端接接口、后端改返回字段、对齐 UI 状态时。 |
 | [backend-next-step-plan.md](./backend-next-step-plan.md) | 当前 `GET /api/search` 的实现链路、返回字段和最小补强计划。 | 修搜索映射、查接口兼容性、确认不要破坏旧接口时。 |
 | [api/README.md](./api/README.md) | API 协作说明，聚焦 demo search 主入口、兼容接口和安全边界。 | 本地存在 `docs/api/` 时，用于快速确认接口调用和边界。 |
 | [api/demo-search.sample.json](./api/demo-search.sample.json) | `POST /api/demo/search` 的示例响应，包含 paths、people、personas、evidence/sourceRefs。 | 做前端 mock、接口联调、响应结构检查时。 |

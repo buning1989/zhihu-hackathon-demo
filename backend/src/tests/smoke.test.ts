@@ -74,7 +74,12 @@ try {
   );
   assertNonEmptyArray(demoSearch.body.data.paths, "demo paths");
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
-  assertNonEmptyArray(demoSearch.body.data.personas, "demo personas");
+  assertEqual("personas" in demoSearch.body.data, false, "demo top-level personas omitted");
+  assertEqual("sections" in demoSearch.body.data, false, "demo top-level sections omitted");
+  assertNonEmptyString(
+    demoSearch.body.data.people[0].aiPersona.personaId,
+    "demo people[0].aiPersona.personaId"
+  );
   assertClarifyingCard(demoSearch.body.data.clarifyingCard, "demo clarifyingCard");
   assertSimilarityClarifyingCard(
     demoSearch.body.data.clarifyingCard,
@@ -109,7 +114,20 @@ try {
   assertEqual(clarifiedDemoSearch.body.data.schemaVersion, "demo.v1", "clarified demo schemaVersion");
   assertNonEmptyArray(clarifiedDemoSearch.body.data.paths, "clarified demo paths");
   assertNonEmptyArray(clarifiedDemoSearch.body.data.people, "clarified demo people");
-  assertNonEmptyArray(clarifiedDemoSearch.body.data.personas, "clarified demo personas");
+  assertEqual(
+    "personas" in clarifiedDemoSearch.body.data,
+    false,
+    "clarified demo top-level personas omitted"
+  );
+  assertEqual(
+    "sections" in clarifiedDemoSearch.body.data,
+    false,
+    "clarified demo top-level sections omitted"
+  );
+  assertNonEmptyString(
+    clarifiedDemoSearch.body.data.people[0].aiPersona.personaId,
+    "clarified demo people[0].aiPersona.personaId"
+  );
   assertEqual(
     clarifiedDemoSearch.body.data.clarifyingCard.show,
     false,
@@ -177,7 +195,7 @@ try {
   );
   await assertQueryAwareDemoPaths(baseUrl);
 
-  const personaId = demoSearch.body.data.personas[0].id;
+  const personaId = demoSearch.body.data.people[0].aiPersona.personaId;
   const queryId = demoSearch.body.data.queryId;
   for (const message of PERSONA_CHAT_ACCEPTANCE_MESSAGES) {
     const personaChat = await requestJson(`${baseUrl}/api/personas/chat`, {

@@ -1,5 +1,24 @@
 # AI Handoff
 
+## 2026-05-25 - demo personas/sections default omitted
+
+本轮目标：在不切 LLM 主链路、不新增 feedCard 的前提下，把 `/api/demo/search` 顶层 `personas[]` 和 `sections[]` 从默认主响应中省略，降低重复派生字段维护成本。
+
+已完成：
+
+- `DemoSearchService` 在写入响应缓存前删除顶层 `personas` 和 `sections`。
+- `people[].aiPersona` 继续保留，作为 AI 分身入口和 persona chat 的主来源。
+- `debug.personaCount` 继续保留计数，内部 composer / grounding guard 仍可临时使用派生 personas。
+- smoke 和 real LLM/persona 脚本改为从 `people[].aiPersona.personaId` 发起 `/api/personas/chat`。
+- OpenAPI、sample 和前端字段文档同步说明：`personas[] / sections[]` 是可选兼容字段，主响应默认省略，前端从 `people + paths` 派生。
+
+验证记录：
+
+- `npm run build -w backend` 通过。
+- `npm run smoke -w backend` 通过。
+- `npm run smoke:demo-real:search` 通过。
+- adapter 兜底验证通过：省略 `personas/sections` 后仍可派生快捷入口和布局分组。
+
 ## 2026-05-24 - real smoke split and relationship-work candidate quality
 
 本轮目标：把 `smoke:demo-real` 拆成稳定的搜索召回 smoke 和单独的 LLM/persona smoke，并优化“长期异地恋 + 工作/追求自己想做的事”场景的候选质量。
