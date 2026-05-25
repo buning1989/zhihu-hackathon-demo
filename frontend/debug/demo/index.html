@@ -1,0 +1,1124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Search Debug</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ef;
+      --panel: #fffdfa;
+      --panel-2: #fbf8f2;
+      --ink: #25221e;
+      --muted: #746d64;
+      --line: #e4ddd2;
+      --line-strong: #d2c7b8;
+      --accent: #1f6f7a;
+      --accent-bg: #e3f4f5;
+      --ok: #236b4d;
+      --ok-bg: #e3f2ea;
+      --warn: #875d00;
+      --warn-bg: #fff0bd;
+      --bad: #9b3128;
+      --bad-bg: #ffe5df;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: #b7a891;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .58;
+    }
+
+    button.primary {
+      border-color: #d5b050;
+      background: #ffe59a;
+      font-weight: 750;
+    }
+
+    button.ghost {
+      background: transparent;
+    }
+
+    button.is-active,
+    .option-button.is-selected {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+      color: #174c53;
+      font-weight: 750;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 26px;
+      line-height: 1.12;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    a {
+      color: #1d5f81;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    textarea,
+    input,
+    select {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 10px 11px;
+    }
+
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+      background: #fbf8f1;
+      padding: 22px;
+    }
+
+    .main {
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .api-line {
+      margin-top: 9px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .controls {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 10px;
+    }
+
+    .button-row,
+    .tab-row,
+    .chip-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .answer-panel {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .answer-question {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+    }
+
+    .option-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    .option-button {
+      text-align: left;
+      min-height: 38px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .empty,
+    .error-box {
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      padding: 20px;
+      background: rgba(255, 255, 255, .54);
+      color: var(--muted);
+    }
+
+    .error-box {
+      border-style: solid;
+      border-color: #efb8ae;
+      background: var(--bad-bg);
+      color: var(--bad);
+      white-space: pre-wrap;
+      margin-bottom: 14px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 14px 0 16px;
+    }
+
+    .stat,
+    .panel,
+    .candidate-card,
+    .person-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .stat {
+      min-height: 86px;
+      padding: 14px;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .panel {
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .pill,
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .pill {
+      background: #eee7dc;
+      color: var(--muted);
+    }
+
+    .pill.ok,
+    .pill.success,
+    .pill.ready,
+    .pill.strong,
+    .pill.usable {
+      background: var(--ok-bg);
+      color: var(--ok);
+    }
+
+    .pill.warn,
+    .pill.fallback,
+    .pill.timeout,
+    .pill.partial,
+    .pill.neutral {
+      background: var(--warn-bg);
+      color: var(--warn);
+    }
+
+    .pill.bad,
+    .pill.failed,
+    .pill.drop,
+    .pill.error {
+      background: var(--bad-bg);
+      color: var(--bad);
+    }
+
+    .chip {
+      background: var(--accent-bg);
+      color: #174c53;
+      font-family: var(--mono);
+      font-weight: 650;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-size: 13px;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .two-column {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .candidate-list,
+    .person-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .candidate-card,
+    .person-card {
+      padding: 12px;
+    }
+
+    .candidate-title,
+    .person-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .candidate-title strong,
+    .person-title strong {
+      line-height: 1.35;
+    }
+
+    .candidate-text {
+      margin-top: 8px;
+      color: #3d3832;
+      line-height: 1.62;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    summary {
+      cursor: pointer;
+      padding: 10px 12px;
+      font-weight: 750;
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      max-height: 520px;
+      overflow: auto;
+      background: #1f1c18;
+      color: #f7efe5;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      tab-size: 2;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 1080px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+
+      .summary-grid,
+      .two-column {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <h1>Demo Search Debug</h1>
+      <p class="api-line" id="apiLine"></p>
+
+      <div class="controls">
+        <label>
+          用户问题
+          <textarea id="queryInput"></textarea>
+        </label>
+
+        <div class="field-grid">
+          <label>
+            dataMode
+            <select id="dataModeInput">
+              <option value="real">real</option>
+              <option value="mock">mock</option>
+              <option value="cache_first">cache_first</option>
+            </select>
+          </label>
+          <label>
+            count
+            <input id="countInput" type="number" min="1" max="20" value="3">
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button class="primary" type="button" id="runInitialButton">首轮理解</button>
+          <button type="button" id="runClarifiedButton">带答案运行</button>
+          <button class="ghost" type="button" id="clearButton">清空</button>
+        </div>
+      </div>
+
+      <div id="answerPanel" class="answer-panel"></div>
+    </aside>
+
+    <main class="main">
+      <div id="message"></div>
+      <div id="content" class="empty">等待运行。</div>
+    </main>
+  </div>
+
+  <script>
+    const DEFAULT_QUERY = "为了工作能追求自己想做的事，长期异地恋真的值得吗？";
+    const DEFAULT_LOCAL_API_BASE = "http://127.0.0.1:8000";
+    const params = new URLSearchParams(window.location.search);
+    const API_BASE = resolveApiBase();
+    const state = {
+      initialRun: null,
+      clarifiedRun: null,
+      activeRun: "initial",
+      answers: {},
+      loading: false
+    };
+
+    const apiLine = document.getElementById("apiLine");
+    const queryInput = document.getElementById("queryInput");
+    const dataModeInput = document.getElementById("dataModeInput");
+    const countInput = document.getElementById("countInput");
+    const runInitialButton = document.getElementById("runInitialButton");
+    const runClarifiedButton = document.getElementById("runClarifiedButton");
+    const clearButton = document.getElementById("clearButton");
+    const answerPanel = document.getElementById("answerPanel");
+    const message = document.getElementById("message");
+    const content = document.getElementById("content");
+
+    apiLine.textContent = `API ${API_BASE}`;
+    queryInput.value =
+      params.get("query") ||
+      window.localStorage.getItem("demoDebugQuery") ||
+      DEFAULT_QUERY;
+    dataModeInput.value =
+      params.get("dataMode") ||
+      window.localStorage.getItem("demoDebugDataMode") ||
+      "real";
+    countInput.value =
+      params.get("count") ||
+      window.localStorage.getItem("demoDebugCount") ||
+      "3";
+
+    runInitialButton.addEventListener("click", () => runSearch("initial"));
+    runClarifiedButton.addEventListener("click", () => runSearch("clarified"));
+    clearButton.addEventListener("click", clearState);
+    document.addEventListener("click", handleClick);
+
+    render();
+
+    function resolveApiBase() {
+      const configured =
+        params.get("apiBaseUrl") ||
+        window.localStorage.getItem("demoDebugApiBaseUrl");
+      if (configured) {
+        return String(configured).replace(/\/+$/, "");
+      }
+
+      if (
+        window.location.protocol === "file:" ||
+        ["3000", "3001", "5173"].includes(window.location.port)
+      ) {
+        return DEFAULT_LOCAL_API_BASE;
+      }
+
+      return window.location.origin || DEFAULT_LOCAL_API_BASE;
+    }
+
+    async function runSearch(kind) {
+      const query = queryInput.value.trim();
+      if (!query) {
+        showError("请输入用户问题。");
+        return;
+      }
+
+      const count = clampCount(countInput.value);
+      const dataMode = dataModeInput.value;
+      const body = {
+        query,
+        count,
+        dataMode
+      };
+
+      if (kind === "clarified" && hasAnswers(state.answers)) {
+        body.clarificationAnswers = state.answers;
+      }
+
+      window.localStorage.setItem("demoDebugQuery", query);
+      window.localStorage.setItem("demoDebugDataMode", dataMode);
+      window.localStorage.setItem("demoDebugCount", String(count));
+
+      setLoading(true);
+      clearMessage();
+      const startedAt = Date.now();
+      try {
+        const response = await fetch(new URL("/api/demo/search", API_BASE).toString(), {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+        const text = await response.text();
+        const payload = text ? JSON.parse(text) : null;
+        if (!response.ok || payload?.success === false) {
+          const apiError = payload?.error;
+          throw new Error(apiError?.message || `HTTP ${response.status}`);
+        }
+
+        const run = {
+          kind,
+          requestBody: body,
+          response: payload,
+          data: payload?.success === true ? payload.data : payload,
+          durationMs: Date.now() - startedAt,
+          completedAt: new Date().toISOString()
+        };
+
+        if (kind === "initial") {
+          state.initialRun = run;
+          state.activeRun = "initial";
+        } else {
+          state.clarifiedRun = run;
+          state.activeRun = "clarified";
+        }
+      } catch (error) {
+        showError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setLoading(false);
+        render();
+      }
+    }
+
+    function handleClick(event) {
+      const target = event.target.closest("[data-action]");
+      if (!target) {
+        return;
+      }
+
+      const action = target.dataset.action;
+      if (action === "select-answer") {
+        state.answers[target.dataset.questionId] = target.dataset.optionId;
+        render();
+      }
+
+      if (action === "select-run") {
+        state.activeRun = target.dataset.run;
+        render();
+      }
+
+      if (action === "copy-json") {
+        const run = readActiveRun();
+        if (run) {
+          navigator.clipboard?.writeText(JSON.stringify(run.response, null, 2));
+        }
+      }
+    }
+
+    function clearState() {
+      state.initialRun = null;
+      state.clarifiedRun = null;
+      state.activeRun = "initial";
+      state.answers = {};
+      clearMessage();
+      render();
+    }
+
+    function setLoading(loading) {
+      state.loading = loading;
+      runInitialButton.disabled = loading;
+      runClarifiedButton.disabled = loading;
+      runInitialButton.textContent = loading ? "运行中" : "首轮理解";
+      runClarifiedButton.textContent = loading ? "运行中" : "带答案运行";
+    }
+
+    function render() {
+      renderAnswerPanel();
+      const activeRun = readActiveRun();
+      if (!activeRun) {
+        content.className = "empty";
+        content.textContent = "等待运行。";
+        return;
+      }
+
+      content.className = "";
+      content.innerHTML = [
+        renderTabs(),
+        renderSummary(activeRun),
+        renderClarification(activeRun),
+        renderIntent(activeRun),
+        renderSearch(activeRun),
+        renderQuality(activeRun),
+        renderFinalResult(activeRun),
+        renderTimings(activeRun),
+        renderRaw(activeRun)
+      ].join("");
+    }
+
+    function renderAnswerPanel() {
+      const card = state.initialRun?.data?.clarifyingCard;
+      const questions = Array.isArray(card?.questions) ? card.questions : [];
+      if (!questions.length) {
+        answerPanel.innerHTML = `<div class="empty">首轮运行后显示澄清卡。</div>`;
+        return;
+      }
+
+      answerPanel.innerHTML = [
+        `<div><h2>${escapeHtml(card.title || "澄清卡")}</h2><p class="muted">${escapeHtml(card.description || "")}</p></div>`,
+        ...questions.map((question) => `
+          <section class="answer-question">
+            <h3>${escapeHtml(question.label || question.question || question.id)}</h3>
+            <div class="option-grid">
+              ${(question.options || []).map((option) => `
+                <button
+                  type="button"
+                  class="option-button ${state.answers[question.id] === option.id ? "is-selected" : ""}"
+                  data-action="select-answer"
+                  data-question-id="${escapeAttribute(question.id)}"
+                  data-option-id="${escapeAttribute(option.id)}"
+                >${escapeHtml(option.label || option.id)}</button>
+              `).join("")}
+            </div>
+          </section>
+        `).join(""),
+        `<button class="primary" type="button" id="sideRunClarifiedButton">带这些答案运行</button>`
+      ].join("");
+
+      document.getElementById("sideRunClarifiedButton")?.addEventListener("click", () => runSearch("clarified"));
+    }
+
+    function renderTabs() {
+      return `
+        <div class="tab-row">
+          ${state.initialRun ? `<button type="button" class="${state.activeRun === "initial" ? "is-active" : ""}" data-action="select-run" data-run="initial">首轮</button>` : ""}
+          ${state.clarifiedRun ? `<button type="button" class="${state.activeRun === "clarified" ? "is-active" : ""}" data-action="select-run" data-run="clarified">带答案</button>` : ""}
+          <button type="button" class="ghost" data-action="copy-json">复制 JSON</button>
+        </div>
+      `;
+    }
+
+    function renderSummary(run) {
+      const data = run.data || {};
+      const debug = data.debug || {};
+      const search = debug.search || {};
+      const meta = data.meta || {};
+      return `
+        <section class="summary-grid">
+          ${renderStat("Run", run.kind === "initial" ? "首轮" : "带答案")}
+          ${renderStat("Mode", data.dataMode || run.requestBody.dataMode || "-")}
+          ${renderStat("Duration", `${run.durationMs}ms`)}
+          ${renderStat("Cache", debug.cacheHit ? "hit" : "miss")}
+          ${renderStat("Degraded", search.degraded || meta.fallbackUsed ? "true" : "false")}
+          ${renderStat("Queries", Array.isArray(search.queriesUsed) ? search.queriesUsed.length : 0)}
+          ${renderStat("Raw", numberOrDash(search.totalRawResults))}
+          ${renderStat("Candidates", numberOrDash(search.totalDedupedCandidates))}
+        </section>
+      `;
+    }
+
+    function renderClarification(run) {
+      const data = run.data || {};
+      const debug = data.debug || {};
+      const context = debug.clarificationContext || {};
+      const plan = debug.clarificationPlan || {};
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Clarification</h2>
+            <span class="pill ${data.clarificationStage?.needClarification ? "warn" : "ok"}">
+              ${escapeHtml(data.clarificationStage?.needClarification ? "need" : "done")}
+            </span>
+          </div>
+          <div class="two-column">
+            <div>
+              <h3>answerSummary</h3>
+              <p class="candidate-text">${escapeHtml(context.answerSummary || "-")}</p>
+            </div>
+            <div>
+              <h3>searchHints</h3>
+              ${renderChips(context.searchHints || [])}
+            </div>
+          </div>
+          <details>
+            <summary>clarificationPlan</summary>
+            <pre>${escapeHtml(JSON.stringify(plan, null, 2))}</pre>
+          </details>
+        </section>
+      `;
+    }
+
+    function renderIntent(run) {
+      const data = run.data || {};
+      const debug = data.debug || {};
+      const intentStage = debug.intentStage || {};
+      const queryPlan = intentStage.queryPlan || {};
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Intent & Query Plan</h2>
+            <span class="pill ${intentStage.llmUsed ? "ok" : "fallback"}">${escapeHtml(intentStage.provider || (intentStage.llmUsed ? "llm" : "rules"))}</span>
+          </div>
+          <div class="two-column">
+            <div>
+              <h3>objectiveSlots</h3>
+              ${renderKeyValue(intentStage.objectiveSlots || {})}
+            </div>
+            <div>
+              <h3>focusTags</h3>
+              ${renderChips(data.analysis?.focusTags || debug.focusTags || [])}
+              <h3 style="margin-top: 12px;">missingSlots</h3>
+              ${renderChips(intentStage.missingSlots || [])}
+            </div>
+          </div>
+          <details open>
+            <summary>queryPlan</summary>
+            <pre>${escapeHtml(JSON.stringify(queryPlan, null, 2))}</pre>
+          </details>
+        </section>
+      `;
+    }
+
+    function renderSearch(run) {
+      const search = run.data?.debug?.search || {};
+      const rounds = Array.isArray(search.searchRounds) ? search.searchRounds : [];
+      const candidates = Array.isArray(search.candidates) ? search.candidates : [];
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Zhihu Search</h2>
+            <span class="pill ${search.degraded ? "bad" : "ok"}">${search.degraded ? "degraded" : "ready"}</span>
+          </div>
+          ${search.fallbackReason ? `<div class="error-box">${escapeHtml(search.fallbackReason)}</div>` : ""}
+          <h3>queriesUsed</h3>
+          ${renderChips(search.queriesUsed || [])}
+          <h3 style="margin-top: 14px;">searchRounds</h3>
+          ${renderRounds(rounds)}
+          <h3 style="margin-top: 14px;">candidates</h3>
+          ${renderCandidates(candidates)}
+        </section>
+      `;
+    }
+
+    function renderRounds(rounds) {
+      if (!rounds.length) {
+        return `<div class="empty">暂无搜索轮次。</div>`;
+      }
+
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>query</th>
+                <th>status</th>
+                <th>raw</th>
+                <th>empty</th>
+                <th>error</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rounds.map((round) => `
+                <tr>
+                  <td class="mono">${escapeHtml(round.roundIndex ?? "-")}</td>
+                  <td>${escapeHtml(round.query || "")}</td>
+                  <td><span class="pill ${round.success ? "ok" : "bad"}">${round.success ? "success" : "failed"}</span></td>
+                  <td>${escapeHtml(round.rawResultCount ?? "-")}</td>
+                  <td>${round.isEmptyResult ? "true" : "false"}</td>
+                  <td>${escapeHtml([round.errorCode, round.errorMessage].filter(Boolean).join(": ") || "-")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderCandidates(candidates) {
+      if (!candidates.length) {
+        return `<div class="empty">暂无候选。</div>`;
+      }
+
+      return `
+        <div class="candidate-list">
+          ${candidates.slice(0, 20).map((candidate, index) => `
+            <article class="candidate-card">
+              <div class="candidate-title">
+                <strong>${index + 1}. ${escapeHtml(candidate.title || candidate.sourceId || "-")}</strong>
+                <span class="pill neutral">${escapeHtml(candidate.sourceType || "source")}</span>
+              </div>
+              <div class="chip-row">
+                <span class="chip">${escapeHtml(candidate.queryUsed || "-")}</span>
+                <span class="pill">round ${escapeHtml(candidate.searchRound ?? "-")}</span>
+                ${candidate.authorName ? `<span class="pill">${escapeHtml(candidate.authorName)}</span>` : ""}
+              </div>
+              ${candidate.url ? `<p class="mono" style="margin-top: 8px;"><a href="${escapeAttribute(candidate.url)}" target="_blank" rel="noreferrer">${escapeHtml(candidate.url)}</a></p>` : ""}
+              <p class="candidate-text">${escapeHtml(candidate.text || candidate.rawContent || candidate.snippet || "-")}</p>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderQuality(run) {
+      const quality = run.data?.debug?.candidateQuality;
+      if (!Array.isArray(quality) || quality.length === 0) {
+        return "";
+      }
+
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Candidate Quality</h2>
+            <span class="pill">${quality.length}</span>
+          </div>
+          <div class="candidate-list">
+            ${quality.slice(0, 24).map((item, index) => `
+              <article class="candidate-card">
+                <div class="candidate-title">
+                  <strong>${index + 1}. ${escapeHtml(item.title || item.sourceId || "-")}</strong>
+                  <span class="pill ${escapeHtml(item.roughTier || "neutral")}">${escapeHtml(item.roughTier || "-")}</span>
+                </div>
+                <div class="chip-row">
+                  <span class="pill ${item.usedAsEvidence ? "ok" : "warn"}">${item.usedAsEvidence ? "evidence" : "not evidence"}</span>
+                  ${numberOrNull(item.qualityScore) !== null ? `<span class="pill">quality ${escapeHtml(item.qualityScore)}</span>` : ""}
+                  ${item.matchedQuery ? `<span class="chip">${escapeHtml(item.matchedQuery)}</span>` : ""}
+                </div>
+                <p class="candidate-text">${escapeHtml([
+                  ...(item.keepReasons || []),
+                  ...(item.dropReasons || []),
+                  ...(item.boostReasons || [])
+                ].join("；") || item.queryPurpose || "-")}</p>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderFinalResult(run) {
+      const data = run.data || {};
+      const paths = Array.isArray(data.paths) ? data.paths : [];
+      const people = Array.isArray(data.people) ? data.people : [];
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Result Preview</h2>
+            <span class="pill">${people.length} people</span>
+          </div>
+          <div class="two-column">
+            <div>
+              <h3>paths</h3>
+              ${paths.length ? renderChips(paths.map((path) => path.title || path.id)) : `<div class="empty">暂无路径。</div>`}
+            </div>
+            <div>
+              <h3>people</h3>
+              ${people.length ? `
+                <div class="person-list">
+                  ${people.slice(0, 8).map((person) => `
+                    <article class="person-card">
+                      <div class="person-title">
+                        <strong>${escapeHtml(person.name || person.id || "-")}</strong>
+                        <span class="pill">${escapeHtml(person.pathId || "-")}</span>
+                      </div>
+                      <p class="candidate-text">${escapeHtml(person.oneLine || person.experienceSummary || person.lesson || "-")}</p>
+                    </article>
+                  `).join("")}
+                </div>
+              ` : `<div class="empty">暂无人物样本。</div>`}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderTimings(run) {
+      const timings = run.data?.debug?.timings;
+      if (!Array.isArray(timings) || timings.length === 0) {
+        return "";
+      }
+
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>LLM Timings</h2>
+            <span class="pill">${timings.length}</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>stage</th>
+                  <th>duration</th>
+                  <th>provider</th>
+                  <th>model</th>
+                  <th>llm</th>
+                  <th>fallback</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${timings.map((item) => `
+                  <tr>
+                    <td class="mono">${escapeHtml(item.stageName || "-")}</td>
+                    <td>${escapeHtml(item.durationMs ?? "-")}ms</td>
+                    <td>${escapeHtml(item.provider || "-")}</td>
+                    <td>${escapeHtml(item.model || "-")}</td>
+                    <td><span class="pill ${item.llmUsed ? "ok" : "warn"}">${item.llmUsed ? "used" : "no"}</span></td>
+                    <td>${escapeHtml(item.fallbackReason || (item.fallbackUsed ? "true" : "-"))}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderRaw(run) {
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Raw JSON</h2>
+            <span class="muted mono">${escapeHtml(run.completedAt)}</span>
+          </div>
+          <details>
+            <summary>request</summary>
+            <pre>${escapeHtml(JSON.stringify(run.requestBody, null, 2))}</pre>
+          </details>
+          <details>
+            <summary>response</summary>
+            <pre>${escapeHtml(JSON.stringify(run.response, null, 2))}</pre>
+          </details>
+        </section>
+      `;
+    }
+
+    function renderStat(label, value) {
+      return `
+        <div class="stat">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `;
+    }
+
+    function renderKeyValue(record) {
+      const entries = Object.entries(record || {});
+      if (!entries.length) {
+        return `<div class="empty">暂无字段。</div>`;
+      }
+
+      return `
+        <div class="table-wrap">
+          <table style="min-width: 420px;">
+            <tbody>
+              ${entries.map(([key, value]) => `
+                <tr>
+                  <th>${escapeHtml(key)}</th>
+                  <td>${escapeHtml(value ?? "-")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderChips(items) {
+      const values = Array.isArray(items) ? items.filter((item) => item !== undefined && item !== null && String(item).trim()) : [];
+      if (!values.length) {
+        return `<div class="empty">暂无。</div>`;
+      }
+
+      return `<div class="chip-row">${values.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")}</div>`;
+    }
+
+    function readActiveRun() {
+      if (state.activeRun === "clarified" && state.clarifiedRun) {
+        return state.clarifiedRun;
+      }
+
+      return state.initialRun || state.clarifiedRun;
+    }
+
+    function hasAnswers(answers) {
+      return Object.values(answers || {}).some((value) => String(value || "").trim());
+    }
+
+    function clampCount(value) {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed)) {
+        return 3;
+      }
+
+      return Math.min(Math.max(parsed, 1), 20);
+    }
+
+    function numberOrDash(value) {
+      return Number.isFinite(value) ? String(value) : "-";
+    }
+
+    function numberOrNull(value) {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function showError(error) {
+      message.innerHTML = `<div class="error-box">${escapeHtml(error)}</div>`;
+    }
+
+    function clearMessage() {
+      message.innerHTML = "";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function escapeAttribute(value) {
+      return escapeHtml(value);
+    }
+  </script>
+</body>
+</html>
