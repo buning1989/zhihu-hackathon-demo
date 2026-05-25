@@ -662,15 +662,33 @@ function parseJsonObject(content: string): Record<string, unknown> {
     throw new LlmSchemaError("LLM_JSON_PARSE_FAILED", "LLM response did not contain a JSON object");
   }
 
+  const jsonText = normalized.slice(start, end + 1);
+
   try {
-    const parsed: unknown = JSON.parse(normalized.slice(start, end + 1));
+    const parsed: unknown = JSON.parse(jsonText);
     return readRecord(parsed, "LLM root");
-  } catch (error) {
+  } catch (firstError) {
+    const repairedJsonText = stripTrailingJsonCommas(jsonText);
+    if (repairedJsonText !== jsonText) {
+      try {
+        const parsed: unknown = JSON.parse(repairedJsonText);
+        return readRecord(parsed, "LLM root");
+      } catch {
+        // Fall through to the original parse error so debug output points at
+        // the provider response rather than our repair attempt.
+      }
+    }
+
+    const error = firstError;
     throw new LlmSchemaError(
       "LLM_JSON_PARSE_FAILED",
       error instanceof Error ? error.message : "Invalid LLM JSON"
     );
   }
+}
+
+function stripTrailingJsonCommas(value: string): string {
+  return value.replace(/,\s*([}\]])/g, "$1");
 }
 
 function stripMarkdownFence(value: string): string {

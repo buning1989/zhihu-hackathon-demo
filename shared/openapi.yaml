@@ -481,10 +481,9 @@ paths:
         experience. It wraps search results into analysis, paths, people,
         persona indexes, sections and metadata. The existing GET /api/search
         contract remains implemented and must not be broken. During P0
-        implementation, this endpoint must run with mock/stub data when Zhihu
-        API keys or LLM keys are missing. When clarificationAnswers is present,
-        the endpoint returns only the intent expansion and Zhihu search plan
-        needed by the next recall step.
+        implementation, this endpoint supports mock/stub data through
+        dataMode=mock. dataMode=real does not silently downgrade to mock unless
+        allowMockFallback is explicitly set to true.
       operationId: createDemoSearch
       x-implementation-status: implemented
       requestBody:
@@ -1073,6 +1072,12 @@ components:
             Non-empty clarification-card answers. When present, /api/demo/search
             returns intent/searchPlan only and does not enter the full
             paths/people/personas result generation chain.
+        allowMockFallback:
+          type: boolean
+          default: false
+          description: >
+            Explicit opt-in for demo fallback data when dataMode=real fails.
+            The default keeps real-link tests from being masked by mock data.
         sessionId:
           type: string
           description: Optional client-provided session id for local demo continuity.

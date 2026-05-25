@@ -56,7 +56,7 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || "http://127.0.0.1:5173",
   sessionSecret: process.env.SESSION_SECRET || "dev-session-secret",
   demoSearch: {
-    requestBudgetMs: parsePositiveInteger(process.env.DEMO_SEARCH_BUDGET_MS, 36000)
+    requestBudgetMs: parsePositiveInteger(process.env.DEMO_SEARCH_BUDGET_MS, 75000)
   },
   zhihu: {
     accessSecret: zhihuAccessSecret,
@@ -89,6 +89,10 @@ export const config = {
       similarityClarificationPlanMs: parsePositiveInteger(
         process.env.SIMILARITY_CLARIFICATION_TIMEOUT_MS,
         24000
+      ),
+      intentExpandMs: parsePositiveInteger(
+        process.env.INTENT_EXPAND_TIMEOUT_MS,
+        45000
       )
     },
     kimi: {
@@ -119,7 +123,8 @@ export const config = {
           firstNonEmpty(process.env.PERSONA_CHAT_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL,
         json_repair: firstNonEmpty(process.env.JSON_REPAIR_MODEL) || DEFAULT_DEEPSEEK_STAGE_MODEL
       },
-      jsonMode: parseBoolean(process.env.DEEPSEEK_JSON_MODE, true)
+      jsonMode: parseBoolean(process.env.DEEPSEEK_JSON_MODE, true),
+      intentExpandJsonMode: parseBoolean(process.env.INTENT_EXPAND_JSON_MODE, true)
     }
   }
 };

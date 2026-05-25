@@ -56,6 +56,7 @@ export interface DemoSearchRequestBody {
   mode?: unknown;
   dataMode?: unknown;
   clarificationAnswers?: unknown;
+  allowMockFallback?: unknown;
 }
 
 export interface DemoClarificationAnswers {

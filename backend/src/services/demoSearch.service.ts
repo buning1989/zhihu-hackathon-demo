@@ -46,6 +46,7 @@ export interface DemoSearchRequest {
   count: number;
   dataMode: DemoDataMode;
   clarificationAnswers?: DemoClarificationAnswers;
+  allowMockFallback: boolean;
 }
 
 const DEFAULT_COUNT = 5;
@@ -121,6 +122,10 @@ export class DemoSearchService {
         );
       } catch (error) {
         logRealSearchFallback(error, request, startedAt);
+
+        if (!request.allowMockFallback) {
+          throw toRealSearchHttpError(error);
+        }
 
         const realSearchDebug = readSearchDebugFromError(error);
         const response = createMockDemoSearchResponse(request.query, request.count, "mock", {
@@ -2257,7 +2262,8 @@ export function parseDemoSearchRequest(body: unknown): DemoSearchRequest {
     query,
     count: parseCount(record.count),
     dataMode: parseDataMode(dataMode),
-    clarificationAnswers: parseClarificationAnswers(record.clarificationAnswers)
+    clarificationAnswers: parseClarificationAnswers(record.clarificationAnswers),
+    allowMockFallback: parseBoolean(record.allowMockFallback, false)
   };
 }
 
@@ -2317,8 +2323,41 @@ function readString(value: unknown): string {
   return "";
 }
 
+function parseBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = readString(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toRealSearchHttpError(error: unknown): HttpError {
+  if (error instanceof HttpError) {
+    return error;
+  }
+
+  if (isRequestBudgetTimeoutError(error)) {
+    return new HttpError(
+      504,
+      "DEMO_SEARCH_BUDGET_TIMEOUT",
+      `/api/demo/search exceeded ${DEMO_SEARCH_BUDGET_MS}ms request budget`
+    );
+  }
+
+  return new HttpError(502, "REAL_DEMO_SEARCH_FAILED", formatErrorSummary(error));
 }
 
 function readSearchDebugFromError(error: unknown): DemoSearchDebug | undefined {
@@ -2352,10 +2391,12 @@ function logRealSearchFallback(
   request: DemoSearchRequest,
   startedAt: number
 ): void {
-  console.error("[DemoSearch] real Zhihu search failed; falling back to mock", {
+  const action = request.allowMockFallback ? "falling back to mock" : "returning real-link error";
+  console.error(`[DemoSearch] real Zhihu search failed; ${action}`, {
     query: request.query,
     count: request.count,
     requestedDataMode: request.dataMode,
+    allowMockFallback: request.allowMockFallback,
     elapsedMs: Date.now() - startedAt,
     ...toLoggableError(error)
   });
@@ -2484,6 +2525,7 @@ function buildDemoSearchCacheKey(
   return [
     "demo_search_v2",
     `dataMode=${request.dataMode}`,
+    `allowMockFallback=${request.allowMockFallback}`,
     `normalizedQuery=${identity.normalizedQuery.toLowerCase()}`,
     `count=${request.count}`,
     `clarification=${hashString(JSON.stringify(request.clarificationAnswers ?? {}))}`,

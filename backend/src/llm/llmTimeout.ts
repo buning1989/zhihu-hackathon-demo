@@ -29,6 +29,10 @@ export function getLlmTaskTimeoutMs(taskType: LlmTaskType): number {
     return config.llm.taskTimeouts.similarityClarificationPlanMs;
   }
 
+  if (taskType === "intent_expand") {
+    return config.llm.taskTimeouts.intentExpandMs;
+  }
+
   return LLM_TASK_TIMEOUT_MS[taskType];
 }
 

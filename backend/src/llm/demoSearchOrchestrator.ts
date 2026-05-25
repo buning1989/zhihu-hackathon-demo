@@ -725,7 +725,7 @@ async function runJsonTaskWithStageTimeout(
   return llmRouter.runJsonTask(taskType, {
     ...input,
     timeoutMs: getLlmTaskTimeoutMs(taskType),
-    maxRetry: 0
+    maxRetry: taskType === "intent_expand" ? 1 : 0
   });
 }
 
@@ -753,7 +753,7 @@ async function runIntentExpandStage(
   try {
     const content = await runJsonTaskWithStageTimeout("intent_expand", {
       temperature: 0.1,
-      maxTokens: 1600,
+      maxTokens: 1200,
       messages: [
         {
           role: "system",

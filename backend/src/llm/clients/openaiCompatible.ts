@@ -202,6 +202,7 @@ function isRetryableError(error: unknown): boolean {
 
   return (
     error.code === "LLM_TIMEOUT" ||
+    error.code === "LLM_EMPTY_RESPONSE" ||
     error.code === "LLM_REQUEST_FAILED" ||
     error.code === "LLM_HTTP_408" ||
     error.code === "LLM_HTTP_409" ||

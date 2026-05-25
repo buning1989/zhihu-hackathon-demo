@@ -22,6 +22,9 @@ export class DeepSeekClient {
 
   createJsonCompletion(input: JsonCompletionInput): Promise<string> {
     const model = this.getModelForTask(input.taskType);
+    const jsonMode = input.taskType === "intent_expand"
+      ? config.llm.deepseek.intentExpandJsonMode
+      : config.llm.deepseek.jsonMode;
     return createOpenAICompatibleJsonCompletion(this.provider, {
       apiKey: config.llm.deepseek.apiKey,
       baseUrl: config.llm.deepseek.baseUrl,
@@ -30,7 +33,7 @@ export class DeepSeekClient {
       maxRetry: config.llm.maxRetry
     }, {
       ...input,
-      responseFormat: config.llm.deepseek.jsonMode
+      responseFormat: jsonMode
         ? input.responseFormat ?? { type: "json_object" }
         : undefined
     });
