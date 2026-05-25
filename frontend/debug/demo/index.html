@@ -471,8 +471,6 @@
             dataMode
             <select id="dataModeInput">
               <option value="real">real</option>
-              <option value="mock">mock</option>
-              <option value="cache_first">cache_first</option>
             </select>
           </label>
           <label>
@@ -526,10 +524,7 @@
       params.get("query") ||
       window.localStorage.getItem("demoDebugQuery") ||
       DEFAULT_QUERY;
-    dataModeInput.value =
-      params.get("dataMode") ||
-      window.localStorage.getItem("demoDebugDataMode") ||
-      "real";
+    dataModeInput.value = "real";
     countInput.value =
       params.get("count") ||
       window.localStorage.getItem("demoDebugCount") ||

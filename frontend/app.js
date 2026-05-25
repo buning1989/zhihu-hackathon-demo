@@ -494,6 +494,10 @@
   }
 
   function shouldUseMockFallback(error) {
+    if (!allowMockFallback()) {
+      return false;
+    }
+
     const fallbackCodes = new Set([
       "BACKEND_UNAVAILABLE",
       "404",
@@ -503,6 +507,14 @@
     return Boolean(
       fallbackCodes.has(String(error?.code || error?.errorCode || ""))
       || [0, 404, 405, 501].includes(Number(error?.status || 0))
+    );
+  }
+
+  function allowMockFallback() {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get("allowMockFallback") === "1" ||
+      window.LifeSampleAppConfig?.allowMockFallback === true
     );
   }
 

@@ -21,7 +21,6 @@
     return String(
       params.get("api") ||
       window.LifeSampleAppConfig?.apiMode ||
-      window.localStorage.getItem("lifeSampleApiMode") ||
       "backend"
     ).toLowerCase();
   }
@@ -240,7 +239,6 @@
       params.get("dataMode") ||
       params.get("demoDataMode") ||
       window.LifeSampleAppConfig?.demoDataMode ||
-      window.localStorage.getItem("lifeSampleDemoDataMode") ||
       "real";
     return ["mock", "cache_first", "real"].includes(configured) ? configured : "real";
   }
