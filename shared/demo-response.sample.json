@@ -7,7 +7,8 @@
   "notes": [
     "people[] is the primary data source for person/sample cards.",
     "people[].aiPersona is the AI persona entry point.",
-    "top-level personas[] is only a shortcut index and must not duplicate full person data.",
+    "top-level personas[] is an optional shortcut index and must not duplicate full person data; derive it from people[].aiPersona when absent.",
+    "sections[] is optional weak layout metadata; render from analysis, paths, people, and derived personas when absent.",
     "AI is not a fact source; persona answers must be grounded in public content and evidence.",
     "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
     "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
@@ -32,11 +33,11 @@
       "people[].experienceSummary",
       "people[].articles",
       "people[].match",
-      "people[].aiPersona",
-      "personas"
+      "people[].aiPersona"
     ],
     "P0_5_recommended": [
       "POST /api/personas/chat",
+      "personas",
       "sections",
       "debug",
       "persona grounded mock answer"

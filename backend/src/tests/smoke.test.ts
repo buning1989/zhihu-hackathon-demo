@@ -1079,7 +1079,7 @@ async function assertLoggedInUserContextInRealComposer(): Promise<void> {
   );
   assertNonEmptyString(response.paths[0].fitReason, "real path fitReason");
   assertNonEmptyString(response.people[0].fitReason, "real person fitReason");
-  assertNonEmptyString(response.personas[0].fitReason, "real persona fitReason");
+  assertNonEmptyString(response.personas?.[0]?.fitReason, "real persona fitReason");
   assertEqual(
     JSON.stringify(response).includes("zhihu-test-user"),
     false,

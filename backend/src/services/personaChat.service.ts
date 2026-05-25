@@ -252,7 +252,7 @@ function findPersonByPersonaId(
     return directMatch;
   }
 
-  const topLevelPersona = response.personas.find((persona) => persona.id === personaId);
+  const topLevelPersona = response.personas?.find((persona) => persona.id === personaId);
   if (topLevelPersona) {
     return response.people.find((person) => person.id === topLevelPersona.personId);
   }

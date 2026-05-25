@@ -83,8 +83,8 @@ Content-Type: application/json
 | `analysis` | object | 问题理解和步骤说明。 | 半稳定 |
 | `paths` | array | 路径聚合结果。 | 稳定 |
 | `people` | array | 人物/内容样本主数据。 | 稳定 |
-| `personas` | array | `people[].aiPersona` 的快捷索引。 | 稳定 |
-| `sections` | array | 弱绑定布局分组。 | 半稳定 |
+| `personas` | array | 可选；`people[].aiPersona` 的快捷索引，缺失时可从 `people[]` 派生。 | 半稳定 |
+| `sections` | array | 可选；弱绑定布局分组，缺失时按默认顺序渲染。 | 半稳定 |
 | `meta` | object | 来源、证据数量、生成时间、耗时和 fallback 状态。 | 半稳定 |
 | `debug` | object | composer、缓存、LLM stage、候选质量等调试信息。 | 调试 |
 

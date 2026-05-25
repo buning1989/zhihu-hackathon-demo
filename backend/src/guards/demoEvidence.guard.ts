@@ -28,11 +28,11 @@ export function assertDemoSearchGrounding(data: DemoSearchResponse): void {
     assertPersonGrounding(person, index);
   }
 
-  for (const persona of data.personas) {
+  for (const persona of data.personas ?? []) {
     assertPersonaGrounding(persona, index);
   }
 
-  for (const section of data.sections) {
+  for (const section of data.sections ?? []) {
     assertSectionRefs(section, index);
   }
 }
@@ -42,8 +42,16 @@ function buildIndex(data: DemoSearchResponse): GroundingIndex {
     sourceById: new Map(data.meta.sourceRefs.map((sourceRef) => [sourceRef.id, sourceRef])),
     pathIds: new Set(data.paths.map((path) => path.id)),
     personIds: new Set(data.people.map((person) => person.id)),
-    personaIds: new Set(data.personas.map((persona) => persona.id))
+    personaIds: new Set(readPersonaIds(data))
   };
+}
+
+function readPersonaIds(data: DemoSearchResponse): string[] {
+  if (data.personas?.length) {
+    return data.personas.map((persona) => persona.id);
+  }
+
+  return data.people.map((person) => person.aiPersona.personaId).filter(Boolean);
 }
 
 function assertPathGrounding(path: DemoPath, index: GroundingIndex): void {

@@ -96,6 +96,12 @@
     const rawPeople = Array.isArray(result.people) ? result.people : [];
     const people = rawPeople.map((person, index) => normalizePerson(person, index));
     const paths = normalizePaths(Array.isArray(result.paths) ? result.paths : [], people, result);
+    const personas = Array.isArray(result.personas) && result.personas.length
+      ? result.personas
+      : derivePersonasFromPeople(people);
+    const sections = Array.isArray(result.sections) && result.sections.length
+      ? result.sections
+      : deriveSections(paths, people, personas);
 
     ensurePeoplePathIds(people, paths);
 
@@ -109,8 +115,8 @@
       analysis: normalizeAnalysis(result.analysis, result.summary),
       paths,
       people,
-      personas: Array.isArray(result.personas) ? result.personas : [],
-      sections: Array.isArray(result.sections) ? result.sections : [],
+      personas,
+      sections,
       clarifyingCard: result.clarifyingCard || null,
       clarificationStage: result.clarificationStage || null,
       meta: isRecord(result.meta) ? { ...result.meta } : {},
@@ -123,7 +129,7 @@
     const sources = Array.isArray(finalResult.sources) ? finalResult.sources : [];
     const evidenceMap = isRecord(finalResult.evidenceMap) ? finalResult.evidenceMap : {};
     const evidenceSamples = Array.isArray(finalResult.evidenceSamples) ? finalResult.evidenceSamples : [];
-    const personas = Array.isArray(finalResult.personas) ? finalResult.personas : [];
+    const rawPersonas = Array.isArray(finalResult.personas) ? finalResult.personas : [];
     const rawPaths = Array.isArray(finalResult.paths) ? finalResult.paths : [];
     const sourceByCandidateId = new Map(sources.map((source) => [sourceCandidateIdOf(source), source]));
     const evidenceByCandidateId = groupEvidenceByCandidateId(evidenceMap);
@@ -142,8 +148,8 @@
       : [];
 
     if (people.length === 0) {
-      people = personas.length
-        ? personas.map((persona, index) => normalizeProductionPersona({
+      people = rawPersonas.length
+        ? rawPersonas.map((persona, index) => normalizeProductionPersona({
           persona,
           index,
           rawPaths,
@@ -191,6 +197,11 @@
       path.peopleIds = path.personRefs;
     });
 
+    const personas = rawPersonas.length ? rawPersonas : derivePersonasFromPeople(people);
+    const sections = Array.isArray(finalResult.sections) && finalResult.sections.length
+      ? finalResult.sections
+      : deriveSections(displayPaths, people, personas);
+
     return {
       schemaVersion: "frontend-agent-production-v1",
       queryId: stringOf(finalResult.taskId || context.task?.taskId || `query-${Date.now()}`),
@@ -206,7 +217,7 @@
       paths: displayPaths,
       people,
       personas,
-      sections: [],
+      sections,
       meta: {
         taskId: finalResult.taskId,
         generatedAt: finalResult.meta?.generatedAt || new Date().toISOString(),
@@ -608,6 +619,68 @@
       boundary: stringOf(raw.boundary || raw.boundaryNotice || "基于知乎公开内容整理，不代表作者本人。"),
       suggestions: normalizeStringArray(raw.suggestions || raw.suggestedQuestions)
     };
+  }
+
+  function derivePersonasFromPeople(people) {
+    return people
+      .filter((person) => person.aiPersona?.personaId)
+      .map((person) => ({
+        id: person.aiPersona.personaId,
+        personId: person.id,
+        displayName: stringOf(person.aiPersona.displayName || `${person.name}的经验回声`),
+        avatar: stringOf(person.avatar || ""),
+        personaType: "experience_echo",
+        canChat: Boolean(person.displayCanChat || person.canChat || person.aiPersona.canChat),
+        displayTier: person.displayTier,
+        evidenceStatus: person.evidenceStatus || person.aiPersona.evidenceStatus,
+        displayLabel: person.aiPersona.displayLabel,
+        displayTradeoff: person.displayTradeoff || person.aiPersona.displayTradeoff,
+        intro: stringOf(person.aiPersona.openingLine || ""),
+        fitReason: stringOf(person.fitReason || ""),
+        boundaryNotice: stringOf(person.aiPersona.boundary || "基于知乎公开内容整理，不代表作者本人。"),
+        sourceRefs: normalizeStringArray(person.sourceRefs),
+        suggestedQuestions: normalizeStringArray(person.aiPersona.suggestions || person.aiPersona.suggestedQuestions)
+      }));
+  }
+
+  function deriveSections(paths, people, personas) {
+    const corePeople = people.filter((person) => person.displayTier === "core");
+    const supplementPeople = people.filter((person) => person.displayTier !== "core");
+    const chatPersonas = personas.filter((persona) => persona.canChat === true);
+    const sourceOnlyPersonas = personas.filter((persona) => persona.canChat !== true);
+
+    return [
+      {
+        id: "section_paths",
+        type: "paths",
+        title: "参考路径",
+        itemRefs: paths.map((path) => path.id)
+      },
+      {
+        id: "section_core_people",
+        type: "people",
+        title: "较匹配的公开经历",
+        itemRefs: corePeople.map((person) => person.id)
+      },
+      {
+        id: "section_supplement_people",
+        type: "people",
+        title: "补充参考样本",
+        itemRefs: supplementPeople.map((person) => person.id)
+      },
+      {
+        id: "section_chat_personas",
+        type: "personas",
+        title: "可追问的经验回声",
+        itemRefs: chatPersonas.map((persona) => persona.id)
+      },
+      {
+        id: "section_source_only_personas",
+        type: "personas",
+        title: "仅查看来源片段",
+        itemRefs: sourceOnlyPersonas.map((persona) => persona.id)
+      }
+    ];
   }
 
   function ensurePeoplePathIds(people, paths) {

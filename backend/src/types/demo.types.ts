@@ -142,8 +142,8 @@ export interface DemoSearchResponse {
   analysis: DemoAnalysis;
   paths: DemoPath[];
   people: DemoPerson[];
-  personas: DemoPersona[];
-  sections: DemoSection[];
+  personas?: DemoPersona[];
+  sections?: DemoSection[];
   meta: DemoMeta;
   debug: DemoDebug;
   clarifyingCard?: DemoClarifyingCard;

@@ -107,7 +107,7 @@ export async function composeLlmDemoSearchResponse(
     sourceItemCount: input.items.length,
     pathCount: response.paths.length,
     peopleCount: response.people.length,
-    personaCount: response.personas.length,
+    personaCount: response.personas?.length ?? 0,
     llmUsed: true,
     llmComposerUsed: totalSucceeded > 0,
     llmRepairUsed: repairUsed,
@@ -552,7 +552,7 @@ function syncTopLevelPersonas(response: DemoSearchResponse): void {
     suggestedQuestions: person.aiPersona.suggestedQuestions
   }));
 
-  const personaSection = response.sections.find((section) => section.type === "personas");
+  const personaSection = response.sections?.find((section) => section.type === "personas");
   if (personaSection) {
     personaSection.itemRefs = response.personas.map((persona) => persona.id);
   }

@@ -1197,8 +1197,6 @@ components:
         - analysis
         - paths
         - people
-        - personas
-        - sections
         - meta
       properties:
         schemaVersion:
@@ -1232,11 +1230,12 @@ components:
             $ref: "#/components/schemas/DemoPerson"
         personas:
           type: array
-          description: Shortcut index only. Do not duplicate complete person data here.
+          description: Optional shortcut index only. Do not duplicate complete person data here. If absent, derive entries from people[].aiPersona.
           items:
             $ref: "#/components/schemas/PersonaIndex"
         sections:
           type: array
+          description: Optional weak layout grouping. If absent, render from analysis, paths, people and derived personas in the default order.
           items:
             $ref: "#/components/schemas/DemoSection"
         meta:

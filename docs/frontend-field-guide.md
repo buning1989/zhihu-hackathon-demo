@@ -69,8 +69,8 @@ Content-Type: application/json
 5. 用 `people[].articles[]` 渲染原文入口和证据。
 6. 用 `people[].match` 渲染匹配解释。
 7. 用 `people[].aiPersona` 渲染 AI 分身入口。
-8. 用顶层 `personas[]` 做快捷入口或导航索引，可展示 `personas[].fitReason`。
-9. `sections[]` 只作为弱绑定布局辅助，不替代主数据。
+8. 顶层 `personas[]` 是可选快捷入口或导航索引；缺失时从 `people[].aiPersona` 派生。
+9. `sections[]` 是可选弱绑定布局辅助；缺失时按 `analysis -> paths -> people -> personas` 固定顺序渲染。
 
 ## 澄清卡可选字段
 
@@ -234,9 +234,9 @@ people[].experienceSummary
 
 当 `experienceSummaryStatus` 是 `pending` 或 `failed` 时，前端应隐藏该区域或展示“总结暂不可用”的轻量状态；不要把规则生成的 `fallbackSummary`、`oneLine`、`lesson` 拼成“作者内容总结”。
 
-## personas[] 是快捷索引
+## personas[] 是可选快捷索引
 
-顶层 `personas[]` 只用于快速找到可聊天入口：
+顶层 `personas[]` 只用于快速找到可聊天入口，允许后端不返回。缺失时，前端应从 `people[].aiPersona` 派生同等入口：
 
 ```json
 {
@@ -250,6 +250,7 @@ people[].experienceSummary
 使用方式：
 
 - 渲染“可追问的经验分身”横向入口时，可以读 `personas[]`。
+- 如果 `personas[]` 缺失或为空，用 `people[].aiPersona.personaId / displayName / boundary / suggestedQuestions` 派生快捷入口。
 - 需要头像、文章、匹配理由、路径等完整信息时，用 `personId` 回查 `people[]`。
 - 不要把 `personas[]` 当成第二套人物主数据。
 

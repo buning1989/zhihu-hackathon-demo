@@ -427,7 +427,7 @@ export async function composeMultiLlmDemoSearchResponse(
     sourceItemCount: cleanedSearchItems.length,
     pathCount: response.paths.length,
     peopleCount: response.people.length,
-    personaCount: response.personas.length,
+    personaCount: response.personas?.length ?? 0,
     llmUsed: successfulStages > 0,
     llmComposerUsed: composeStage.stageResult.succeeded > 0,
     llmRepairUsed: false,
@@ -1143,7 +1143,7 @@ async function runGroundingGuardStage(
 
     const output = parseGroundingGuardOutput(content, {
       personIds: new Set(response.people.map((person) => person.id)),
-      personaIds: new Set(response.personas.map((persona) => persona.id))
+      personaIds: new Set(readResponsePersonaIds(response))
     });
 
     return {
@@ -2735,6 +2735,14 @@ function syncTopLevelPersonas(response: DemoSearchResponse): void {
   response.sections = buildDisplaySections(response);
 }
 
+function readResponsePersonaIds(response: DemoSearchResponse): string[] {
+  if (response.personas?.length) {
+    return response.personas.map((persona) => persona.id);
+  }
+
+  return response.people.map((person) => person.aiPersona.personaId).filter(Boolean);
+}
+
 function toPersona(person: DemoPerson): DemoPersona {
   return {
     id: person.aiPersona.personaId,
@@ -2756,10 +2764,11 @@ function toPersona(person: DemoPerson): DemoPersona {
 }
 
 function buildDisplaySections(response: DemoSearchResponse): DemoSearchResponse["sections"] {
+  const personas = response.personas ?? [];
   const corePeople = response.people.filter((person) => person.displayTier === "core");
   const supplementPeople = response.people.filter((person) => person.displayTier !== "core");
-  const chatPersonas = response.personas.filter((persona) => persona.canChat === true);
-  const sourceOnlyPersonas = response.personas.filter((persona) => persona.canChat !== true);
+  const chatPersonas = personas.filter((persona) => persona.canChat === true);
+  const sourceOnlyPersonas = personas.filter((persona) => persona.canChat !== true);
 
   return [
     {
@@ -2881,7 +2890,7 @@ function toGroundingGuardContext(response: DemoSearchResponse): Record<string, u
       evidenceIds: person.evidenceIds,
       aiPersona: person.aiPersona
     })),
-    personas: response.personas
+    personas: response.personas ?? []
   };
 }
 
