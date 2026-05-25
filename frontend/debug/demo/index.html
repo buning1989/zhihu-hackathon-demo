@@ -681,6 +681,7 @@
       content.className = "";
       content.innerHTML = [
         renderTabs(),
+        renderLlmParticipation(activeRun),
         renderSummary(activeRun),
         renderClarification(activeRun),
         renderIntent(activeRun),
@@ -732,6 +733,125 @@
           <button type="button" class="ghost" data-action="copy-json">复制 JSON</button>
         </div>
       `;
+    }
+
+    function renderLlmParticipation(run) {
+      const status = summarizeLlmParticipation(run);
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <h2>LLM 实际参与</h2>
+            <span class="pill ${status.pillClass}">${escapeHtml(status.label)}</span>
+          </div>
+          <p class="candidate-text">${escapeHtml(status.summary)}</p>
+          <div class="chip-row" style="margin-top: 10px;">
+            ${status.chips.map((chipText) => `<span class="chip">${escapeHtml(chipText)}</span>`).join("")}
+          </div>
+          ${status.reason ? `<p class="candidate-text">${escapeHtml(status.reason)}</p>` : ""}
+        </section>
+      `;
+    }
+
+    function summarizeLlmParticipation(run) {
+      const data = run.data || {};
+      const debug = data.debug || {};
+      const meta = data.meta || {};
+      const timings = readTimingRows(run).filter((item) => item && !isIntentionalSkippedTiming(item));
+      const metaStages = Array.isArray(meta.llmStages) ? meta.llmStages : [];
+      const stageResults = Array.isArray(debug.llmStageResults) ? debug.llmStageResults : [];
+      const successStages = uniqueStrings([
+        ...timings.filter((item) => item.llmUsed).map((item) => item.stageName),
+        ...metaStages.filter((item) => String(item.status || "") === "success").map((item) => item.taskType || item.stageName),
+        ...stageResults.filter((item) => Number(item.succeeded || 0) > 0).map((item) => item.stage),
+        ...(debug.llmUsed ? ["debug.llmUsed"] : [])
+      ]);
+      const timeoutStages = uniqueStrings([
+        ...timings.filter((item) => isTimeoutReason(item.fallbackReason)).map((item) => item.stageName),
+        ...metaStages.filter((item) => String(item.status || "") === "timeout" || isTimeoutReason(item.fallbackReason)).map((item) => item.taskType || item.stageName)
+      ]);
+      const fallbackStages = uniqueStrings([
+        ...timings.filter((item) => item.fallbackUsed && !isTimeoutReason(item.fallbackReason)).map((item) => item.stageName),
+        ...metaStages.filter((item) => {
+          const status = String(item.status || "");
+          return status && status !== "success" && status !== "timeout";
+        }).map((item) => item.taskType || item.stageName),
+        ...stageResults.filter((item) => Number(item.failed || 0) > 0 || Number(item.attempted || 0) === 0).map((item) => item.stage)
+      ]);
+      const trackedStages = uniqueStrings([
+        ...timings.map((item) => item.stageName),
+        ...metaStages.map((item) => item.taskType || item.stageName),
+        ...stageResults.map((item) => item.stage)
+      ]).filter(Boolean);
+      const hasSuccess = successStages.length > 0;
+      const hasFallback = timeoutStages.length > 0 || fallbackStages.length > 0;
+
+      if (hasSuccess && !hasFallback) {
+        return {
+          label: "是",
+          pillClass: "ok",
+          summary: "本次请求有 LLM stage 成功返回，且未发现 tracked stage 超时或兜底。",
+          reason: "",
+          chips: buildLlmStatusChips(run, trackedStages, successStages, timeoutStages, fallbackStages)
+        };
+      }
+
+      if (hasSuccess) {
+        return {
+          label: "部分参与",
+          pillClass: "warn",
+          summary: "本次请求至少有一个 LLM stage 成功，但也有 stage 超时或进入规则兜底。",
+          reason: formatStageReason(timeoutStages, fallbackStages),
+          chips: buildLlmStatusChips(run, trackedStages, successStages, timeoutStages, fallbackStages)
+        };
+      }
+
+      return {
+        label: "否",
+        pillClass: "bad",
+        summary: "本次请求没有观察到 LLM 成功返回；结果应按规则兜底或 mock/fallback 看待。",
+        reason: formatStageReason(timeoutStages, fallbackStages),
+        chips: buildLlmStatusChips(run, trackedStages, successStages, timeoutStages, fallbackStages)
+      };
+    }
+
+    function buildLlmStatusChips(run, trackedStages, successStages, timeoutStages, fallbackStages) {
+      return [
+        `run=${run.kind}`,
+        `dataMode=${run.data?.dataMode || run.requestBody?.dataMode || "-"}`,
+        `success=${successStages.length}`,
+        `timeout=${timeoutStages.length}`,
+        `fallback=${fallbackStages.length}`,
+        `tracked=${trackedStages.length}`,
+        `cache=${run.data?.debug?.cacheHit ? "hit" : "miss"}`
+      ];
+    }
+
+    function formatStageReason(timeoutStages, fallbackStages) {
+      const parts = [];
+      if (timeoutStages.length) {
+        parts.push(`timeout: ${timeoutStages.join(", ")}`);
+      }
+      if (fallbackStages.length) {
+        parts.push(`fallback: ${fallbackStages.join(", ")}`);
+      }
+      return parts.join("；");
+    }
+
+    function isIntentionalSkippedTiming(item) {
+      const reason = String(item.fallbackReason || "");
+      return (
+        item.stageName === "similarity_clarification_plan" &&
+        /clarificationAnswers supplied|reported deterministic planner|deterministic similarity clarification planner used/i.test(reason) &&
+        !isTimeoutReason(reason)
+      );
+    }
+
+    function isTimeoutReason(reason) {
+      return /timeout|timed out|exceeded|LLM_TASK_TIMEOUT|LLM_TIMEOUT/i.test(String(reason || ""));
+    }
+
+    function uniqueStrings(values) {
+      return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
     }
 
     function renderSummary(run) {

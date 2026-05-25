@@ -241,8 +241,8 @@
       params.get("demoDataMode") ||
       window.LifeSampleAppConfig?.demoDataMode ||
       window.localStorage.getItem("lifeSampleDemoDataMode") ||
-      "mock";
-    return ["mock", "cache_first", "real"].includes(configured) ? configured : "mock";
+      "real";
+    return ["mock", "cache_first", "real"].includes(configured) ? configured : "real";
   }
 
   function hasAnswers(answers) {
