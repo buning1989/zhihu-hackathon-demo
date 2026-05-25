@@ -158,6 +158,7 @@ P0 最小字段：
 - `people[].articles[]` 必须保留原文入口和 evidence。
 - `people[].match` 解释为什么这个样本匹配当前问题。
 - `people[].experienceSummary` 是作者内容总结 / 前人经历总结主字段，只在 LLM 成功时展示；规则 fallback 只能进入 debug。
+- `people[].oneLine` 只做人物卡一句话钩子，`people[].lesson` 只做谨慎启发/风险提醒，二者都不能拼成 `experienceSummary`。
 - `people[].aiPersona` 是 AI 分身入口，不是另一套人物数据。
 - 不要把观点作者包装成亲历者。公开内容不足时，应降级为“观点样本”或关闭分身入口。
 

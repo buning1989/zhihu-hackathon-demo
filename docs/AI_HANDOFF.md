@@ -1,5 +1,25 @@
 # AI Handoff
 
+## 2026-05-25 - display copy responsibility cleanup
+
+本轮目标：收敛 `analysis / people[].oneLine / people[].lesson / people[].experienceSummary` 的展示职责，避免前端把不同字段拼成重复的人物卡总结。
+
+已完成：
+
+- 前端 adapter 不再把 `oneLine`、`lesson`、`articles[].summary` 或原文片段兜底成 `experienceSummary`。
+- `experienceSummary` 只有在 `experienceSummarySource=llm` 且 `experienceSummaryStatus=ready` 时进入主展示字段，否则保持 `null`。
+- 旧 production final result 兼容路径只保留 `oneLine` 和来源片段，不再生成伪 `experienceSummary`。
+- debug preview 不再把 `lesson` 当候选主文案 fallback。
+- 文档和 OpenAPI 明确：
+  - `analysis` 负责问题理解/整体步骤。
+  - `oneLine` 只负责人物卡一句话钩子。
+  - `lesson` 只负责风险/谨慎提醒，默认不和经历总结同屏。
+  - `experienceSummary` 是唯一的主经历总结字段。
+
+验证记录：
+
+- adapter 轻量断言通过：pending 样本不会把 `oneLine/lesson` 变成 `experienceSummary`，ready LLM 总结仍保留。
+
 ## 2026-05-25 - demo personas/sections default omitted
 
 本轮目标：在不切 LLM 主链路、不新增 feedCard 的前提下，把 `/api/demo/search` 顶层 `personas[]` 和 `sections[]` 从默认主响应中省略，降低重复派生字段维护成本。

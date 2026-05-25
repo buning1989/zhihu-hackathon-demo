@@ -313,8 +313,10 @@
       sourceRefs,
       confidence: numberOr(sample.confidence, numberOr(evidenceItem.confidence, numberOr(source.qualityScore, 0))),
       representativeQuote: quote,
-      experienceSummary: summary || quote,
       oneLine: summary || quote,
+      experienceSummary: null,
+      experienceSummarySource: "none",
+      experienceSummaryStatus: "pending",
       angle: stringOf(sample.angle || sample.evidenceType || sample.sampleType || ""),
       source: {
         title,
@@ -375,8 +377,10 @@
       sourceRefs,
       confidence: numberOr(input.persona.confidence, evidenceItems[0]?.confidence || 0),
       representativeQuote: quote,
-      experienceSummary: summary,
       oneLine: summary,
+      experienceSummary: null,
+      experienceSummarySource: "none",
+      experienceSummaryStatus: "pending",
       source: {
         title,
         evidence: quote || summary,
@@ -437,8 +441,10 @@
       sourceRefs,
       confidence: numberOr(firstEvidence.confidence, numberOr(input.source.qualityScore, 0)),
       representativeQuote: quote,
-      experienceSummary: summary || "这条来源只有片段证据，适合回到来源核对。",
       oneLine: summary || quote,
+      experienceSummary: null,
+      experienceSummarySource: "none",
+      experienceSummaryStatus: "pending",
       source: {
         title,
         evidence: quote || summary,
@@ -555,14 +561,13 @@
     const source = normalizeSource(person.source, article, person);
     const id = stringOf(person.id || person.personId || `person_${index + 1}`);
     const name = stringOf(person.name || person.displayName || person.displayLabel || article.author || "知乎用户");
-    const experienceSummary = stringOf(
-      person.experienceSummary ||
+    const oneLine = stringOf(
       person.oneLine ||
-      person.lesson ||
       article.lead ||
       source.evidence ||
       "这条样本目前只有较短公开内容，适合先查看来源片段。"
     );
+    const experienceSummary = normalizeExperienceSummary(person);
     const aiPersona = normalizePersona(person.aiPersona, id);
 
     return {
@@ -571,6 +576,7 @@
       name,
       avatar: stringOf(person.avatar || article.avatar || ""),
       pathId: stringOf(person.pathId || ""),
+      oneLine,
       experienceSummary,
       source,
       article,
@@ -578,6 +584,18 @@
       displayCanChat: Boolean(aiPersona.enabled && aiPersona.canChat),
       chatDisabledReason: aiPersona.enabled ? "" : "当前只展示来源片段，不开放对话。"
     };
+  }
+
+  function normalizeExperienceSummary(person) {
+    const summary = stringOf(person.experienceSummary);
+    const source = stringOf(person.experienceSummarySource);
+    const status = stringOf(person.experienceSummaryStatus);
+
+    if (summary && source === "llm" && status === "ready") {
+      return summary;
+    }
+
+    return null;
   }
 
   function normalizeArticle(article, index) {

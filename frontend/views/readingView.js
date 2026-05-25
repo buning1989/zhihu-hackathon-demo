@@ -13,7 +13,7 @@
     const article = person.article || {};
     const paragraphs = Array.isArray(article.paragraphs) ? article.paragraphs : [];
     const sourceUrl = person.source?.url || article.sourceUrl || "";
-    const evidenceText = person.source?.evidence || person.representativeQuote || article.lead || person.experienceSummary || "";
+    const evidenceText = person.source?.evidence || person.representativeQuote || article.lead || person.oneLine || person.experienceSummary || "";
     const articleBody = paragraphs.length
       ? paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")
       : `<p>${escapeHtml(evidenceText || "当前只展示可追溯片段。")}</p>`;

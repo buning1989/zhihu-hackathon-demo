@@ -136,7 +136,7 @@ Content-Type: application/json
 - `people[].evidenceStatus`：`llm_extracted | raw_snippet_only`。`raw_snippet_only` 时，前端文案显示“来源片段”，不要显示“AI 证据提炼”。
 - `people[].canChat`：最终追问入口门控。`false` 时按钮显示“查看来源片段”，不要显示聊天入口。
 - `people[].displayLabel / displayTradeoff`：展示分层和限制说明，优先用于卡片标签和 CTA 降级说明。
-- `people[].oneLine`：人物卡核心句。
+- `people[].oneLine`：人物卡核心句，只负责首屏钩子；不要作为 `experienceSummary` fallback。
 - `people[].experienceSummary`：作者内容总结 / 前人经历总结。只有 `experienceSummarySource === "llm"` 且 `experienceSummaryStatus === "ready"` 时作为主展示。
 - `people[].experienceSummarySource`：`llm | fallback | none`。前端主效果只展示 `llm`；`fallback`/`none` 不要当作正式总结。
 - `people[].experienceSummaryStatus`：`ready | pending | failed`。`pending/failed` 时隐藏总结区或展示轻量占位，不要改读规则摘要。
@@ -145,7 +145,7 @@ Content-Type: application/json
 - `people[].who`：TA 是谁的说明。注意这是基于公开内容整理，不等同于作者完整人生。
 - `people[].overlaps[]`：与当前用户问题的重叠点。
 - `people[].timeline[]`：经历线索，P0 可是 mock/rule。
-- `people[].lesson`：可展示的经验总结，必须基于 evidence。
+- `people[].lesson`：谨慎启发/风险提醒，必须基于 evidence；默认不在人物卡主摘要位展示。
 - `people[].articles[]`：原文入口和证据。
 - `people[].match`：匹配解释。
 - `people[].aiPersona`：AI 分身入口。
@@ -229,7 +229,7 @@ people[].experienceSummary
 
 - `people[].articles[].summary`：这是文章/回答摘要 fallback，更像内容片段。
 - `people[].oneLine`：这是人物卡一句话，不等于完整经历总结。
-- `people[].lesson`：这是谨慎启发，不是作者经历复盘。
+- `people[].lesson`：这是谨慎启发/风险提醒，不是作者经历复盘，默认不和 `experienceSummary` 同屏。
 - `debug.experienceSummaryDebug[].fallbackSummary`：只用于联调排查，不能展示给用户。
 
 当 `experienceSummaryStatus` 是 `pending` 或 `failed` 时，前端应隐藏该区域或展示“总结暂不可用”的轻量状态；不要把规则生成的 `fallbackSummary`、`oneLine`、`lesson` 拼成“作者内容总结”。

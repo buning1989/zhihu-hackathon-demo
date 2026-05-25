@@ -122,7 +122,7 @@ Content-Type: application/json
 | `role` | string | 样本角色说明。 | 半稳定 |
 | `badge` | string | 短标签。 | 半稳定 |
 | `avatar` | string | 作者头像或空字符串。 | 半稳定 |
-| `oneLine` | string | 卡片一句话。 | 半稳定 |
+| `oneLine` | string | 人物卡一句话钩子；不作为 `experienceSummary` fallback。 | 半稳定 |
 | `experienceSummary` | string/null | LLM 生成的经历总结；mock/未生成时为 `null`。 | 半稳定 |
 | `experienceSummarySource` | `llm`/`fallback`/`none` | 总结来源。 | 稳定 |
 | `experienceSummaryStatus` | `ready`/`pending`/`failed` | 总结状态。 | 稳定 |
@@ -131,7 +131,7 @@ Content-Type: application/json
 | `who` | string | 样本边界说明。 | 半稳定 |
 | `overlaps` | string[] | 与当前 query 的重叠变量。 | 半稳定 |
 | `timeline` | array | 公开内容里的时间/经历线索。 | 半稳定 |
-| `lesson` | string | 谨慎启发。 | 半稳定 |
+| `lesson` | string | 谨慎启发/风险提醒；默认不和 `experienceSummary` 同屏展示。 | 半稳定 |
 | `articles` | array | 原文入口和证据。 | 稳定 |
 | `match` | object | 匹配分数、理由、风险和证据引用。 | 稳定 |
 | `aiPersona` | object | AI 分身入口。 | 稳定 |

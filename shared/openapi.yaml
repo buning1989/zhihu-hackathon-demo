@@ -1561,6 +1561,7 @@ components:
           type: string
         oneLine:
           type: string
+          description: Card hook sentence only. Do not use as fallback experienceSummary.
         experienceSummary:
           type:
             - string
@@ -1610,6 +1611,7 @@ components:
             $ref: "#/components/schemas/TimelineItem"
         lesson:
           type: string
+          description: Optional caution/risk reminder. Do not show as the primary person summary or combine with experienceSummary on the same card by default.
         articles:
           type: array
           minItems: 1

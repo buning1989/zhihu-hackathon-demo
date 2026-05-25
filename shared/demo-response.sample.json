@@ -13,6 +13,7 @@
     "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
     "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
     "paths should be differentiated life paths with summary, whyRelevant, tradeoff, diversityKey, and sourceRefs.",
+    "people[].oneLine is only the card hook; people[].lesson is only a caution/risk reminder and should not be merged into experienceSummary.",
     "people[].experienceSummary is the primary author/sample experience summary and should be displayed only when source=llm and status=ready.",
     "Debug fallbackSummary may exist for troubleshooting, but it is not a frontend primary display field.",
     "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape.",

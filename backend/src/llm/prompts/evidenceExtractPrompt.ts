@@ -30,9 +30,9 @@ export const EVIDENCE_EXTRACT_SYSTEM_PROMPT = String.raw`
       "name": "知乎用户",
       "sampleType": "experience_sample",
       "sourceRefs": ["source_x"],
-      "oneLine": "基于证据的一句话整理",
+      "oneLine": "只用于人物卡首屏的一句话钩子，不是经历总结",
       "overlaps": ["与用户问题的重叠点"],
-      "lesson": "基于证据的谨慎启发"
+      "lesson": "仅用于风险/提醒位置的谨慎启发，不要复述 oneLine"
     }
   ],
   "pathSignals": [

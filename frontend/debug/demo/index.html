@@ -958,7 +958,7 @@
                         <strong>${escapeHtml(person.name || person.id || "-")}</strong>
                         <span class="pill">${escapeHtml(person.pathId || "-")}</span>
                       </div>
-                      <p class="candidate-text">${escapeHtml(person.oneLine || person.experienceSummary || person.lesson || "-")}</p>
+                      <p class="candidate-text">${escapeHtml(person.oneLine || displayExperienceSummary(person) || "-")}</p>
                     </article>
                   `).join("")}
                 </div>
@@ -967,6 +967,18 @@
           </div>
         </section>
       `;
+    }
+
+    function displayExperienceSummary(person) {
+      if (
+        person?.experienceSummaryStatus === "ready"
+        && person?.experienceSummarySource === "llm"
+        && person?.experienceSummary
+      ) {
+        return person.experienceSummary;
+      }
+
+      return "";
     }
 
     function renderTimings(run) {

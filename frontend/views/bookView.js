@@ -13,7 +13,7 @@
       return `
         <article class="book-block">
           <h2 class="book-name">${escapeHtml(person.name)}</h2>
-          <p class="book-text">${escapeHtml(person.representativeQuote || person.article?.paragraphs?.[0] || person.experienceSummary)}</p>
+          <p class="book-text">${escapeHtml(person.representativeQuote || person.article?.paragraphs?.[0] || person.oneLine || person.experienceSummary)}</p>
           <button class="btn-text" type="button" data-action="open-original" data-person-id="${escapeAttribute(person.id)}">${icon("book-open")}查看片段</button>
         </article>
       `;

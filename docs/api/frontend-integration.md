@@ -267,12 +267,12 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 
 - 主标题：`name`，缺失时显示“知乎用户”。
 - 副信息：`role`、`badge`、所属 path 标题。
-- 核心句：`oneLine`。
+- 核心句：`oneLine`，只作为人物卡一句话钩子，不作为经历总结 fallback。
 - 经历总结：只有 `experienceSummaryStatus === "ready"` 且 `experienceSummarySource === "llm"` 时展示 `experienceSummary`。
 - 背景说明：`who`，注意它是公开内容整理，不是作者完整传记。
 - 重叠点：`overlaps[]`。
 - 时间线：`timeline[]`，每项都可通过 `evidenceIds/sourceRefs` 溯源。
-- 谨慎启发：`lesson`，不要把它当作“作者内容总结 / 前人经历总结”主字段。
+- 谨慎启发：`lesson`，仅用于风险/提醒位置；不要把它当作“作者内容总结 / 前人经历总结”主字段，也不要默认和 `experienceSummary` 同屏。
 - 原文入口：读 `articles[]`，优先使用 `sourceUrl`，再用 `url`。
 - 匹配解释：读 `match.reasons[]`、`matchedVariables[]`、`riskNotes[]` 和分数字段。
 

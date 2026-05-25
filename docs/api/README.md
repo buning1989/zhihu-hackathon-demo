@@ -109,7 +109,7 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 ## 渲染关系
 
 - `paths[]`：渲染路径图或路径 tab。每个 path 的 `evidenceIds` / `sourceRefs` 可用于显示“来自几条公开内容”。
-- `people[]`：渲染人物样本卡。按 `person.pathId` 找到对应 path；`experienceSummaryStatus=ready` 且 `experienceSummarySource=llm` 时展示 `experienceSummary`；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
+- `people[]`：渲染人物样本卡。按 `person.pathId` 找到对应 path；`oneLine` 只做卡片一句话；`experienceSummaryStatus=ready` 且 `experienceSummarySource=llm` 时展示 `experienceSummary`；`lesson` 仅用于风险/提醒位；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
 - `people[].aiPersona`：渲染单个人物卡上的 AI 分身入口。展示前检查 `enabled`、`personaId`、`boundary` 和 `grounding.articleIds[]`。
 - `personas[]`：兼容“可追问的经验回声”快捷入口。当前默认从 `people[].aiPersona` 派生；点击后用 `personId` 回查 `people[]`，不要从 `personas[]` 补全人物信息。
 
