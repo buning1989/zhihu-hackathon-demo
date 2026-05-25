@@ -5,6 +5,10 @@ import { createAuthSession, type UserContext } from "../auth/session.js";
 import { llmRouter, type LlmTaskType } from "../llm/llmRouter.js";
 import { createOpenAICompatibleJsonCompletion } from "../llm/clients/openaiCompatible.js";
 import { composeMultiLlmDemoSearchResponse } from "../llm/demoSearchOrchestrator.js";
+import {
+  createDeterministicSimilarityClarificationPlan,
+  readClarificationAnswerResolution
+} from "../llm/similarityClarificationPlanner.js";
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import { demoSessionCacheService } from "../services/demoSessionCache.service.js";
 import { searchService } from "../services/search.service.js";
@@ -12,6 +16,7 @@ import {
   DEMO_PERSONA_BOUNDARY_NOTICE,
   PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE
 } from "../types/demo.types.js";
+import type { DemoClarificationAnswers, DemoDebugClarificationContext } from "../types/demo.types.js";
 import type { SearchItem } from "../types/api.types.js";
 
 const PERSONA_CHAT_ACCEPTANCE_MESSAGES = [
@@ -77,6 +82,7 @@ try {
     "demo similarity clarifyingCard"
   );
   await assertSimilarityClarificationRegressionCases(baseUrl);
+  await assertClarifiedQueryExpansionUsesLegacyAnswers();
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -624,6 +630,161 @@ function assertClarifiedQueryPlanUsesAnswers(
   }
 }
 
+async function assertClarifiedQueryExpansionUsesLegacyAnswers(): Promise<void> {
+  const cases: Array<{
+    query: string;
+    answers: DemoClarificationAnswers;
+    expectedTokens: string[];
+  }> = [
+    {
+      query: "28岁程序员不想继续写代码，转产品经理靠谱吗？",
+      answers: {
+        techDirection: "backend",
+        workYears: "5_to_8_years",
+        productRelatedExperience: "requirement_review"
+      },
+      expectedTokens: ["后端", "5-8年", "需求评审"]
+    },
+    {
+      query: "体制内工作五年，想辞职做自媒体，会不会太冒险？",
+      answers: {
+        institutionRoleType: "publicity_writing",
+        contentDirection: "career_experience",
+        contentFoundation: "writing_expression"
+      },
+      expectedTokens: ["宣传文字", "写作表达", "自媒体"]
+    },
+    {
+      query: "施工单位正式工想离职，不知道还能做什么？",
+      answers: {
+        function: "site_engineering",
+        workYears: "5_to_8_years",
+        engineeringAbility: "site_coordination"
+      },
+      expectedTokens: ["现场工程", "5-8年", "项目管理"]
+    },
+    {
+      query: "30岁女教师想转行心理咨询，还有机会吗？",
+      answers: {
+        teacherStage: "middle_high_school",
+        counselingFoundation: "certificate_exam",
+        counselingRelatedExperience: "student_comm"
+      },
+      expectedTokens: ["初中", "证书", "学生沟通"]
+    },
+    {
+      query: "广州设计师裸辞后接私单，能养活自己吗？",
+      answers: {
+        skillDirection: "ui_ux",
+        workYears: "3_to_5_years",
+        resourceType: "client_communication"
+      },
+      expectedTokens: ["UI", "3-5年", "客户沟通"]
+    },
+    {
+      query: "金融公司中后台想辞职考公，值不值得？",
+      answers: {
+        function: "risk_compliance",
+        examStage: "started_prep",
+        professionalBackground: "finance_3_to_5"
+      },
+      expectedTokens: ["风控", "合规", "3-5年"]
+    }
+  ];
+
+  for (const [index, testCase] of cases.entries()) {
+    const unclarified = await withStubbedOrchestrator({
+      configuredTasks: new Set(),
+      outputs: {},
+      query: testCase.query,
+      count: 1,
+      searchItems: [createObjectiveSearchItem(index, testCase.query)]
+    });
+    const clarificationContext = createTestClarificationContext(
+      testCase.query,
+      testCase.answers
+    );
+    const clarified = await withStubbedOrchestrator({
+      configuredTasks: new Set(),
+      outputs: {},
+      query: testCase.query,
+      count: 1,
+      searchItems: [createObjectiveSearchItem(index + 20, testCase.query)],
+      clarificationContext
+    });
+
+    const answerLabelText = Object.values(clarificationContext.answerLabels).join(" ");
+    for (const rawId of Object.values(testCase.answers)) {
+      assertNotIncludes(answerLabelText, rawId, `${testCase.query}: answerLabels raw id`);
+    }
+
+    const queryPlanText = [
+      ...(clarified.debug.intentStage.queryPlan?.primary ?? []),
+      ...(clarified.debug.intentStage.queryPlan?.secondary ?? [])
+    ].join(" ");
+    const matchedPlanTokenCount = testCase.expectedTokens.filter((token) =>
+      queryPlanText.includes(token)
+    ).length;
+    if (matchedPlanTokenCount < 2) {
+      throw new Error(
+        `${testCase.query}: expected clarified queryPlan to include at least 2 answer tokens; got ${queryPlanText}`
+      );
+    }
+
+    const unclarifiedQueries = unclarified.debug.search?.queriesUsed ?? [];
+    const clarifiedQueries = clarified.debug.search?.queriesUsed ?? [];
+    assertNonEmptyArray(clarifiedQueries, `${testCase.query}: clarified queriesUsed`);
+    assertPrimaryQueryQuality(
+      clarifiedQueries.slice(0, 3),
+      `${testCase.query}: clarified queriesUsed first3`
+    );
+    if (JSON.stringify(unclarifiedQueries) === JSON.stringify(clarifiedQueries)) {
+      throw new Error(`${testCase.query}: clarified queriesUsed should differ from unclarified`);
+    }
+
+    const clarifiedQueryHitCount = clarifiedQueries.filter((query) =>
+      testCase.expectedTokens.some((token) => query.includes(token))
+    ).length;
+    if (clarifiedQueryHitCount < 2) {
+      throw new Error(
+        `${testCase.query}: expected at least 2 clarified queriesUsed with answer tokens; got ${clarifiedQueries.join(" | ")}`
+      );
+    }
+  }
+}
+
+function createTestClarificationContext(
+  query: string,
+  answers: DemoClarificationAnswers
+): DemoDebugClarificationContext {
+  const basePlan = createDeterministicSimilarityClarificationPlan(query);
+  const resolution = readClarificationAnswerResolution(basePlan.card, answers);
+  const answeredPlan = createDeterministicSimilarityClarificationPlan(
+    query,
+    resolution.answerLabels
+  );
+  const searchHints = [
+    ...(answeredPlan.debug.queryPlan?.primary ?? []),
+    ...(answeredPlan.debug.queryPlan?.secondary ?? [])
+  ].slice(0, 8);
+
+  return {
+    originalQuery: query,
+    answers,
+    answerLabels: resolution.answerLabels,
+    ...(Object.keys(resolution.unresolvedAnswers).length > 0
+      ? { unresolvedAnswers: resolution.unresolvedAnswers }
+      : {}),
+    answerSummary: Object.entries(resolution.answerLabels)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join("；"),
+    searchHints,
+    applied: true,
+    searchHintCount: searchHints.length,
+    queryPlan: answeredPlan.debug.queryPlan
+  };
+}
+
 function readClarifyingCardQuestionLabels(value: unknown): string[] {
   if (!isRecord(value) || !Array.isArray(value.questions)) {
     return [];
@@ -1141,6 +1302,7 @@ interface StubbedOrchestratorOptions {
   configuredTasks: Set<LlmTaskType>;
   outputs: Partial<Record<LlmTaskType, string>>;
   userContext?: UserContext;
+  clarificationContext?: DemoDebugClarificationContext;
   query?: string;
   count?: number;
   searchItems?: SearchItem[];
@@ -1174,7 +1336,8 @@ async function withStubbedOrchestrator(options: StubbedOrchestratorOptions) {
       count: options.count ?? 1,
       dataMode: "real",
       startedAt: Date.now(),
-      userContext: options.userContext
+      userContext: options.userContext,
+      clarificationContext: options.clarificationContext
     });
   } finally {
     searchService.search = originalSearch;

@@ -38,9 +38,15 @@ export interface SimilarityClarificationPlanResult {
   fallbackReason?: string;
 }
 
+export interface ClarificationAnswerResolution {
+  answerLabels: DemoClarificationAnswers;
+  unresolvedAnswers: DemoClarificationAnswers;
+}
+
 const SELECTED_QUESTION_LIMIT = 3;
 const MIN_LLM_CANDIDATES = 6;
 const MAX_CLARIFICATION_OPTIONS = 6;
+const WEAK_QUERY_TOKENS = new Set(["产品", "年以内", "应届"]);
 
 const KEYWORD_DICTIONARY = [
   "北大",
@@ -58,9 +64,18 @@ const KEYWORD_DICTIONARY = [
   "毕业",
   "计算机",
   "软件",
+  "后端",
+  "前端",
+  "全栈",
+  "算法",
+  "测试",
+  "QA",
   "数据",
   "金融",
   "经管",
+  "风控",
+  "合规",
+  "中后台",
   "法律",
   "财会",
   "机械",
@@ -87,19 +102,39 @@ const KEYWORD_DICTIONARY = [
   "县城",
   "北京",
   "上海",
+  "深圳",
+  "广州",
   "杭州",
   "老家",
   "工厂",
   "产品经理",
   "产品",
   "程序员",
+  "需求评审",
+  "项目协调",
   "教师",
   "老师",
+  "初中",
+  "高中",
+  "证书",
+  "学生沟通",
   "施工单位",
   "工程",
+  "现场工程",
+  "现场协调",
+  "项目管理",
   "正式工",
+  "设计师",
+  "UI",
+  "UX",
+  "客户沟通",
   "自媒体",
+  "写作表达",
+  "宣传文字",
   "心理咨询",
+  "考公",
+  "备考",
+  "接私单",
   "开店",
   "买房",
   "租房",
@@ -117,6 +152,97 @@ const KEYWORD_DICTIONARY = [
   "工作五年",
   "工作十年"
 ];
+
+const LEGACY_ANSWER_LABELS = new Map<string, string>([
+  ["frontend", "前端"],
+  ["backend", "后端"],
+  ["algorithm_data", "算法 数据"],
+  ["test_qa", "测试 QA"],
+  ["full_stack", "全栈"],
+  ["under_1_year", "1年以内"],
+  ["1_to_3_years", "1-3年"],
+  ["3_to_5_years", "3-5年"],
+  ["5_to_8_years", "5-8年"],
+  ["8_to_10_years", "8-10年"],
+  ["over_8_years", "8年以上"],
+  ["over_10_years", "10年以上"],
+  ["wrote_prd", "需求文档"],
+  ["requirement_review", "需求评审"],
+  ["project_coordination", "项目协调"],
+  ["business_user_comm", "业务沟通"],
+  ["tech_only", "技术实现"],
+  ["admin_general", "行政 综合"],
+  ["education_medical", "教育 医疗"],
+  ["public_service", "政务 公共服务"],
+  ["finance_audit", "财务 审计"],
+  ["publicity_writing", "宣传文字"],
+  ["career_experience", "职场经验"],
+  ["education_family", "教育 家庭"],
+  ["social_observation", "社会观察"],
+  ["knowledge", "知识科普"],
+  ["lifestyle", "生活方式"],
+  ["writing_expression", "写作表达"],
+  ["video_editing", "视频 剪辑"],
+  ["account_operation", "账号运营"],
+  ["domain_expertise", "专业领域积累"],
+  ["community", "社群资源"],
+  ["site_engineering", "现场工程"],
+  ["cost_budget", "造价 预算"],
+  ["safety_quality", "安全 质量"],
+  ["safety_quality_docs", "安全质量 资料"],
+  ["materials_procurement", "材料采购"],
+  ["materials_supply", "材料供应链"],
+  ["office_admin", "办公室 行政"],
+  ["site_coordination", "现场协调 项目管理"],
+  ["client_subcontractor", "甲方沟通 分包管理"],
+  ["certificate", "证书 工程资质"],
+  ["kindergarten", "幼儿园"],
+  ["primary_school", "小学"],
+  ["middle_high_school", "初中 高中"],
+  ["vocational_college", "职校 高校"],
+  ["training_center", "教培机构"],
+  ["psychology_education_major", "心理学 教育学"],
+  ["systematic_course", "系统课程"],
+  ["certificate_exam", "证书 考试基础"],
+  ["student_psychology", "学生心理工作"],
+  ["interest_only", "兴趣"],
+  ["student_comm", "学生沟通"],
+  ["home_school_comm", "家校沟通"],
+  ["case_counseling", "个案辅导"],
+  ["class_management", "班级管理"],
+  ["emotional_support", "情绪支持"],
+  ["ui_ux", "UI UX"],
+  ["brand_graphic", "平面 品牌"],
+  ["ecommerce_design", "电商设计"],
+  ["space_design", "室内 空间"],
+  ["illustration_visual", "插画 视觉"],
+  ["portfolio", "作品 案例"],
+  ["company_projects", "公司项目经验"],
+  ["company_experience", "公司项目经验"],
+  ["side_projects", "副业 个人项目"],
+  ["public_cases", "公开案例"],
+  ["client_cases", "客户案例"],
+  ["client_communication", "客户沟通"],
+  ["friends_colleagues", "朋友 前同事资源"],
+  ["platform_account", "平台账号 个人主页"],
+  ["risk_compliance", "风控 合规"],
+  ["ops_clearing", "运营 清算"],
+  ["hr_admin", "人力 行政"],
+  ["tech_data", "技术 数据"],
+  ["idea_only", "初步想法"],
+  ["chosen_region", "确定地区"],
+  ["chosen_role", "确定岗位"],
+  ["started_prep", "已经备考"],
+  ["taken_exam", "考过一次"],
+  ["finance_early", "金融行业 早期"],
+  ["finance_3_to_5", "金融行业 3-5年"],
+  ["finance_over_5", "金融行业 5年以上"],
+  ["accounting_law_cs", "财会 法律 计算机"],
+  ["not_sure", "还不确定"],
+  ["unknown", "还不确定"],
+  ["undecided", "还没确定"],
+  ["none", "暂时没有"]
+]);
 
 export class SimilarityClarificationPlanner {
   async create(
@@ -187,18 +313,22 @@ export function buildSimilarityQueryPlan(input: {
     ...(input.choiceFrame.avoidPath ? extractQueryTokensFromText(input.choiceFrame.avoidPath) : []),
     ...input.choiceFrame.targetOptions.flatMap(extractQueryTokensFromText)
   ]);
-  const selectedTokens = unique(
-    input.selectedQuestions.flatMap((question) => question.queryTokens ?? [])
-  );
-  const answerTokens = unique(
+  const hasAnswers = Object.keys(input.answerLabels ?? {}).length > 0;
+  const selectedTokens = hasAnswers
+    ? []
+    : refineQueryTokens(input.selectedQuestions.flatMap((question) => question.queryTokens ?? []));
+  const answerTokens = refineQueryTokens(
     Object.values(input.answerLabels ?? {}).flatMap(extractQueryTokensFromText)
   );
-  const originalTokens = extractQueryTokensFromText(input.originalQuery);
+  const originalTokens = refineQueryTokens(extractQueryTokensFromText(input.originalQuery));
   const primary: string[] = [];
   const secondary: string[] = [];
   const fallback: string[] = [];
-  const pathCore = pathTokens.length > 0 ? pathTokens : originalTokens.slice(0, 2);
-  const identityCore = preferTokens([...knownTokens, ...answerTokens], [
+  const pathCore = refineQueryTokens(pathTokens.length > 0 ? pathTokens : originalTokens.slice(0, 2));
+  const identityCore = preferTokens(refineQueryTokens([...knownTokens, ...answerTokens]), [
+    "28岁",
+    "30岁",
+    "35岁",
     "新能源汽车",
     "新能源",
     "研究生",
@@ -212,11 +342,18 @@ export function buildSimilarityQueryPlan(input: {
     "应届",
     "计算机",
     "机械",
+    "后端",
     "程序员",
     "教师",
     "施工单位",
+    "设计师",
+    "金融",
+    "中后台",
+    "风控",
+    "合规",
     "体制内",
     "北京",
+    "广州",
     "杭州",
     "县城",
     "异地恋",
@@ -224,19 +361,36 @@ export function buildSimilarityQueryPlan(input: {
     "租房"
   ]);
 
+  if (answerTokens.length > 0) {
+    appendQuery(primary, [...identityCore.slice(0, 2), ...answerTokens.slice(0, 2), ...pathCore.slice(0, 2)]);
+    for (const answer of Object.values(input.answerLabels ?? {})) {
+      appendQuery(primary, [
+        ...identityCore.slice(0, 2),
+        ...extractQueryTokensFromText(answer).slice(0, 2),
+        ...pathCore.slice(0, 2)
+      ]);
+    }
+    appendQuery(primary, [...identityCore.slice(0, 2), ...pathCore.slice(0, 2)]);
+    appendQuery(primary, [...answerTokens.slice(0, 3), ...pathCore.slice(0, 2)]);
+  }
   appendQuery(primary, [...identityCore.slice(0, 2), ...pathCore.slice(0, 3)]);
-  appendQuery(primary, [...answerTokens.slice(0, 3), ...pathCore.slice(0, 2)]);
   for (const answer of Object.values(input.answerLabels ?? {})) {
     appendQuery(primary, [...extractQueryTokensFromText(answer).slice(0, 2), ...pathCore.slice(0, 3)]);
   }
   appendQuery(primary, [...knownTokens.slice(0, 3), ...answerTokens.slice(0, 2)]);
-  appendQuery(primary, [...knownTokens.slice(0, 2), ...selectedTokens.slice(0, 2), ...pathCore.slice(0, 2)]);
+  if (selectedTokens.length > 0) {
+    appendQuery(primary, [...knownTokens.slice(0, 2), ...selectedTokens.slice(0, 2), ...pathCore.slice(0, 2)]);
+  }
 
   appendQuery(secondary, [...knownTokens.slice(0, 2), ...selectedTokens.slice(0, 3)]);
   appendQuery(secondary, [...selectedTokens.slice(0, 3), ...pathCore.slice(0, 2)]);
   appendQuery(secondary, [...originalTokens.slice(0, 2), ...pathCore.slice(0, 2)]);
+  appendQuery(secondary, [...knownTokens.slice(0, 2), ...answerTokens.slice(0, 3)]);
+  appendQuery(secondary, [...answerTokens.slice(0, 2), ...pathCore.slice(0, 2)]);
   for (const question of input.selectedQuestions) {
-    appendQuery(secondary, [...(question.queryTokens ?? []).slice(0, 2), ...pathCore.slice(0, 2)]);
+    if (!hasAnswers) {
+      appendQuery(secondary, [...(question.queryTokens ?? []).slice(0, 2), ...pathCore.slice(0, 2)]);
+    }
   }
 
   appendQuery(fallback, [...pathCore.slice(0, 2), "复盘"]);
@@ -482,6 +636,8 @@ function extractTargetOptions(query: string): string[] {
     "产品经理",
     "心理咨询",
     "自媒体",
+    "考公",
+    "接私单",
     "工厂",
     "开店",
     "对方城市",
@@ -502,6 +658,8 @@ function extractTargetOptions(query: string): string[] {
     [/进互联网产品岗/, "互联网产品岗"],
     [/转行心理咨询|心理咨询/, "心理咨询"],
     [/做自媒体|自媒体/, "自媒体"],
+    [/考公/, "考公"],
+    [/接私单|私单/, "接私单"],
     [/回老家开店|老家开店/, "老家开店"],
     [/回老家/, "回老家"],
     [/去对方城市/, "对方城市"],
@@ -537,6 +695,10 @@ function extractCurrentPath(query: string): string | null {
 
   if (query.includes("教师") || query.includes("老师")) {
     return "教师";
+  }
+
+  if (query.includes("设计师") || query.includes("设计")) {
+    return "设计师";
   }
 
   if (query.includes("自媒体")) {
@@ -833,18 +995,36 @@ function knownFactsToSlots(
   }, {});
 }
 
+export function readClarificationAnswerResolution(
+  card: DemoClarifyingCard,
+  answers: DemoClarificationAnswers
+): ClarificationAnswerResolution {
+  const questionMap = new Map(card.questions.map((question) => [question.id, question]));
+  const answerLabels: DemoClarificationAnswers = {};
+  const unresolvedAnswers: DemoClarificationAnswers = {};
+
+  for (const [questionId, answer] of Object.entries(answers)) {
+    const question = questionMap.get(questionId);
+    const option = question?.options?.find((item) => item.id === answer);
+    const legacyLabel = readLegacyAnswerLabel(answer);
+    const resolved = normalizeAnswerLabel(option?.label ?? legacyLabel ?? answer);
+    answerLabels[questionId] = resolved;
+    if (!option && !legacyLabel && looksLikeRawAnswerId(answer)) {
+      unresolvedAnswers[questionId] = answer;
+    }
+  }
+
+  return {
+    answerLabels,
+    unresolvedAnswers
+  };
+}
+
 export function readClarificationAnswerLabels(
   card: DemoClarifyingCard,
   answers: DemoClarificationAnswers
 ): DemoClarificationAnswers {
-  const questionMap = new Map(card.questions.map((question) => [question.id, question]));
-  return Object.fromEntries(
-    Object.entries(answers).map(([questionId, answer]) => {
-      const question = questionMap.get(questionId);
-      const option = question?.options?.find((item) => item.id === answer);
-      return [questionId, option?.label ?? answer];
-    })
-  );
+  return readClarificationAnswerResolution(card, answers).answerLabels;
 }
 
 function readKnownFact(value: Record<string, unknown>): DemoClarificationKnownFact | null {
@@ -935,16 +1115,76 @@ function extractQueryTokensFromText(value: string): string[] {
     .filter((item) => item.length >= 2 && item.length <= 8)
     .filter((item) => !["其他", "暂时没有", "还不确定", "目标城市未定"].includes(item));
 
-  return unique([...dictionaryTokens, ...splitTokens]).slice(0, 8);
+  return refineQueryTokens([...dictionaryTokens, ...splitTokens]).slice(0, 8);
 }
 
 function appendQuery(target: string[], tokens: string[]): void {
-  const query = unique(tokens.map((token) => sanitizeShortText(token, 10)).filter(Boolean))
+  const query = refineQueryTokens(tokens.map((token) => sanitizeShortText(token, 10)).filter(Boolean))
     .slice(0, 5)
     .join(" ");
   if (query.split(/\s+/).filter(Boolean).length >= 2) {
     target.push(query);
   }
+}
+
+function refineQueryTokens(tokens: string[]): string[] {
+  const normalizedTokens = unique(
+    tokens
+      .map((token) => normalizeAnswerToken(token))
+      .filter(Boolean)
+  );
+  const tokenSet = new Set(normalizedTokens);
+
+  return normalizedTokens.filter((token) => {
+    if (WEAK_QUERY_TOKENS.has(token) && normalizedTokens.length > 2) {
+      return false;
+    }
+    if (token === "产品" && tokenSet.has("产品经理")) {
+      return false;
+    }
+    if (token === "工程" && (tokenSet.has("现场工程") || tokenSet.has("施工单位"))) {
+      return false;
+    }
+    if (token === "心理" && tokenSet.has("心理咨询")) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function normalizeAnswerToken(token: string): string {
+  return normalizeText(token)
+    .replace(/^5-8 年$/, "5-8年")
+    .replace(/^3-5 年$/, "3-5年")
+    .replace(/^1-3 年$/, "1-3年")
+    .replace(/^UI$/i, "UI")
+    .replace(/^UX$/i, "UX")
+    .replace(/^QA$/i, "QA")
+    .replace(/^backend$/i, "后端")
+    .replace(/^frontend$/i, "前端");
+}
+
+function normalizeAnswerLabel(value: string): string {
+  const legacy = readLegacyAnswerLabel(value);
+  return normalizeText(legacy ?? value)
+    .replace(/\s*[/／]\s*/g, " ")
+    .replace(/5\s*-\s*8\s*年/g, "5-8年")
+    .replace(/3\s*-\s*5\s*年/g, "3-5年")
+    .replace(/1\s*-\s*3\s*年/g, "1-3年")
+    .replace(/宣传\s+文字材料/g, "宣传文字")
+    .replace(/现场\s+工程/g, "现场工程")
+    .replace(/现场协调\s+项目管理/g, "现场协调 项目管理")
+    .replace(/风控\s+合规/g, "风控 合规")
+    .replace(/UI\s+UX/gi, "UI UX")
+    .trim();
+}
+
+function readLegacyAnswerLabel(value: string): string | undefined {
+  return LEGACY_ANSWER_LABELS.get(value.trim());
+}
+
+function looksLikeRawAnswerId(value: string): boolean {
+  return /^[a-z][a-z0-9_]*$/i.test(value.trim());
 }
 
 function preferTokens(tokens: string[], preferredOrder: string[]): string[] {
@@ -1006,6 +1246,9 @@ function extractRole(query: string): string | null {
   }
   if (/产品经理|产品岗/.test(query)) {
     return "产品";
+  }
+  if (/中后台|职能/.test(query)) {
+    return "中后台";
   }
   return null;
 }

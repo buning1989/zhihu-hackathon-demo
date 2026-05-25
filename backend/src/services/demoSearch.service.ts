@@ -17,7 +17,7 @@ import {
 } from "../llm/searchQueryPlan.js";
 import {
   createDeterministicSimilarityClarificationPlan,
-  readClarificationAnswerLabels,
+  readClarificationAnswerResolution,
   similarityClarificationPlanner
 } from "../llm/similarityClarificationPlanner.js";
 import {
@@ -228,7 +228,7 @@ async function applyDemoClarificationState(
       clarificationContext ?? buildClarificationContext(request.query, request.clarificationAnswers);
     const answeredPlan = createDeterministicSimilarityClarificationPlan(
       request.query,
-      context.answerLabels
+      getSearchableAnswerLabels(context)
     );
     response.clarifyingCard = buildHiddenClarifyingCard();
     response.clarificationStage = {
@@ -271,8 +271,17 @@ function buildClarificationContext(
   answers: DemoClarificationAnswers
 ): DemoDebugClarificationContext {
   const basePlan = createDeterministicSimilarityClarificationPlan(query);
-  const answerLabels = readClarificationAnswerLabels(basePlan.card, answers);
-  const answeredPlan = createDeterministicSimilarityClarificationPlan(query, answerLabels);
+  const { answerLabels, unresolvedAnswers } = readClarificationAnswerResolution(
+    basePlan.card,
+    answers
+  );
+  const searchableAnswerLabels = Object.fromEntries(
+    Object.entries(answerLabels).filter(([key]) => !unresolvedAnswers[key])
+  );
+  const answeredPlan = createDeterministicSimilarityClarificationPlan(
+    query,
+    searchableAnswerLabels
+  );
   const questionLabels = new Map(
     basePlan.card.questions.map((question) => [question.id, question.label])
   );
@@ -298,12 +307,21 @@ function buildClarificationContext(
     originalQuery: query,
     answers,
     answerLabels,
+    ...(Object.keys(unresolvedAnswers).length > 0 ? { unresolvedAnswers } : {}),
     answerSummary: answerParts.join("；"),
     searchHints,
     applied: true,
     searchHintCount: searchHints.length,
     queryPlan
   };
+}
+
+function getSearchableAnswerLabels(
+  context: DemoDebugClarificationContext
+): DemoClarificationAnswers {
+  return Object.fromEntries(
+    Object.entries(context.answerLabels).filter(([key]) => !context.unresolvedAnswers?.[key])
+  );
 }
 
 function buildRuleClarifyingCard(query: string): {
