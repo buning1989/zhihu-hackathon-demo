@@ -2441,8 +2441,7 @@ function createFallbackEvidenceExtract(candidates: CleanedCandidate[]): Evidence
 function createEmptyDemoComposeOutput(): DemoResponseComposeOutput {
   return {
     paths: [],
-    people: [],
-    personas: []
+    people: []
   };
 }
 
@@ -2577,15 +2576,6 @@ function applyDemoResponseComposeOutput(
     personaCount: 0
   };
 
-  if (output.analysis?.summary && isSafeText(output.analysis.summary)) {
-    response.analysis.summary = output.analysis.summary;
-  }
-
-  if (output.analysis?.focusTags?.length) {
-    response.analysis.focusTags = output.analysis.focusTags.filter(isSafeText).slice(0, 8);
-    stats.focusTagCount = response.analysis.focusTags.length;
-  }
-
   const pathById = new Map(response.paths.map((path) => [path.id, path]));
   for (const item of output.paths) {
     const path = pathById.get(item.id);
@@ -2628,13 +2618,10 @@ function applyDemoResponseComposeOutput(
       item.badge,
       item.oneLine,
       item.who,
-      item.lesson,
       item.fitReason,
-      item.openingLine,
       ...(item.overlaps ?? []),
       ...(item.matchReasons ?? []),
-      ...(item.matchedVariables ?? []),
-      ...(item.suggestedQuestions ?? [])
+      ...(item.matchedVariables ?? [])
     ].filter((value): value is string => Boolean(value));
 
     if (!areSafeTexts(textValues)) {
@@ -2648,45 +2635,10 @@ function applyDemoResponseComposeOutput(
     if (item.fitReason && isSafeFitReason(item.fitReason)) person.fitReason = item.fitReason;
     if (item.who) person.who = ensurePublicContentBoundary(item.who);
     if (item.overlaps?.length) person.overlaps = item.overlaps;
-    if (item.lesson) person.lesson = item.lesson;
     if (item.matchReasons?.length) person.match.reasons = item.matchReasons;
     if (item.matchedVariables?.length) person.match.matchedVariables = item.matchedVariables;
-    if (typeof item.personaEnabled === "boolean") person.aiPersona.enabled = item.personaEnabled;
-    if (item.openingLine) person.aiPersona.openingLine = item.openingLine;
-    if (item.suggestedQuestions?.length) {
-      person.aiPersona.suggestedQuestions = item.suggestedQuestions;
-    }
     person.aiPersona.boundary = DEMO_PERSONA_BOUNDARY_NOTICE;
     stats.peopleCount += 1;
-  }
-
-  for (const item of output.personas) {
-    const person = personById.get(item.personId);
-    if (!person) {
-      guardWarnings.push(`demo_response_compose persona skipped: ${item.personId}`);
-      continue;
-    }
-
-    const textValues = [item.openingLine, item.fitReason, ...(item.suggestedQuestions ?? [])].filter(
-      (value): value is string => Boolean(value)
-    );
-    if (!areSafeTexts(textValues)) {
-      guardWarnings.push(`demo_response_compose unsafe persona text skipped: ${item.personId}`);
-      continue;
-    }
-
-    if (typeof item.enabled === "boolean") person.aiPersona.enabled = item.enabled;
-    const persona = response.personas.find((candidate) => candidate.personId === item.personId);
-    if (persona && item.fitReason && isSafeFitReason(item.fitReason)) {
-      persona.fitReason = item.fitReason;
-      person.fitReason = person.fitReason ?? item.fitReason;
-    }
-    if (item.openingLine) person.aiPersona.openingLine = item.openingLine;
-    if (item.suggestedQuestions?.length) {
-      person.aiPersona.suggestedQuestions = item.suggestedQuestions;
-    }
-    person.aiPersona.boundary = DEMO_PERSONA_BOUNDARY_NOTICE;
-    stats.personaCount += 1;
   }
 
   return stats;

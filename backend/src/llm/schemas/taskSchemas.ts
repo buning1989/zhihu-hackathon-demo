@@ -98,11 +98,6 @@ export interface EvidenceExtractOutput {
   personaSeeds: PersonaSeed[];
 }
 
-export interface DemoComposeAnalysisOutput {
-  summary?: string;
-  focusTags?: string[];
-}
-
 export interface DemoComposePathOutput {
   id: string;
   title: string;
@@ -122,27 +117,13 @@ export interface DemoComposePersonOutput {
   fitReason?: string;
   who?: string;
   overlaps?: string[];
-  lesson?: string;
   matchReasons?: string[];
   matchedVariables?: string[];
-  personaEnabled?: boolean;
-  openingLine?: string;
-  suggestedQuestions?: string[];
-}
-
-export interface DemoComposePersonaOutput {
-  personId: string;
-  enabled?: boolean;
-  fitReason?: string;
-  openingLine?: string;
-  suggestedQuestions?: string[];
 }
 
 export interface DemoResponseComposeOutput {
-  analysis?: DemoComposeAnalysisOutput;
   paths: DemoComposePathOutput[];
   people: DemoComposePersonOutput[];
-  personas: DemoComposePersonaOutput[];
 }
 
 export interface ExperienceSummaryItemOutput {
@@ -298,15 +279,8 @@ export function parseDemoResponseComposeOutput(
   }
 ): DemoResponseComposeOutput {
   const record = parseJsonObject(content);
-  const analysis = isRecord(record.analysis)
-    ? {
-        summary: truncateOptionalString(record.analysis.summary, 100),
-        focusTags: readStringArray(record.analysis.focusTags).map((item) => truncateText(item, 12)).slice(0, 8)
-      }
-    : undefined;
 
   return {
-    analysis,
     paths: readRecordArray(record.paths)
       .map((item, index) => readDemoComposePath(item, index, allowedIds.pathIds))
       .filter((item): item is DemoComposePathOutput => Boolean(item))
@@ -314,10 +288,6 @@ export function parseDemoResponseComposeOutput(
     people: readRecordArray(record.people)
       .map((item, index) => readDemoComposePerson(item, index, allowedIds.personIds))
       .filter((item): item is DemoComposePersonOutput => Boolean(item))
-      .slice(0, allowedIds.personIds.size),
-    personas: readRecordArray(record.personas)
-      .map((item, index) => readDemoComposePersona(item, index, allowedIds.personIds))
-      .filter((item): item is DemoComposePersonaOutput => Boolean(item))
       .slice(0, allowedIds.personIds.size)
   };
 }
@@ -509,31 +479,8 @@ function readDemoComposePerson(
     fitReason: truncateOptionalString(record.fitReason, 120),
     who: truncateOptionalString(record.who, 90),
     overlaps: readStringArray(record.overlaps).map((item) => truncateText(item, 50)).slice(0, 4),
-    lesson: truncateOptionalString(record.lesson, 90),
     matchReasons: readStringArray(record.matchReasons).map((item) => truncateText(item, 60)).slice(0, 4),
-    matchedVariables: readStringArray(record.matchedVariables).map((item) => truncateText(item, 16)).slice(0, 8),
-    personaEnabled: typeof record.personaEnabled === "boolean" ? record.personaEnabled : undefined,
-    openingLine: truncateOptionalString(record.openingLine, 80),
-    suggestedQuestions: readStringArray(record.suggestedQuestions).map((item) => truncateText(item, 50)).slice(0, 3)
-  };
-}
-
-function readDemoComposePersona(
-  record: Record<string, unknown>,
-  _index: number,
-  allowedPersonIds: Set<string>
-): DemoComposePersonaOutput | undefined {
-  const personId = readString(record.personId);
-  if (!allowedPersonIds.has(personId)) {
-    return undefined;
-  }
-
-  return {
-    personId,
-    enabled: typeof record.enabled === "boolean" ? record.enabled : undefined,
-    fitReason: truncateOptionalString(record.fitReason, 120),
-    openingLine: truncateOptionalString(record.openingLine, 80),
-    suggestedQuestions: readStringArray(record.suggestedQuestions).map((item) => truncateText(item, 50)).slice(0, 3)
+    matchedVariables: readStringArray(record.matchedVariables).map((item) => truncateText(item, 16)).slice(0, 8)
   };
 }
 
