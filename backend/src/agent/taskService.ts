@@ -2,10 +2,8 @@ import type { UserContext } from "../auth/session.js";
 import { config } from "../config/env.js";
 import { HttpError } from "../utils/httpError.js";
 import type { DemoDataMode } from "../types/demo.types.js";
-import {
-  agentTaskStore,
-  type AgentTaskStore
-} from "./taskStore.js";
+import { agentTaskStore } from "./taskStoreFactory.js";
+import type { AgentTaskStore } from "./taskStore.js";
 import { agentTaskRunner, type AgentTaskRunner } from "./taskRunner.js";
 import type {
   AgentStageName,

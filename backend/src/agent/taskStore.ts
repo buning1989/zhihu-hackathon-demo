@@ -37,50 +37,9 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
   private readonly tasks = new Map<string, StoredTask>();
 
   createTask(input: CreateAgentTaskInput): AgentTaskSnapshot {
-    const now = new Date().toISOString();
-    const taskId = `task_${randomUUID()}`;
-    const stored: StoredTask = {
-      task: {
-        taskId,
-        query: input.query,
-        status: "queued",
-        currentStage: null,
-        progress: 0,
-        degraded: false,
-        degradedReason: null,
-        degradedReasons: [],
-        failedStages: [],
-        retryable: false,
-        retryableStages: [],
-        dataMode: input.dataMode,
-        requestedDataMode: input.requestedDataMode,
-        readToken: randomReadToken(),
-        input: {
-          query: input.query,
-          count: input.count,
-          requestedDataMode: input.requestedDataMode,
-          dataMode: input.dataMode,
-          metadata: clone(input.metadata),
-          userContext: input.userContext ? clone(input.userContext) : undefined
-        },
-        createdAt: now,
-        updatedAt: now,
-        partialReadyAt: null,
-        finishedAt: null
-      },
-      stages: AGENT_STAGE_ORDER.map((name) => ({
-        name,
-        status: "pending",
-        attempt: 0,
-        timeoutMs: 0,
-        startedAt: null,
-        finishedAt: null,
-        fallbackUsed: false,
-        retryable: false
-      }))
-    };
+    const stored = createInitialStoredTask(input);
 
-    this.tasks.set(taskId, stored);
+    this.tasks.set(stored.task.taskId, stored);
     return cloneSnapshot(stored);
   }
 
@@ -146,10 +105,65 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
   }
 }
 
-export const agentTaskStore: AgentTaskStore = new InMemoryAgentTaskStore();
-
 export function isTerminalStageStatus(status: AgentStageStatus): boolean {
   return ["succeeded", "degraded", "failed", "skipped", "timed_out"].includes(status);
+}
+
+export function createInitialAgentTaskSnapshot(input: CreateAgentTaskInput): AgentTaskSnapshot {
+  return cloneSnapshot(createInitialStoredTask(input));
+}
+
+export function cloneAgentTaskSnapshot(snapshot: AgentTaskSnapshot): AgentTaskSnapshot {
+  return clone(snapshot);
+}
+
+export function cloneJson<T>(value: T): T {
+  return clone(value);
+}
+
+function createInitialStoredTask(input: CreateAgentTaskInput): StoredTask {
+  const now = new Date().toISOString();
+  const taskId = `task_${randomUUID()}`;
+  return {
+    task: {
+      taskId,
+      query: input.query,
+      status: "queued",
+      currentStage: null,
+      progress: 0,
+      degraded: false,
+      degradedReason: null,
+      degradedReasons: [],
+      failedStages: [],
+      retryable: false,
+      retryableStages: [],
+      dataMode: input.dataMode,
+      requestedDataMode: input.requestedDataMode,
+      readToken: randomReadToken(),
+      input: {
+        query: input.query,
+        count: input.count,
+        requestedDataMode: input.requestedDataMode,
+        dataMode: input.dataMode,
+        metadata: clone(input.metadata),
+        userContext: input.userContext ? clone(input.userContext) : undefined
+      },
+      createdAt: now,
+      updatedAt: now,
+      partialReadyAt: null,
+      finishedAt: null
+    },
+    stages: AGENT_STAGE_ORDER.map((name) => ({
+      name,
+      status: "pending",
+      attempt: 0,
+      timeoutMs: 0,
+      startedAt: null,
+      finishedAt: null,
+      fallbackUsed: false,
+      retryable: false
+    }))
+  };
 }
 
 function randomReadToken(): string {

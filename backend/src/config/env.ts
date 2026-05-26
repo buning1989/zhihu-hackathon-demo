@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 const envPaths = [
   resolve(process.cwd(), ".env.local"),
@@ -21,6 +21,7 @@ const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_DEEPSEEK_STAGE_MODEL = "deepseek-v4-flash";
 const DATA_MODES = new Set(["mock", "cache_first", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
+const AGENT_TASK_STORES = new Set(["sqlite", "memory"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
 const zhihuOpenapiBase = firstNonEmpty(
   process.env.ZHIHU_OPENAPI_BASE_URL,
@@ -57,6 +58,10 @@ export const config = {
   sessionSecret: process.env.SESSION_SECRET || "dev-session-secret",
   demoSearch: {
     requestBudgetMs: parsePositiveInteger(process.env.DEMO_SEARCH_BUDGET_MS, 75000)
+  },
+  agentTask: {
+    store: parseAgentTaskStore(process.env.AGENT_TASK_STORE),
+    dbPath: firstNonEmpty(process.env.AGENT_TASK_DB_PATH) || defaultAgentTaskDbPath()
   },
   zhihu: {
     accessSecret: zhihuAccessSecret,
@@ -159,4 +164,15 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 
 function parseLlmProvider(value: string | undefined): "openai_compatible" {
   return value && LLM_PROVIDERS.has(value) ? (value as "openai_compatible") : "openai_compatible";
+}
+
+function parseAgentTaskStore(value: string | undefined): "sqlite" | "memory" {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && AGENT_TASK_STORES.has(normalized) ? (normalized as "sqlite" | "memory") : "sqlite";
+}
+
+function defaultAgentTaskDbPath(): string {
+  const cwd = process.cwd();
+  const repoRoot = basename(cwd) === "backend" ? resolve(cwd, "..") : cwd;
+  return resolve(repoRoot, "data", "agent-tasks.sqlite");
 }

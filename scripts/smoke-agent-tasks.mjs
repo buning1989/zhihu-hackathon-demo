@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -71,12 +73,95 @@ async function main() {
       assertNotIncludes(JSON.stringify(realView.body), '"dataMode":"mock"', "real view no mock mode");
     }
 
+    await assertInMemoryStoreCanCreateTask(repoRoot);
+    await assertSqliteTaskPersistenceAcrossRestart(repoRoot);
+
     console.log("PASS agent task smoke");
     console.log(
       `mockTask=${mockTask.taskId} mockStatus=${mockFinal.status} realTask=${realTask.taskId} realStatus=${realFinal.status} realDegraded=${Boolean(realFinal.degraded)}`
     );
   } finally {
     await closeServer(server);
+  }
+}
+
+async function assertInMemoryStoreCanCreateTask(repoRoot) {
+  const taskStoreModule = await import(
+    pathToFileURL(join(repoRoot, "backend", "dist", "agent", "taskStore.js")).href
+  );
+  const store = new taskStoreModule.InMemoryAgentTaskStore();
+  const snapshot = store.createTask({
+    query: "内存模式仍可创建任务",
+    count: 1,
+    dataMode: "mock",
+    requestedDataMode: "mock",
+    metadata: {
+      smoke: true
+    }
+  });
+
+  assertNonEmptyString(snapshot.task.taskId, "memory taskId");
+  assertEqual(snapshot.task.status, "queued", "memory task status");
+  assertNonEmptyArray(snapshot.stages, "memory task stages");
+}
+
+async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
+  const serverPath = join(repoRoot, "backend", "dist", "server.js");
+  const tempDir = mkdtempSync(join(tmpdir(), "agent-task-sqlite-smoke-"));
+  const dbPath = join(tempDir, "agent-tasks.sqlite");
+  const port = await findFreePort();
+  let server = null;
+
+  try {
+    server = startBackendServer(serverPath, {
+      BACKEND_PORT: String(port),
+      AGENT_TASK_STORE: "sqlite",
+      AGENT_TASK_DB_PATH: dbPath,
+      DATA_MODE: "mock"
+    });
+    await waitForBackend(`http://127.0.0.1:${port}`);
+
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const created = await createTask(baseUrl, {
+      query: "SQLite 重启恢复验证",
+      count: 3,
+      dataMode: "mock"
+    });
+    const final = await waitForTask(baseUrl, created.taskId, (data) =>
+      ["succeeded", "degraded", "failed"].includes(String(data.status))
+    );
+    assertEqual(final.hasPartialResult, true, "sqlite before restart has partial result");
+    assertEqual(final.hasFinalResult, true, "sqlite before restart has final result");
+
+    await stopBackendServer(server);
+    server = null;
+
+    server = startBackendServer(serverPath, {
+      BACKEND_PORT: String(port),
+      AGENT_TASK_STORE: "sqlite",
+      AGENT_TASK_DB_PATH: dbPath,
+      DATA_MODE: "mock"
+    });
+    await waitForBackend(baseUrl);
+
+    const restoredStatus = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}`);
+    assertSuccess(restoredStatus, "sqlite restored status");
+    assertEqual(restoredStatus.body.data.taskId, created.taskId, "sqlite restored taskId");
+    assertEqual(restoredStatus.body.data.hasPartialResult, true, "sqlite restored partial flag");
+    assertEqual(restoredStatus.body.data.hasFinalResult, true, "sqlite restored final flag");
+
+    const restoredView = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/view`);
+    assertSuccess(restoredView, "sqlite restored view");
+    assertNonEmptyArray(restoredView.body.data.result.paths, "sqlite restored view paths");
+
+    const restoredResult = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/result`);
+    assertSuccess(restoredResult, "sqlite restored result");
+    assertEqual(restoredResult.body.data.result.dataMode, "mock", "sqlite restored final dataMode");
+  } finally {
+    if (server) {
+      await stopBackendServer(server);
+    }
+    rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
@@ -117,6 +202,75 @@ async function requestJson(url, options = {}) {
     status: response.status,
     body: text ? JSON.parse(text) : null
   };
+}
+
+async function findFreePort() {
+  const { createServer } = await import("node:net");
+  const server = createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  await closeServer(server);
+  if (!address || typeof address === "string") {
+    throw new Error("Could not allocate a free TCP port for sqlite restart smoke.");
+  }
+  return address.port;
+}
+
+function startBackendServer(serverPath, env) {
+  const child = spawn(process.execPath, [serverPath], {
+    env: {
+      ...process.env,
+      ...env
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.output = "";
+  child.stdout.on("data", (chunk) => {
+    child.output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    child.output += chunk;
+  });
+  return child;
+}
+
+async function waitForBackend(baseUrl) {
+  let lastError = "";
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      const response = await fetch(`${baseUrl}/health`);
+      if (response.ok) {
+        return;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = String(error?.message || error);
+    }
+    await sleep(50);
+  }
+
+  throw new Error(`Timed out waiting for backend ${baseUrl}; lastError=${lastError}`);
+}
+
+async function stopBackendServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  child.kill("SIGTERM");
+  const timeout = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+  }, 3000);
+  try {
+    await once(child, "exit");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function assertSuccess(response, label) {

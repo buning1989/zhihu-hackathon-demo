@@ -67,6 +67,7 @@ docker compose -f infra/docker-compose.yml up
 - `shared/openapi.yaml` 是前后端协作的最小契约。当前已实现接口 `GET /api/search` 继续保留；AI 分身产品化主链路从 `POST /api/agent/tasks` 开始，任务创建后通过 task status/view/result 渐进获取结果。
 - `POST /api/demo/search` 继续保留为同步兼容入口和本地 demo/smoke 入口，不作为长期产品主链路。
 - `POST /api/demo/search` 在请求体包含 `clarificationAnswers` 时，会返回 `intent + focusTags + searchPlan + debug`，用于澄清卡后的知乎搜索计划生成；未包含澄清答案时继续返回完整 demo 结果结构。
+- Agent Task 默认使用 SQLite 持久化 task/stage/result，默认数据库文件为 `./data/agent-tasks.sqlite`；可用 `AGENT_TASK_DB_PATH` 指定路径，或用 `AGENT_TASK_STORE=memory` 切回本地调试用内存模式。
 - 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
@@ -101,6 +102,19 @@ npm run smoke
 - `GET /api/health` 可访问。
 - `GET /api/search?query=不工作了能去哪儿&count=1` 在没有真实知乎密钥时返回明确 JSON 错误，服务不能崩溃。
 - 前端首页 `/` 可访问。
+
+Agent Task 渐进式前端链路验收：
+
+```bash
+npm run smoke:agent
+FRONTEND_URL="http://127.0.0.1:5173/?apiBaseUrl=http%3A%2F%2Flocalhost%3A8000" npm run smoke:frontend-agent
+```
+
+如首次运行 Playwright 缺少浏览器，请执行：
+
+```bash
+npx playwright install chromium
+```
 
 也可以手动检查：
 
