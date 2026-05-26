@@ -10,6 +10,7 @@
     "build": "npm run build -w backend",
     "start": "npm run start -w backend",
     "smoke": "bash scripts/smoke-test.sh",
+    "smoke:agent": "node scripts/smoke-agent-tasks.mjs",
     "smoke:demo-real": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:search": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:llm-persona": "node scripts/smoke-demo-real-key.mjs",

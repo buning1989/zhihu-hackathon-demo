@@ -2,6 +2,7 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import { authRoutes } from "./auth/routes.js";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware.js";
+import { agentRoutes } from "./routes/agent.routes.js";
 import { demoRoutes } from "./routes/demo.routes.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import { personasRoutes } from "./routes/personas.routes.js";
@@ -26,7 +27,7 @@ app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Credentials", "true");
     res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type");
+    res.header("Access-Control-Allow-Headers", "Content-Type, X-Agent-Read-Token");
     res.vary("Origin");
   }
 
@@ -49,6 +50,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/health", healthRoutes);
 app.use("/api/zhihu", zhihuRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/agent", agentRoutes);
 app.use("/api/demo", demoRoutes);
 app.use("/api/personas", personasRoutes);
 app.use("/auth", authRoutes);

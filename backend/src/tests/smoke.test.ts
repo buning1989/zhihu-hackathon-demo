@@ -55,6 +55,8 @@ try {
   assertEqual(health.status, 200, "GET /api/health status");
   assertEqual(health.body.success, true, "GET /api/health success");
 
+  await assertAgentTasksMvp(baseUrl);
+
   const demoSearch = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
     body: {
@@ -261,6 +263,143 @@ interface RequestOptions {
   method?: "GET" | "POST";
   headers?: Record<string, string>;
   body?: unknown;
+}
+
+async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
+  const createMockTask = await requestJson(`${baseUrl}/api/agent/tasks`, {
+    method: "POST",
+    body: {
+      query: "不工作了能去哪儿",
+      count: 3,
+      dataMode: "mock"
+    }
+  });
+
+  assertEqual(createMockTask.status, 200, "POST /api/agent/tasks mock status");
+  assertEqual(createMockTask.body.success, true, "POST /api/agent/tasks mock success");
+  assertNonEmptyString(createMockTask.body.data.taskId, "agent mock taskId");
+  assertEqual(createMockTask.body.data.status, "queued", "agent mock initial status");
+  assertAgentStage(createMockTask.body.data, "intent_expand", ["pending"]);
+
+  const mockTaskId = String(createMockTask.body.data.taskId);
+  const finalMockStatus = await waitForAgentTask(baseUrl, mockTaskId, "mock task final", (data) =>
+    data.status === "succeeded" || data.status === "degraded" || data.status === "failed"
+  );
+
+  assertEqual(finalMockStatus.status, "succeeded", "agent mock final status");
+  assertEqual(finalMockStatus.hasPartialResult, true, "agent mock has partial result");
+  assertEqual(finalMockStatus.hasFinalResult, true, "agent mock has final result");
+  assertAgentStage(finalMockStatus, "intent_expand", ["succeeded"]);
+  assertAgentStage(finalMockStatus, "retrieve_search", ["skipped"]);
+  assertAgentStage(finalMockStatus, "partial_compose", ["succeeded"]);
+  assertAgentStage(finalMockStatus, "evidence_extract", ["skipped"]);
+
+  const mockView = await requestJson(`${baseUrl}/api/agent/tasks/${mockTaskId}/view`);
+  assertEqual(mockView.status, 200, "GET /api/agent/tasks/:taskId/view mock status");
+  assertEqual(mockView.body.success, true, "GET /api/agent/tasks/:taskId/view mock success");
+  assertEqual(mockView.body.data.result.dataMode, "mock", "agent mock view dataMode");
+  assertNonEmptyArray(mockView.body.data.result.paths, "agent mock view paths");
+  assertNonEmptyArray(mockView.body.data.result.people, "agent mock view people");
+
+  const mockResult = await requestJson(`${baseUrl}/api/agent/tasks/${mockTaskId}/result`);
+  assertEqual(mockResult.status, 200, "GET /api/agent/tasks/:taskId/result mock status");
+  assertEqual(mockResult.body.success, true, "GET /api/agent/tasks/:taskId/result mock success");
+  assertEqual(mockResult.body.data.result.dataMode, "mock", "agent mock final dataMode");
+
+  const originalSearch = searchService.search;
+  searchService.search = async () => {
+    throw new Error("synthetic real search failure for agent smoke");
+  };
+
+  try {
+    const createRealTask = await requestJson(`${baseUrl}/api/agent/tasks`, {
+      method: "POST",
+      body: {
+        query: "真实模式不允许静默 mock",
+        count: 3,
+        dataMode: "real"
+      }
+    });
+
+    assertEqual(createRealTask.status, 200, "POST /api/agent/tasks real status");
+    assertEqual(createRealTask.body.success, true, "POST /api/agent/tasks real success");
+    assertNonEmptyString(createRealTask.body.data.taskId, "agent real taskId");
+
+    const realTaskId = String(createRealTask.body.data.taskId);
+    const finalRealStatus = await waitForAgentTask(baseUrl, realTaskId, "real no-mock task final", (data) =>
+      data.status === "failed" || data.status === "succeeded" || data.status === "degraded"
+    );
+
+    assertEqual(finalRealStatus.status, "failed", "agent real no-mock final status");
+    assertEqual(finalRealStatus.degraded, true, "agent real no-mock degraded");
+    assertEqual(finalRealStatus.retryable, true, "agent real no-mock retryable");
+    assertAgentStage(finalRealStatus, "retrieve_search", ["failed"]);
+
+    const realView = await requestJson(`${baseUrl}/api/agent/tasks/${realTaskId}/view`);
+    assertEqual(realView.status, 200, "GET /api/agent/tasks/:taskId/view real failed status");
+    assertEqual(realView.body.success, true, "GET /api/agent/tasks/:taskId/view real failed success");
+    assertEqual(realView.body.data.result.dataMode, "real", "agent real failed view dataMode");
+    assertEqual(realView.body.data.result.degraded, true, "agent real failed view degraded");
+    assertEqual(
+      JSON.stringify(realView.body).includes('"dataMode":"mock"'),
+      false,
+      "agent real failed view does not contain mock result"
+    );
+  } finally {
+    searchService.search = originalSearch;
+  }
+}
+
+async function waitForAgentTask(
+  baseUrl: string,
+  taskId: string,
+  label: string,
+  predicate: (data: Record<string, unknown>) => boolean
+): Promise<Record<string, unknown>> {
+  let latest: Record<string, unknown> | null = null;
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await sleep(25);
+    const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
+    assertEqual(response.status, 200, `${label} poll status`);
+    assertEqual(response.body.success, true, `${label} poll success`);
+    const data = response.body.data;
+    if (!isRecord(data)) {
+      throw new Error(`${label}: expected task data object`);
+    }
+
+    latest = data;
+    if (predicate(data)) {
+      return data;
+    }
+  }
+
+  throw new Error(`${label}: timed out waiting for terminal task status; latest=${JSON.stringify(latest)}`);
+}
+
+function assertAgentStage(
+  taskData: unknown,
+  stageName: string,
+  allowedStatuses: string[]
+): void {
+  if (!isRecord(taskData) || !Array.isArray(taskData.stages)) {
+    throw new Error(`agent stage ${stageName}: expected task stages`);
+  }
+
+  const stage = taskData.stages.find((item) => isRecord(item) && item.name === stageName);
+  if (!isRecord(stage)) {
+    throw new Error(`agent stage ${stageName}: missing stage`);
+  }
+
+  if (!allowedStatuses.includes(String(stage.status))) {
+    throw new Error(
+      `agent stage ${stageName}: expected ${allowedStatuses.join(" or ")}, got ${String(stage.status)}`
+    );
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function requestJson(url: string, options: RequestOptions = {}) {

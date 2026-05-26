@@ -22,6 +22,8 @@ tags:
     description: Implemented raw Zhihu proxy endpoints.
   - name: Demo
     description: Product-layer demo contracts for analysis, paths, people and AI personas.
+  - name: Agent
+    description: Product mainline task contracts for staged, progressive search results.
   - name: Personas
     description: AI persona chat contracts grounded in public content evidence.
   - name: Planned
@@ -454,6 +456,125 @@ paths:
                     error:
                       code: ZHIHU_RING_PUBLISH_FAILED
                       message: 知乎返回的失败信息
+  /api/agent/tasks:
+    post:
+      tags:
+        - Agent
+      summary: Create a staged agent task
+      description: >
+        Implemented MVP. Creates a task and returns taskId immediately. The
+        backend continues the staged pipeline in-process and exposes status,
+        partial view and final/degraded result through task endpoints.
+      operationId: createAgentTask
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentTaskCreateRequest"
+            examples:
+              mock:
+                value:
+                  query: 35岁裸辞之后还能去哪儿
+                  count: 3
+                  dataMode: mock
+              real:
+                value:
+                  query: 真实模式不允许静默返回 mock
+                  count: 5
+                  dataMode: real
+      responses:
+        "200":
+          description: Task accepted and staged execution started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskStatusSuccessResponse"
+        "400":
+          description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}:
+    get:
+      tags:
+        - Agent
+      summary: Get agent task and stage status
+      operationId: getAgentTaskStatus
+      x-implementation-status: implemented
+      parameters:
+        - $ref: "#/components/parameters/AgentTaskId"
+      responses:
+        "200":
+          description: Current task status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskStatusSuccessResponse"
+        "404":
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/view:
+    get:
+      tags:
+        - Agent
+      summary: Get current partial/final display view
+      operationId: getAgentTaskView
+      x-implementation-status: implemented
+      parameters:
+        - $ref: "#/components/parameters/AgentTaskId"
+      responses:
+        "200":
+          description: Current displayable result view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskViewSuccessResponse"
+        "202":
+          description: Partial view is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "404":
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/result:
+    get:
+      tags:
+        - Agent
+      summary: Get final or degraded task result
+      operationId: getAgentTaskResult
+      x-implementation-status: implemented
+      parameters:
+        - $ref: "#/components/parameters/AgentTaskId"
+      responses:
+        "200":
+          description: Final result, or explicit degraded empty result when real recall failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskResultSuccessResponse"
+        "202":
+          description: Final result is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "404":
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/demo/search:
     get:
       tags:
@@ -651,6 +772,14 @@ paths:
                       code: NOT_IMPLEMENTED
                       message: Planned endpoint, not implemented yet.
 components:
+  parameters:
+    AgentTaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: task_00000000-0000-0000-0000-000000000000
   schemas:
     RootHealthResponse:
       type: object
@@ -1020,6 +1149,263 @@ components:
               type: string
             message:
               type: string
+    AgentTaskCreateRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+        count:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+        dataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+          default: real
+          description: >
+            real never silently falls back to mock. mock is only for explicit
+            local demo or test runs.
+        metadata:
+          type: object
+          additionalProperties: true
+    AgentTaskStatusSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AgentTaskStatus"
+    AgentTaskViewSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AgentTaskView"
+    AgentTaskResultSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AgentTaskResult"
+    AgentTaskStatus:
+      type: object
+      required:
+        - taskId
+        - query
+        - status
+        - stages
+        - hasPartialResult
+        - hasFinalResult
+      properties:
+        taskId:
+          type: string
+        query:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - partial_ready
+            - succeeded
+            - degraded
+            - failed
+            - canceled
+        currentStage:
+          type:
+            - string
+            - "null"
+        stage:
+          type: string
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        dataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+        requestedDataMode:
+          type: string
+          enum:
+            - mock
+            - cache_first
+            - real
+        degraded:
+          type: boolean
+        degradedReason:
+          type:
+            - string
+            - "null"
+        degradedReasons:
+          type: array
+          items:
+            type: string
+        failedStages:
+          type: array
+          items:
+            type: string
+        retryable:
+          type: boolean
+        retryableStages:
+          type: array
+          items:
+            type: string
+        hasPartialResult:
+          type: boolean
+        hasFinalResult:
+          type: boolean
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentStageStatus"
+        pollAfterMs:
+          type: integer
+        frontendStatus:
+          type: string
+        error:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        partialReadyAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    AgentStageStatus:
+      type: object
+      required:
+        - name
+        - status
+        - attempt
+        - fallbackUsed
+        - retryable
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - succeeded
+            - degraded
+            - failed
+            - skipped
+            - timed_out
+        attempt:
+          type: integer
+        timeoutMs:
+          type: integer
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        inputSummary:
+          type: object
+          additionalProperties: true
+        outputSummary:
+          type: object
+          additionalProperties: true
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+        fallbackUsed:
+          type: boolean
+        fallbackReason:
+          type: string
+        retryable:
+          type: boolean
+    AgentTaskView:
+      type: object
+      required:
+        - taskId
+        - status
+        - resultStatus
+        - result
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+        resultStatus:
+          type: string
+          enum:
+            - partial
+            - final
+            - degraded
+        degraded:
+          type: boolean
+        degradedReason:
+          type:
+            - string
+            - "null"
+        failedStages:
+          type: array
+          items:
+            type: string
+        retryable:
+          type: boolean
+        retryableStages:
+          type: array
+          items:
+            type: string
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentStageStatus"
+        result:
+          description: Frontend-displayable result shape, compatible with the demo result adapter.
+    AgentTaskResult:
+      allOf:
+        - $ref: "#/components/schemas/AgentTaskView"
+        - type: object
+          properties:
+            resultStatus:
+              type: string
+              enum:
+                - final
+                - degraded
     DemoSearchSuccessResponse:
       type: object
       required:
