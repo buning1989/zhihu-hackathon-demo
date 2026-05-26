@@ -478,12 +478,12 @@ function toPerson(
 ): DemoPerson {
   const quality = candidateQuality ?? scoreSearchCandidate(query, item);
   const sampleType = classifySampleType(item, quality);
-  const article = toArticle(item, sourceRef);
+  const article = toArticle(item, sourceRef, query, quality);
   const personId = toPersonId(item, String(index));
   const personaId = `persona_${hashId(personId)}`;
   const displayName = item.author.name || "知乎用户";
   const variables = inferMatchedVariables(item, quality);
-  const summary = buildPersonOneLine(path, item, quality);
+  const summary = buildPersonOneLine(path, item, quality, query);
   const roleLabel = toRole(sampleType, item.type, path);
   const relevanceReason = buildPersonRelevanceReason(query, path, item, quality);
   const contextFitReason = buildContextFitReason(
@@ -632,12 +632,24 @@ function buildDisplaySections(
   ];
 }
 
-function toArticle(item: SearchItem, sourceRef: DemoSourceRef): DemoArticle {
-  const evidence = toEvidence(item, sourceRef);
+function toArticle(
+  item: SearchItem,
+  sourceRef: DemoSourceRef,
+  query: string,
+  quality?: DemoCandidateQuality
+): DemoArticle {
+  const evidence = toEvidence(item, sourceRef, query, quality);
+  const sourceSnippet = selectSourceSnippet({
+    query,
+    title: item.title,
+    text: item.text || item.evidence.text || item.title,
+    quality,
+    maxLength: 260
+  });
   const evidenceText = buildRawEvidenceText({
     evidenceText: evidence[0]?.text,
-    summary: toHumanSummary(item.text || item.title),
-    text: item.text
+    summary: toHumanSummary(sourceSnippet),
+    text: sourceSnippet
   });
 
   return {
@@ -649,7 +661,7 @@ function toArticle(item: SearchItem, sourceRef: DemoSourceRef): DemoArticle {
     avatar: item.author.avatar,
     sourceName: item.type || "知乎内容",
     sourceUrl: item.url,
-    summary: toHumanSummary(item.text || item.title),
+    summary: toHumanSummary(sourceSnippet),
     evidenceStatus: "raw_snippet_only",
     evidenceText,
     evidence,
@@ -663,12 +675,17 @@ function toArticle(item: SearchItem, sourceRef: DemoSourceRef): DemoArticle {
   };
 }
 
-function toEvidence(item: SearchItem, sourceRef: DemoSourceRef): DemoEvidence[] {
+function toEvidence(
+  item: SearchItem,
+  sourceRef: DemoSourceRef,
+  query: string,
+  quality?: DemoCandidateQuality
+): DemoEvidence[] {
   return [
     {
       id: sourceRef.evidenceIds[0],
       label: "来源片段",
-      text: toEvidenceQuote(item.text || item.title),
+      text: toEvidenceQuote(item.text || item.evidence.text || item.title, item.title, query, quality),
       sourceRefId: sourceRef.id,
       sourceUrl: item.url
     }
@@ -831,17 +848,17 @@ function buildFallbackTradeoff(variables: string[]): string {
 function buildPersonOneLine(
   path: DemoPath,
   item: SearchItem,
-  quality: DemoCandidateQuality
+  quality: DemoCandidateQuality,
+  query: string
 ): string {
-  const variables = inferMatchedVariables(item, quality);
-  const focus = variables[0] ?? path.displayLabel ?? path.title ?? "这条路";
-  return truncateText(
-    `这个人提供的是「${path.title}」的样本，价值在于把${focus}和${truncateText(
-      path.tradeoff ?? "代价边界",
-      24
-    )}放在一起看。`,
-    90
-  );
+  void path;
+  return selectSourceSnippet({
+    query,
+    title: item.title,
+    text: item.text || item.evidence.text || item.title,
+    quality,
+    maxLength: 92
+  });
 }
 
 function buildPersonRelevanceReason(
@@ -1100,13 +1117,115 @@ function toHumanSummary(text: string): string {
   return `${normalized.slice(0, 58)}...`;
 }
 
-function toEvidenceQuote(text: string): string {
-  const normalized = normalizeText(text);
-  if (normalized.length <= 160) {
+function selectSourceSnippet(input: {
+  query: string;
+  title: string;
+  text: string;
+  quality?: DemoCandidateQuality;
+  maxLength: number;
+}): string {
+  const normalized = normalizeText(input.text || input.title);
+  if (normalized.length <= input.maxLength) {
     return normalized;
   }
 
-  return `${normalized.slice(0, 158)}...`;
+  const sentences = splitSentences(normalized);
+  const keywords = buildSnippetKeywords(input.query, input.title, input.quality);
+  const scored = sentences
+    .map((sentence, index) => ({
+      sentence,
+      index,
+      score: scoreSnippetSentence(sentence, keywords)
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  const best = scored[0];
+
+  if (!best || best.score <= 0) {
+    return truncateText(normalized, input.maxLength);
+  }
+
+  const previous = sentences[best.index - 1] ?? "";
+  const next = sentences[best.index + 1] ?? "";
+  const candidates = [
+    best.sentence,
+    `${best.sentence}${next}`,
+    `${previous}${best.sentence}`,
+    `${previous}${best.sentence}${next}`
+  ].map(normalizeText);
+  const selected =
+    candidates.find((candidate) => candidate.length >= 34 && candidate.length <= input.maxLength) ||
+    best.sentence;
+
+  return truncateText(selected, input.maxLength);
+}
+
+function splitSentences(text: string): string[] {
+  const normalized = normalizeText(text);
+  const matches = normalized.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [normalized];
+  const sentences = matches
+    .map((item) => normalizeText(item))
+    .filter((item) => item.length >= 8);
+
+  if (sentences.length > 0) {
+    return sentences;
+  }
+
+  const chunks: string[] = [];
+  for (let index = 0; index < normalized.length; index += 120) {
+    chunks.push(normalized.slice(index, index + 140));
+  }
+  return chunks.filter(Boolean);
+}
+
+function buildSnippetKeywords(
+  query: string,
+  title: string,
+  quality?: DemoCandidateQuality
+): string[] {
+  const scenarioKeywords = /稳定|安稳|体制内|铁饭碗|稳定工作|稳定收入/.test(query) &&
+    /喜欢|热爱|兴趣|梦想|理想|想做的事|追求/.test(query)
+    ? ["稳定", "稳定工作", "放弃", "喜欢的事", "热爱", "兴趣", "梦想", "后悔", "现实", "选择"]
+    : [];
+  return unique([
+    ...scenarioKeywords,
+    ...splitSignalText(query),
+    ...splitSignalText(title),
+    ...(quality?.relevanceSignals ?? []),
+    ...(quality?.narrativeSignals ?? []),
+    ...(quality?.specificitySignals ?? []),
+    ...(quality?.matchedQueries?.flatMap((item) => splitSignalText(item.query)) ?? [])
+  ])
+    .map((item) => item.replace(/(真实经历|失败复盘|后来怎么样|有哪些路径|怎么开始|怎么选|怎么办)$/g, ""))
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2 && item.length <= 12 && isPublicDisplaySignal(item))
+    .slice(0, 18);
+}
+
+function scoreSnippetSentence(sentence: string, keywords: string[]): number {
+  const keywordScore = keywords.reduce((total, keyword) => total + countIncludes(sentence, keyword) * 5, 0);
+  const firstPersonScore = /我|本人|自己|我们/.test(sentence) ? 5 : 0;
+  const processScore = /选择|决定|放弃|开始|后来|最后|结果|后悔|代价|现实|稳定|热爱|兴趣|梦想/.test(sentence)
+    ? 4
+    : 0;
+  const advicePenalty = /建议|应该|最好|方法|技巧|私信|课程|报名|咨询/.test(sentence) ? 3 : 0;
+  const lengthScore = sentence.length >= 28 && sentence.length <= 180 ? 2 : 0;
+
+  return keywordScore + firstPersonScore + processScore + lengthScore - advicePenalty;
+}
+
+function toEvidenceQuote(
+  text: string,
+  title: string,
+  query: string,
+  quality?: DemoCandidateQuality
+): string {
+  return selectSourceSnippet({
+    query,
+    title,
+    text,
+    quality,
+    maxLength: 180
+  });
 }
 
 function buildRawEvidenceText(input: {

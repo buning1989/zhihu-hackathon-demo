@@ -185,6 +185,10 @@ function selectFallbackCategoryPlans(query: string): DemoSearchQueryPlan[] {
     return relationshipWorkFallbackPlans();
   }
 
+  if (isStabilityPassionQuery(query)) {
+    return stabilityPassionFallbackPlans();
+  }
+
   const objectivePlans = objectiveQueryPlanToSearchPlans(
     buildObjectiveSearchContext(query).queryPlan
   );
@@ -207,6 +211,21 @@ function relationshipWorkFallbackPlans(): DemoSearchQueryPlan[] {
     plan("为了工作 异地恋 值得吗", "decision_conflict", "召回是否值得的讨论", 5),
     plan("异地恋 未来规划 沟通", "life_path", "召回未来时间表和沟通路径", 6),
     plan("异地恋 工作调动 代价", "alternative_solution", "召回工作调动与关系代价", 6)
+  ];
+}
+
+function stabilityPassionFallbackPlans(): DemoSearchQueryPlan[] {
+  return [
+    plan("稳定工作 喜欢的事", "real_experience", "召回稳定工作和喜欢的事之间的取舍", 2),
+    plan("为了稳定 放弃热爱", "decision_conflict", "召回为了稳定放弃热爱的讨论", 2),
+    plan("稳定 放弃梦想 后悔吗", "failure_review", "召回稳定与梦想取舍后的复盘", 3),
+    plan("稳定收入 做喜欢的事", "life_path", "召回稳定收入和兴趣并行的路径", 3),
+    plan("稳定工作 不喜欢 要不要", "decision_conflict", "召回稳定但不喜欢的工作选择", 4),
+    plan("热爱 现实 稳定 选择", "decision_conflict", "召回热爱和现实稳定的选择冲突", 4),
+    plan("体制内 放弃热爱", "failure_review", "召回稳定体制和热爱之间的代价", 5),
+    plan("兴趣 事业 稳定 取舍", "alternative_solution", "召回兴趣事业和稳定取舍的替代方案", 5),
+    plan("喜欢的事 变成工作 后悔吗", "failure_review", "召回把喜欢的事变成工作的后续", 6),
+    plan("稳定 追求梦想 真实经历", "real_experience", "召回稳定和追梦之间的真实经历", 6)
   ];
 }
 
@@ -539,6 +558,14 @@ function combineTight(
 
 function firstIncluded(query: string, keywords: string[]): string | null {
   return keywords.find((keyword) => query.includes(keyword)) ?? null;
+}
+
+function isStabilityPassionQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  return (
+    /稳定|安稳|体制内|铁饭碗|稳定工作|稳定收入/.test(normalized) &&
+    /喜欢|热爱|兴趣|梦想|理想|想做的事|追求/.test(normalized)
+  );
 }
 
 function sanitizeSlotValue(value: string): string | null {

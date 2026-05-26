@@ -602,13 +602,13 @@ export class AgentTaskRunner {
       return currentResult;
     }
 
-    const candidates = buildExperienceSummaryCandidatesFromDemoResult(currentResult, 3);
+    const candidates = buildExperienceSummaryCandidatesFromDemoResult(currentResult, 4);
     this.startStage(taskId, "experience_summary", {
       timeoutMs: getAgentLlmTaskTimeoutMs("experience_summary"),
       taskStatus: "partial_ready",
       inputSummary: {
         candidateCount: candidates.length,
-        maxCandidates: 3,
+        maxCandidates: 4,
         sourceRefs: candidates.map((candidate) => candidate.sourceRefId),
         evidenceFirst: candidates.some((candidate) => Boolean(candidate.evidenceText))
       }
@@ -619,7 +619,7 @@ export class AgentTaskRunner {
       const summary = await runAgentExperienceSummary({
         query: snapshot.task.query,
         result: currentResult,
-        maxCandidates: 3
+        maxCandidates: 4
       });
 
       const enhancedResult = applyAgentExperienceSummaryResult(currentResult, summary);

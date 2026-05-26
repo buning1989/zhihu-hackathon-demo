@@ -76,25 +76,25 @@ const AGENT_EXPERIENCE_SUMMARY_SYSTEM_PROMPT = String.raw`
 
 规则：
 1. 只基于 item.evidenceText 和 item.currentSummary，不得新增作者身份、地点、收入、动机、结局。
-2. 如果证据不像亲历经历，summary 返回 null。
-3. summary 控制在 60-110 个中文字符，以“这段经历...”或“这个样本...”开头。
+2. 如果证据完全不像亲历经历或选择复盘，summary 返回 null。
+3. summary 控制在 45-110 个中文字符，写成短 Feed 句子，可以用“有人...”“一个样本里...”“这段经历...”开头。
 4. 不要给用户建议，不要使用“你应该/建议你/可以考虑/最好先”。
-5. sourceRefId 必须逐字来自输入。
-6. 只输出严格 JSON。
+5. 避免“这个人提供的是...”“价值在于...”“证据不足...”这类模板表达。
+6. sourceRefId 必须逐字来自输入。
+7. 只输出严格 JSON。
 
 输出：
 {
   "items": [
     {
       "sourceRefId": "source_x",
-      "summary": "这段经历...",
-      "reason": "一句话说明依据"
+      "summary": "有人在稳定和喜欢的事之间摇摆，真正卡住的是收入安全感和热爱能不能同时保住。"
     }
   ]
 }
 `.trim();
 
-const EXPERIENCE_SUMMARY_MAX_CANDIDATES = 3;
+const EXPERIENCE_SUMMARY_MAX_CANDIDATES = 4;
 const EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET = 420;
 const EXPERIENCE_SUMMARY_EVIDENCE_CHAR_BUDGET = 320;
 const EXPERIENCE_SUMMARY_OUTPUT_TOKEN_BUDGET = 900;
@@ -552,14 +552,21 @@ function filterExperienceSummaries(
   output: ExperienceSummaryOutput,
   candidates: AgentExperienceSummaryCandidate[]
 ): ExperienceSummaryOutput {
-  const allowedPersonIds = new Set(candidates.map((candidate) => candidate.personId));
+  const candidatesByPersonId = new Map(candidates.map((candidate) => [candidate.personId, candidate]));
   return {
     summaries: output.summaries
-      .filter((item) =>
-        allowedPersonIds.has(item.personId) &&
-        Boolean(item.experienceSummary) &&
-        isSafeExperienceSummary(item.experienceSummary)
-      )
+      .map((item) => ({
+        ...item,
+        experienceSummary: normalizeExperienceSummary(item.experienceSummary)
+      }))
+      .filter((item) => {
+        const candidate = candidatesByPersonId.get(item.personId);
+        return Boolean(
+          candidate &&
+            item.experienceSummary &&
+            isSafeExperienceSummary(item.experienceSummary, candidate)
+        );
+      })
       .slice(0, candidates.length)
   };
 }
@@ -660,7 +667,24 @@ function isExperienceSummaryTimeout(error: unknown): boolean {
   );
 }
 
-function isSafeExperienceSummary(value: string | null): value is string {
+function normalizeExperienceSummary(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return truncateText(
+    value
+      .replace(/^(这个样本|这段经历)(显示|说明|体现|提供的是)[，,：:]?/g, "一个样本里，")
+      .replace(/^这个人提供的是[“"「]?/g, "")
+      .replace(/价值在于/g, "能看到"),
+    160
+  );
+}
+
+function isSafeExperienceSummary(
+  value: string | null,
+  candidate: AgentExperienceSummaryCandidate
+): value is string {
   if (!value) {
     return false;
   }
@@ -678,7 +702,13 @@ function isSafeExperienceSummary(value: string | null): value is string {
     "联系作者",
     "私信",
     "加微信",
-    "模拟作者本人"
+    "模拟作者本人",
+    "这个人提供的是",
+    "价值在于",
+    "证据不足",
+    "不确定性",
+    "可追溯片段",
+    "公开内容中出现"
   ];
   const adviceFragments = [
     "你应该",
@@ -691,13 +721,60 @@ function isSafeExperienceSummary(value: string | null): value is string {
     "最好先",
     "需要先"
   ];
-  const experienceMarkers = ["这个样本", "这段经历", "作者", "TA", "ta"];
-
   return (
-    experienceMarkers.some((marker) => value.includes(marker)) &&
+    value.length >= 24 &&
+    hasGroundedOverlap(value, candidate) &&
     !forbiddenFragments.some((fragment) => value.includes(fragment)) &&
     !adviceFragments.some((fragment) => value.includes(fragment))
   );
+}
+
+function hasGroundedOverlap(value: string, candidate: AgentExperienceSummaryCandidate): boolean {
+  const tokens = extractGroundingTokens([
+    candidate.evidenceText,
+    candidate.currentSummary,
+    candidate.title,
+    candidate.content
+  ].join(" "));
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  return tokens.some((token) => value.includes(token));
+}
+
+function extractGroundingTokens(text: string): string[] {
+  const normalized = text.replace(/\s+/g, "");
+  const markerTokens = [
+    "异地",
+    "稳定",
+    "工作",
+    "收入",
+    "喜欢",
+    "热爱",
+    "兴趣",
+    "梦想",
+    "裸辞",
+    "转行",
+    "产品经理",
+    "大城市",
+    "老家",
+    "三十岁",
+    "重新开始",
+    "不工作",
+    "选择",
+    "后悔",
+    "后来",
+    "结果",
+    "放弃"
+  ].filter((token) => normalized.includes(token));
+
+  const phraseTokens = Array.from(normalized.matchAll(/[\u4e00-\u9fa5]{2,6}/g))
+    .map((match) => match[0])
+    .filter((token) => token.length >= 2 && !/这个|那个|一个|自己|什么|因为|所以|但是/.test(token))
+    .slice(0, 8);
+
+  return unique([...markerTokens, ...phraseTokens]).slice(0, 12);
 }
 
 function toErrorCode(error: unknown): string {

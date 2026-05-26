@@ -87,8 +87,9 @@ async function main() {
 
   if (
     summary.partialDisplayable < 7 ||
-    summary.evidenceSucceeded < 5 ||
-    summary.summarySucceeded < 5 ||
+    summary.evidenceSucceeded < 7 ||
+    summary.summarySucceeded < 6 ||
+    summary.candidateSelectFailed > 0 ||
     summary.demoFallback > 0 ||
     summary.http500 > 0
   ) {
@@ -108,6 +109,7 @@ async function evaluateQuery(baseUrl, query) {
     degraded: false,
     demoFallback: false,
     http500: false,
+    candidateSelectStatus: "missing",
     evidenceStatus: "missing",
     evidenceDurationMs: null,
     summaryStatus: "missing",
@@ -156,8 +158,10 @@ async function evaluateQuery(baseUrl, query) {
   record.degradedReason = String(statusData.degradedReason || "");
 
   const stages = Array.isArray(statusData.stages) ? statusData.stages : [];
+  const candidateSelectStage = stages.find((stage) => stage?.name === "candidate_select");
   const evidenceStage = stages.find((stage) => stage?.name === "evidence_extract");
   const summaryStage = stages.find((stage) => stage?.name === "experience_summary");
+  record.candidateSelectStatus = String(candidateSelectStage?.status || "missing");
   record.evidenceStatus = String(evidenceStage?.status || "missing");
   record.evidenceDurationMs = durationBetween(evidenceStage?.startedAt, evidenceStage?.finishedAt);
   record.summaryStatus = String(summaryStage?.status || "missing");
@@ -239,6 +243,7 @@ function summarize(results) {
     total: results.length,
     created: results.filter((item) => item.created).length,
     partialDisplayable: results.filter((item) => item.paths > 0 && item.people > 0).length,
+    candidateSelectFailed: results.filter((item) => item.candidateSelectStatus === "failed").length,
     evidenceSucceeded: results.filter((item) => item.evidenceStatus === "succeeded").length,
     summarySucceeded: results.filter((item) => item.summaryStatus === "succeeded").length,
     timedOut: results.filter((item) =>
@@ -261,13 +266,13 @@ function printMarkdownReport(report, outputPath) {
     `timeouts: evidence=${report.timeoutMs.evidence_extract}ms, summary=${report.timeoutMs.experience_summary}ms`
   );
   console.log(
-    `summary: partialDisplayable=${report.summary.partialDisplayable}/${report.summary.total}, evidenceSucceeded=${report.summary.evidenceSucceeded}/${report.summary.total}, summarySucceeded=${report.summary.summarySucceeded}/${report.summary.total}, timedOut=${report.summary.timedOut}, degraded=${report.summary.degraded}, demoFallback=${report.summary.demoFallback}, http500=${report.summary.http500}`
+    `summary: partialDisplayable=${report.summary.partialDisplayable}/${report.summary.total}, candidateSelectFailed=${report.summary.candidateSelectFailed}, evidenceSucceeded=${report.summary.evidenceSucceeded}/${report.summary.total}, summarySucceeded=${report.summary.summarySucceeded}/${report.summary.total}, timedOut=${report.summary.timedOut}, degraded=${report.summary.degraded}, demoFallback=${report.summary.demoFallback}, http500=${report.summary.http500}`
   );
-  console.log("\n| Query | partial | final | evidence | evidence ms | summary | summary ms | evidenceSamples | experienceSummary | degraded | 500 | demo fallback |");
-  console.log("|---|---:|---:|---|---:|---|---:|---:|---:|---|---|---|");
+  console.log("\n| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | evidenceSamples | experienceSummary | degraded | 500 | demo fallback |");
+  console.log("|---|---:|---:|---|---|---:|---|---:|---:|---:|---|---|---|");
   for (const item of report.results) {
     console.log(
-      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.evidenceSamples} | ${item.experienceSummaries} | ${item.degraded} | ${item.http500} | ${item.demoFallback} |`
+      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.evidenceSamples} | ${item.experienceSummaries} | ${item.degraded} | ${item.http500} | ${item.demoFallback} |`
     );
   }
 }
@@ -278,6 +283,7 @@ function formatCompactRow(item) {
     JSON.stringify(item.query),
     `partial=${formatMs(item.partialMs)}`,
     `final=${formatMs(item.finalMs)}`,
+    `candidate=${item.candidateSelectStatus}`,
     `evidence=${item.evidenceStatus}/${formatMs(item.evidenceDurationMs)}`,
     `summary=${item.summaryStatus}/${formatMs(item.summaryDurationMs)}`,
     `samples=${item.evidenceSamples}`,
