@@ -304,8 +304,10 @@ async function retryStage(baseUrl, taskId, stageName) {
 
 async function waitForTask(baseUrl, taskId, predicate) {
   let latest = null;
-  for (let attempt = 0; attempt < 320; attempt += 1) {
-    await sleep(50);
+  const timeoutMs = Number.parseInt(process.env.AGENT_SMOKE_WAIT_TIMEOUT_MS || "90000", 10);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await sleep(250);
     const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
     assertSuccess(response, "task status");
     latest = readRecord(response.body.data, "task status data");

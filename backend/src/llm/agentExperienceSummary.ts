@@ -1,7 +1,10 @@
-import { EXPERIENCE_SUMMARY_SYSTEM_PROMPT } from "./prompts/experienceSummaryPrompt.js";
-import { LlmClientError } from "./clients/openaiCompatible.js";
 import {
-  getLlmTaskTimeoutMs,
+  LlmClientError,
+  type LlmMessage
+} from "./clients/openaiCompatible.js";
+import { kimiClient } from "./clients/kimiClient.js";
+import {
+  getAgentLlmTaskTimeoutMs,
   isLlmTaskTimeoutError
 } from "./llmTimeout.js";
 import {
@@ -9,7 +12,6 @@ import {
   llmRouter
 } from "./llmRouter.js";
 import {
-  parseExperienceSummaryOutput,
   type ExperienceSummaryOutput
 } from "./schemas/taskSchemas.js";
 import type {
@@ -69,9 +71,33 @@ interface EvidenceSample {
   reason?: string;
 }
 
-const EXPERIENCE_SUMMARY_MAX_CANDIDATES = 5;
-const EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET = 700;
-const EXPERIENCE_SUMMARY_EVIDENCE_CHAR_BUDGET = 260;
+const AGENT_EXPERIENCE_SUMMARY_SYSTEM_PROMPT = String.raw`
+你是一个极简经历摘要器，只基于输入 items 生成短摘要。
+
+规则：
+1. 只基于 item.evidenceText 和 item.currentSummary，不得新增作者身份、地点、收入、动机、结局。
+2. 如果证据不像亲历经历，summary 返回 null。
+3. summary 控制在 60-110 个中文字符，以“这段经历...”或“这个样本...”开头。
+4. 不要给用户建议，不要使用“你应该/建议你/可以考虑/最好先”。
+5. sourceRefId 必须逐字来自输入。
+6. 只输出严格 JSON。
+
+输出：
+{
+  "items": [
+    {
+      "sourceRefId": "source_x",
+      "summary": "这段经历...",
+      "reason": "一句话说明依据"
+    }
+  ]
+}
+`.trim();
+
+const EXPERIENCE_SUMMARY_MAX_CANDIDATES = 3;
+const EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET = 420;
+const EXPERIENCE_SUMMARY_EVIDENCE_CHAR_BUDGET = 320;
+const EXPERIENCE_SUMMARY_OUTPUT_TOKEN_BUDGET = 900;
 
 export async function runAgentExperienceSummary(
   input: RunAgentExperienceSummaryInput
@@ -79,7 +105,7 @@ export async function runAgentExperienceSummary(
   const startedAt = Date.now();
   const provider = llmRouter.getProviderForTask("experience_summary");
   const model = llmRouter.getModelForTask("experience_summary");
-  const timeoutMs = getLlmTaskTimeoutMs("experience_summary");
+  const timeoutMs = getAgentLlmTaskTimeoutMs("experience_summary");
   const candidates = buildExperienceSummaryCandidatesFromDemoResult(
     input.result,
     input.maxCandidates ?? EXPERIENCE_SUMMARY_MAX_CANDIDATES
@@ -88,6 +114,7 @@ export async function runAgentExperienceSummary(
     candidates,
     input.maxContentChars ?? EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET
   );
+  const messages = buildExperienceSummaryMessages(input.query, promptCandidates, input.maxContentChars);
 
   if (promptCandidates.length === 0) {
     return {
@@ -130,36 +157,12 @@ export async function runAgentExperienceSummary(
   try {
     const content = await llmRouter.runJsonTask("experience_summary", {
       temperature: 0.15,
-      maxTokens: 1800,
+      maxTokens: EXPERIENCE_SUMMARY_OUTPUT_TOKEN_BUDGET,
       timeoutMs,
-      messages: [
-        {
-          role: "system",
-          content: EXPERIENCE_SUMMARY_SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: JSON.stringify(
-            {
-              query: truncateText(input.query, 120),
-              promptBudget: {
-                maxCandidates: promptCandidates.length,
-                contentCharsPerCandidate: input.maxContentChars ?? EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET,
-                evidenceCharsPerCandidate: EXPERIENCE_SUMMARY_EVIDENCE_CHAR_BUDGET
-              },
-              people: promptCandidates.map(toPromptCandidate)
-            },
-            null,
-            2
-          )
-        }
-      ]
+      messages
     });
 
-    const parsed = parseExperienceSummaryOutput(
-      content,
-      new Set(promptCandidates.map((candidate) => candidate.personId))
-    );
+    const parsed = parseAgentExperienceSummaryOutput(content, promptCandidates);
     const output = filterExperienceSummaries(parsed, promptCandidates);
 
     if (output.summaries.length === 0) {
@@ -195,6 +198,18 @@ export async function runAgentExperienceSummary(
       retryable: false
     };
   } catch (error) {
+    const kimiFallback = await tryRunKimiExperienceSummaryFallback({
+      error,
+      messages,
+      startedAt,
+      timeoutMs,
+      promptCandidates,
+      inputCandidateCount: candidates.length
+    });
+    if (kimiFallback) {
+      return kimiFallback;
+    }
+
     const timedOut = isExperienceSummaryTimeout(error);
     return {
       status: timedOut ? "timed_out" : "degraded",
@@ -329,11 +344,12 @@ export function buildExperienceSummaryCandidatesFromDemoResult(
     );
     const content = firstNonEmpty(
       evidenceSample?.evidenceText,
-      article.text,
-      article.body.map((block) => block.text).join("\n"),
-      article.summary,
       article.evidenceText,
       article.evidence[0]?.text,
+      article.summary,
+      article.body.find((block) => block.type === "evidence")?.text,
+      article.body.map((block) => block.text).join("\n"),
+      article.text,
       sourceRef?.title
     );
     if (!content && !evidenceText) {
@@ -396,24 +412,140 @@ function preparePromptCandidates(
     .slice(0, EXPERIENCE_SUMMARY_MAX_CANDIDATES);
 }
 
+function buildExperienceSummaryMessages(
+  query: string,
+  promptCandidates: AgentExperienceSummaryCandidate[],
+  maxContentChars?: number
+): LlmMessage[] {
+  return [
+    {
+      role: "system",
+      content: AGENT_EXPERIENCE_SUMMARY_SYSTEM_PROMPT
+    },
+    {
+      role: "user",
+      content: JSON.stringify(
+        {
+          query: truncateText(query, 120),
+          promptBudget: {
+            maxCandidates: promptCandidates.length,
+            contentCharsPerCandidate: maxContentChars ?? EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET,
+            evidenceCharsPerCandidate: EXPERIENCE_SUMMARY_EVIDENCE_CHAR_BUDGET
+          },
+          items: promptCandidates.map(toPromptCandidate)
+        },
+        null,
+        2
+      )
+    }
+  ];
+}
+
+async function tryRunKimiExperienceSummaryFallback(input: {
+  error: unknown;
+  messages: LlmMessage[];
+  startedAt: number;
+  timeoutMs: number;
+  promptCandidates: AgentExperienceSummaryCandidate[];
+  inputCandidateCount: number;
+}): Promise<AgentExperienceSummaryResult | undefined> {
+  if (!shouldUseKimiExperienceSummaryFallback(input.error)) {
+    return undefined;
+  }
+
+  const elapsedMs = Date.now() - input.startedAt;
+  const remainingMs = input.timeoutMs - elapsedMs;
+  if (remainingMs < 3000) {
+    return undefined;
+  }
+
+  try {
+    const content = await kimiClient.createJsonCompletion({
+      taskType: "experience_summary",
+      temperature: 0.15,
+      maxTokens: EXPERIENCE_SUMMARY_OUTPUT_TOKEN_BUDGET,
+      timeoutMs: Math.min(remainingMs, 8000),
+      maxRetry: 0,
+      messages: input.messages
+    });
+    const parsed = parseAgentExperienceSummaryOutput(content, input.promptCandidates);
+    const output = filterExperienceSummaries(parsed, input.promptCandidates);
+    if (output.summaries.length === 0) {
+      return undefined;
+    }
+
+    return {
+      status: "succeeded",
+      output,
+      llmGenerated: true,
+      provider: kimiClient.provider,
+      model: kimiClient.model,
+      timeoutMs: input.timeoutMs,
+      durationMs: Date.now() - input.startedAt,
+      inputCandidateCount: input.inputCandidateCount,
+      promptCandidateCount: input.promptCandidates.length,
+      acceptedSummaryCount: output.summaries.length,
+      retryable: false
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function shouldUseKimiExperienceSummaryFallback(error: unknown): boolean {
+  return (
+    kimiClient.isConfigured() &&
+    error instanceof LlmClientError &&
+    error.code === "LLM_EMPTY_RESPONSE"
+  );
+}
+
 function toPromptCandidate(candidate: AgentExperienceSummaryCandidate): Record<string, unknown> {
   return {
-    personId: candidate.personId,
-    name: candidate.name,
-    role: candidate.role,
-    article: {
-      articleId: candidate.articleId,
-      title: candidate.title,
-      author: candidate.author,
-      url: candidate.url,
-      sourceRefId: candidate.sourceRefId
-    },
-    currentSummary: candidate.currentSummary,
-    evidence: candidate.evidenceText,
-    content: candidate.content,
-    candidateQuality: candidate.candidateQuality,
+    sourceRefId: candidate.sourceRefId,
+    title: sanitizePromptText(candidate.title),
+    author: sanitizePromptText(candidate.author),
+    currentSummary: sanitizePromptText(candidate.currentSummary),
+    evidenceText: sanitizePromptText(candidate.evidenceText || candidate.content),
+    content: sanitizePromptText(candidate.content),
+    quality: candidate.candidateQuality,
     sourceType: candidate.sourceType
   };
+}
+
+function parseAgentExperienceSummaryOutput(
+  content: string,
+  candidates: AgentExperienceSummaryCandidate[]
+): ExperienceSummaryOutput {
+  const record = parseJsonObject(content);
+  const candidatesBySourceRefId = new Map(candidates.map((candidate) => [candidate.sourceRefId, candidate]));
+  const candidatesByPersonId = new Map(candidates.map((candidate) => [candidate.personId, candidate]));
+  const items = readRecordArray(record.items ?? record.summaries);
+  const seenPersonIds = new Set<string>();
+  const summaries = items
+    .map((item) => {
+      const sourceRefId = readString(item.sourceRefId);
+      const personId = readString(item.personId);
+      const candidate = sourceRefId
+        ? candidatesBySourceRefId.get(sourceRefId)
+        : candidatesByPersonId.get(personId);
+      if (!candidate || seenPersonIds.has(candidate.personId)) {
+        return undefined;
+      }
+
+      seenPersonIds.add(candidate.personId);
+      const rawSummary = readString(item.summary ?? item.experienceSummary);
+      return {
+        personId: candidate.personId,
+        experienceSummary: rawSummary ? truncateText(rawSummary, 180) : null,
+        confidence: rawSummary ? 0.72 : 0,
+        reason: truncateText(readString(item.reason) || "LLM generated a source-grounded summary", 120)
+      };
+    })
+    .filter((item): item is ExperienceSummaryOutput["summaries"][number] => Boolean(item))
+    .slice(0, candidates.length);
+
+  return { summaries };
 }
 
 function filterExperienceSummaries(
@@ -590,6 +722,69 @@ function toErrorMessage(error: unknown): string {
   }
 
   return truncateText(String(error), 180);
+}
+
+function parseJsonObject(content: string): Record<string, unknown> {
+  const normalized = stripMarkdownFence(content.trim());
+  const start = normalized.indexOf("{");
+  const end = normalized.lastIndexOf("}");
+  if (start < 0 || end < start) {
+    throw new Error("LLM response did not contain a JSON object");
+  }
+
+  return readRecord(JSON.parse(stripTrailingJsonCommas(normalized.slice(start, end + 1))));
+}
+
+function stripMarkdownFence(value: string): string {
+  if (!value.startsWith("```")) {
+    return value;
+  }
+
+  return value
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+}
+
+function stripTrailingJsonCommas(value: string): string {
+  return value.replace(/,\s*([}\]])/g, "$1");
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error("LLM root must be an object");
+  }
+
+  return value;
+}
+
+function readRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function readString(value: unknown): string {
+  if (typeof value === "string") {
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizePromptText(value: string): string {
+  return value
+    .replace(/\\/g, "")
+    .replace(/"/g, "“")
+    .replace(/[\u0000-\u001F]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function firstNonEmpty(...values: Array<string | undefined | null>): string {

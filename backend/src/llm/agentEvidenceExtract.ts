@@ -1,7 +1,10 @@
-import { EVIDENCE_EXTRACT_SYSTEM_PROMPT } from "./prompts/evidenceExtractPrompt.js";
-import { LlmClientError } from "./clients/openaiCompatible.js";
 import {
-  getLlmTaskTimeoutMs,
+  LlmClientError,
+  type LlmMessage
+} from "./clients/openaiCompatible.js";
+import { kimiClient } from "./clients/kimiClient.js";
+import {
+  getAgentLlmTaskTimeoutMs,
   isLlmTaskTimeoutError
 } from "./llmTimeout.js";
 import {
@@ -9,7 +12,6 @@ import {
   llmRouter
 } from "./llmRouter.js";
 import {
-  parseEvidenceExtractOutput,
   type EvidenceExtractOutput
 } from "./schemas/taskSchemas.js";
 import type {
@@ -66,9 +68,34 @@ interface EvidenceSample {
   reason: string;
 }
 
-const EVIDENCE_EXTRACT_MAX_CANDIDATES = 5;
-const EVIDENCE_EXTRACT_TEXT_CHAR_BUDGET = 900;
-const EVIDENCE_EXTRACT_EVIDENCE_CHAR_BUDGET = 240;
+const AGENT_EVIDENCE_EXTRACT_SYSTEM_PROMPT = String.raw`
+你是一个极简证据抽取器，只处理输入 candidates。
+
+规则：
+1. 只从 candidate.evidenceText 中复制或轻微截短原文证据，不得编造。
+2. sourceRefId 必须逐字来自输入。
+3. 每条 evidenceText 控制在 40-120 个中文字符。
+4. 最多输出 3 条，优先选择真实经历、决策过程、结果反馈。
+5. 不要生成人物、路径、persona 或长分析。
+6. 只输出严格 JSON。
+
+输出：
+{
+  "items": [
+    {
+      "sourceRefId": "source_x",
+      "evidenceText": "来自原文的关键片段",
+      "relevance": "strong",
+      "reason": "一句话说明与问题的关系"
+    }
+  ]
+}
+`.trim();
+
+const EVIDENCE_EXTRACT_MAX_CANDIDATES = 3;
+const EVIDENCE_EXTRACT_TEXT_CHAR_BUDGET = 650;
+const EVIDENCE_EXTRACT_EVIDENCE_CHAR_BUDGET = 220;
+const EVIDENCE_EXTRACT_OUTPUT_TOKEN_BUDGET = 900;
 
 export async function runAgentEvidenceExtract(
   input: RunAgentEvidenceExtractInput
@@ -76,9 +103,10 @@ export async function runAgentEvidenceExtract(
   const startedAt = Date.now();
   const provider = llmRouter.getProviderForTask("evidence_extract");
   const model = llmRouter.getModelForTask("evidence_extract");
-  const timeoutMs = getLlmTaskTimeoutMs("evidence_extract");
+  const timeoutMs = getAgentLlmTaskTimeoutMs("evidence_extract");
   const promptCandidates = preparePromptCandidates(input);
   const fallbackOutput = createFallbackEvidenceExtract(promptCandidates);
+  const messages = buildEvidenceExtractMessages(input.query, promptCandidates, input.maxTextChars);
 
   if (promptCandidates.length === 0) {
     return {
@@ -117,39 +145,16 @@ export async function runAgentEvidenceExtract(
   }
 
   try {
-    const content = await llmRouter.runJsonTask("evidence_extract", {
+    const completionInput = {
       temperature: 0.1,
-      maxTokens: 1800,
+      maxTokens: EVIDENCE_EXTRACT_OUTPUT_TOKEN_BUDGET,
       timeoutMs,
-      messages: [
-        {
-          role: "system",
-          content: EVIDENCE_EXTRACT_SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: JSON.stringify(
-            {
-              query: input.query,
-              intent: input.intent,
-              promptBudget: {
-                maxCandidates: promptCandidates.length,
-                textCharsPerCandidate: input.maxTextChars ?? EVIDENCE_EXTRACT_TEXT_CHAR_BUDGET,
-                evidenceCharsPerCandidate: EVIDENCE_EXTRACT_EVIDENCE_CHAR_BUDGET
-              },
-              candidates: promptCandidates
-            },
-            null,
-            2
-          )
-        }
-      ]
-    });
+      maxRetry: 0,
+      messages
+    };
+    const content = await llmRouter.runJsonTask("evidence_extract", completionInput);
 
-    const output = parseEvidenceExtractOutput(
-      content,
-      new Set(promptCandidates.map((candidate) => candidate.sourceRefId))
-    );
+    const output = parseAgentEvidenceExtractOutput(content, promptCandidates);
 
     if (output.evidenceRefs.length === 0) {
       return {
@@ -182,6 +187,19 @@ export async function runAgentEvidenceExtract(
       retryable: false
     };
   } catch (error) {
+    const kimiFallback = await tryRunKimiEvidenceFallback({
+      error,
+      query: input.query,
+      messages,
+      startedAt,
+      timeoutMs,
+      promptCandidates,
+      inputCandidateCount: input.candidates.length
+    });
+    if (kimiFallback) {
+      return kimiFallback;
+    }
+
     const timedOut = isEvidenceTimeout(error);
     return {
       status: timedOut ? "timed_out" : "degraded",
@@ -226,18 +244,18 @@ export function buildEvidenceCandidatesFromDemoResult(
 
       const sourceRef = sourceRefsById.get(sourceRefId);
       const text = firstNonEmpty(
-        article.text,
-        article.body.map((block) => block.text).join("\n"),
-        article.summary,
         article.evidenceText,
         article.evidence[0]?.text,
+        article.summary,
+        article.body.map((block) => block.text).join("\n"),
+        article.text,
         sourceRef?.title
       );
       const evidenceText = firstNonEmpty(
         article.evidenceText,
         article.evidence[0]?.text,
         article.summary,
-        article.text,
+        article.body.find((block) => block.type === "evidence")?.text,
         sourceRef?.title
       );
       if (!text && !evidenceText) {
@@ -419,6 +437,180 @@ function preparePromptCandidates(
   return promptCandidates;
 }
 
+function buildEvidenceExtractMessages(
+  query: string,
+  promptCandidates: AgentEvidenceExtractCandidate[],
+  maxTextChars?: number
+): LlmMessage[] {
+  return [
+    {
+      role: "system",
+      content: AGENT_EVIDENCE_EXTRACT_SYSTEM_PROMPT
+    },
+    {
+      role: "user",
+      content: JSON.stringify(
+        {
+          query,
+          promptBudget: {
+            maxCandidates: promptCandidates.length,
+            textCharsPerCandidate: maxTextChars ?? EVIDENCE_EXTRACT_TEXT_CHAR_BUDGET,
+            evidenceCharsPerCandidate: EVIDENCE_EXTRACT_EVIDENCE_CHAR_BUDGET
+          },
+          candidates: promptCandidates.map(toPromptCandidate)
+        },
+        null,
+        2
+      )
+    }
+  ];
+}
+
+async function tryRunKimiEvidenceFallback(input: {
+  error: unknown;
+  query: string;
+  messages: LlmMessage[];
+  startedAt: number;
+  timeoutMs: number;
+  promptCandidates: AgentEvidenceExtractCandidate[];
+  inputCandidateCount: number;
+}): Promise<AgentEvidenceExtractResult | undefined> {
+  if (!shouldUseKimiEvidenceFallback(input.error)) {
+    return undefined;
+  }
+
+  const elapsedMs = Date.now() - input.startedAt;
+  const remainingMs = input.timeoutMs - elapsedMs;
+  if (remainingMs < 3000) {
+    return undefined;
+  }
+
+  try {
+    const content = await kimiClient.createJsonCompletion({
+      taskType: "evidence_extract",
+      temperature: 0.1,
+      maxTokens: EVIDENCE_EXTRACT_OUTPUT_TOKEN_BUDGET,
+      timeoutMs: Math.min(remainingMs, 8000),
+      maxRetry: 0,
+      messages: input.messages
+    });
+    const output = parseAgentEvidenceExtractOutput(content, input.promptCandidates);
+    if (output.evidenceRefs.length === 0) {
+      return undefined;
+    }
+
+    return {
+      status: "succeeded",
+      output,
+      llmExtracted: true,
+      provider: kimiClient.provider,
+      model: kimiClient.model,
+      timeoutMs: input.timeoutMs,
+      durationMs: Date.now() - input.startedAt,
+      inputCandidateCount: input.inputCandidateCount,
+      promptCandidateCount: input.promptCandidates.length,
+      retryable: false
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function shouldUseKimiEvidenceFallback(error: unknown): boolean {
+  return (
+    kimiClient.isConfigured() &&
+    error instanceof LlmClientError &&
+    error.code === "LLM_EMPTY_RESPONSE"
+  );
+}
+
+function toPromptCandidate(candidate: AgentEvidenceExtractCandidate): Record<string, unknown> {
+  return {
+    sourceRefId: candidate.sourceRefId,
+    title: sanitizePromptText(candidate.title),
+    author: sanitizePromptText(candidate.author),
+    evidenceText: sanitizePromptText(candidate.evidenceText),
+    quality: {
+      relevanceScore: candidate.relevanceScore,
+      qualityScore: candidate.qualityScore,
+      experienceSignalScore: candidate.experienceSignalScore
+    }
+  };
+}
+
+function parseAgentEvidenceExtractOutput(
+  content: string,
+  candidates: AgentEvidenceExtractCandidate[]
+): EvidenceExtractOutput {
+  const allowedSourceRefs = new Set(candidates.map((candidate) => candidate.sourceRefId));
+  let record: Record<string, unknown>;
+  try {
+    record = parseJsonObject(content);
+  } catch {
+    return createSalvagedEvidenceOutput(content, candidates);
+  }
+
+  const items = readRecordArray(record.items ?? record.evidenceRefs);
+  const evidenceRefs = items
+    .map((item) => readAgentEvidenceItem(item, allowedSourceRefs))
+    .filter((item): item is EvidenceExtractOutput["evidenceRefs"][number] => Boolean(item))
+    .slice(0, EVIDENCE_EXTRACT_MAX_CANDIDATES);
+
+  return {
+    evidenceRefs: evidenceRefs.length > 0
+      ? evidenceRefs
+      : createSalvagedEvidenceOutput(content, candidates).evidenceRefs,
+    peopleSeeds: [],
+    pathSignals: [],
+    personaSeeds: []
+  };
+}
+
+function createSalvagedEvidenceOutput(
+  content: string,
+  candidates: AgentEvidenceExtractCandidate[]
+): EvidenceExtractOutput {
+  const selected = candidates
+    .filter((candidate) => content.includes(candidate.sourceRefId))
+    .slice(0, EVIDENCE_EXTRACT_MAX_CANDIDATES);
+
+  return {
+    evidenceRefs: selected.map((candidate) => ({
+      sourceRefId: candidate.sourceRefId,
+      label: "关键证据",
+      evidenceText: truncateText(candidate.evidenceText || candidate.text || candidate.title, 180),
+      relevanceScore: clampScore(candidate.relevanceScore ?? candidate.qualityScore ?? 0.62),
+      reason: "LLM 返回了可识别 sourceRefId，但 JSON 格式不完整；使用对应短证据片段保守落地。"
+    })),
+    peopleSeeds: [],
+    pathSignals: [],
+    personaSeeds: []
+  };
+}
+
+function readAgentEvidenceItem(
+  item: Record<string, unknown>,
+  allowedSourceRefs: Set<string>
+): EvidenceExtractOutput["evidenceRefs"][number] | undefined {
+  const sourceRefId = readString(item.sourceRefId);
+  if (!allowedSourceRefs.has(sourceRefId)) {
+    return undefined;
+  }
+
+  const evidenceText = readString(item.evidenceText);
+  if (!evidenceText) {
+    return undefined;
+  }
+
+  return {
+    sourceRefId,
+    label: truncateText(readString(item.label) || "关键证据", 16),
+    evidenceText: truncateText(evidenceText, 180),
+    relevanceScore: readRelevanceScore(item.relevance ?? item.relevanceScore),
+    reason: truncateText(readString(item.reason), 120)
+  };
+}
+
 function createFallbackEvidenceExtract(
   candidates: AgentEvidenceExtractCandidate[]
 ): EvidenceExtractOutput {
@@ -534,6 +726,90 @@ function toErrorMessage(error: unknown): string {
   }
 
   return truncateText(String(error), 180);
+}
+
+function parseJsonObject(content: string): Record<string, unknown> {
+  const normalized = stripMarkdownFence(content.trim());
+  const start = normalized.indexOf("{");
+  const end = normalized.lastIndexOf("}");
+  if (start < 0 || end < start) {
+    throw new Error("LLM response did not contain a JSON object");
+  }
+
+  return readRecord(JSON.parse(stripTrailingJsonCommas(normalized.slice(start, end + 1))));
+}
+
+function stripMarkdownFence(value: string): string {
+  if (!value.startsWith("```")) {
+    return value;
+  }
+
+  return value
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+}
+
+function stripTrailingJsonCommas(value: string): string {
+  return value.replace(/,\s*([}\]])/g, "$1");
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error("LLM root must be an object");
+  }
+
+  return value;
+}
+
+function readRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function readString(value: unknown): string {
+  if (typeof value === "string") {
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return "";
+}
+
+function readRelevanceScore(value: unknown): number {
+  if (typeof value === "number") {
+    return clampScore(value);
+  }
+
+  const normalized = readString(value).toLowerCase();
+  if (normalized === "strong") {
+    return 0.9;
+  }
+
+  if (normalized === "medium") {
+    return 0.68;
+  }
+
+  if (normalized === "weak") {
+    return 0.45;
+  }
+
+  return 0.62;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizePromptText(value: string): string {
+  return value
+    .replace(/\\/g, "")
+    .replace(/"/g, "“")
+    .replace(/[\u0000-\u001F]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function firstNonEmpty(...values: Array<string | undefined | null>): string {

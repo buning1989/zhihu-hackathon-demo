@@ -61,7 +61,11 @@ export const config = {
   },
   agentTask: {
     store: parseAgentTaskStore(process.env.AGENT_TASK_STORE),
-    dbPath: firstNonEmpty(process.env.AGENT_TASK_DB_PATH) || defaultAgentTaskDbPath()
+    dbPath: firstNonEmpty(process.env.AGENT_TASK_DB_PATH) || defaultAgentTaskDbPath(),
+    timeouts: {
+      evidenceExtractMs: parsePositiveInteger(process.env.AGENT_EVIDENCE_TIMEOUT_MS, 18000),
+      experienceSummaryMs: parsePositiveInteger(process.env.AGENT_EXPERIENCE_SUMMARY_TIMEOUT_MS, 18000)
+    }
   },
   zhihu: {
     accessSecret: zhihuAccessSecret,

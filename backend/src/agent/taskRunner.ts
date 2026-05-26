@@ -21,7 +21,10 @@ import {
   buildExperienceSummaryCandidatesFromDemoResult,
   runAgentExperienceSummary
 } from "../llm/agentExperienceSummary.js";
-import { getLlmTaskTimeoutMs } from "../llm/llmTimeout.js";
+import {
+  getAgentLlmTaskTimeoutMs,
+  getLlmTaskTimeoutMs
+} from "../llm/llmTimeout.js";
 import { buildFallbackSearchQueryPlan } from "../llm/searchQueryPlan.js";
 import { agentTaskStore } from "./taskStoreFactory.js";
 import type { AgentTaskStore } from "./taskStore.js";
@@ -504,15 +507,15 @@ export class AgentTaskRunner {
       clearFinishedAt?: boolean;
     } = {}
   ): ReturnType<typeof buildEvidenceCandidatesFromDemoResult> {
-    const candidates = buildEvidenceCandidatesFromDemoResult(partialResult, 5);
+    const candidates = buildEvidenceCandidatesFromDemoResult(partialResult, 3);
     this.startStage(taskId, "evidence_extract", {
       attempt: options.attempt,
-      timeoutMs: getLlmTaskTimeoutMs("evidence_extract"),
+      timeoutMs: getAgentLlmTaskTimeoutMs("evidence_extract"),
       taskStatus: options.taskStatus ?? "partial_ready",
       clearFinishedAt: options.clearFinishedAt,
       inputSummary: {
         candidateCount: candidates.length,
-        maxCandidates: 5,
+        maxCandidates: 3,
         sourceRefs: candidates.map((candidate) => candidate.sourceRefId),
         ...(options.retry
           ? {
@@ -536,7 +539,7 @@ export class AgentTaskRunner {
       query: snapshot.task.query,
       intent,
       candidates,
-      maxCandidates: 5
+      maxCandidates: 3
     });
 
     const enhancedResult = isDemoSearchResponse(partialResult)
@@ -599,13 +602,13 @@ export class AgentTaskRunner {
       return currentResult;
     }
 
-    const candidates = buildExperienceSummaryCandidatesFromDemoResult(currentResult, 5);
+    const candidates = buildExperienceSummaryCandidatesFromDemoResult(currentResult, 3);
     this.startStage(taskId, "experience_summary", {
-      timeoutMs: getLlmTaskTimeoutMs("experience_summary"),
+      timeoutMs: getAgentLlmTaskTimeoutMs("experience_summary"),
       taskStatus: "partial_ready",
       inputSummary: {
         candidateCount: candidates.length,
-        maxCandidates: 5,
+        maxCandidates: 3,
         sourceRefs: candidates.map((candidate) => candidate.sourceRefId),
         evidenceFirst: candidates.some((candidate) => Boolean(candidate.evidenceText))
       }
@@ -616,7 +619,7 @@ export class AgentTaskRunner {
       const summary = await runAgentExperienceSummary({
         query: snapshot.task.query,
         result: currentResult,
-        maxCandidates: 5
+        maxCandidates: 3
       });
 
       const enhancedResult = applyAgentExperienceSummaryResult(currentResult, summary);

@@ -11,6 +11,7 @@
     "start": "npm run start -w backend",
     "smoke": "bash scripts/smoke-test.sh",
     "smoke:agent": "node scripts/smoke-agent-tasks.mjs",
+    "smoke:agent-real-eval": "node scripts/agent-task-real-eval.mjs",
     "smoke:frontend-agent": "node scripts/smoke-frontend-agent-flow.mjs",
     "smoke:demo-real": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:search": "node scripts/smoke-demo-real-search.mjs",

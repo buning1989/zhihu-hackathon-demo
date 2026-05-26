@@ -36,6 +36,16 @@ export function getLlmTaskTimeoutMs(taskType: LlmTaskType): number {
   return LLM_TASK_TIMEOUT_MS[taskType];
 }
 
+export function getAgentLlmTaskTimeoutMs(
+  taskType: "evidence_extract" | "experience_summary"
+): number {
+  if (taskType === "evidence_extract") {
+    return config.agentTask.timeouts.evidenceExtractMs;
+  }
+
+  return config.agentTask.timeouts.experienceSummaryMs;
+}
+
 export async function withLlmTaskTimeout<T>(
   taskType: LlmTaskType,
   promise: Promise<T>,

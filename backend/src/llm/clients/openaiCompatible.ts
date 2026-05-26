@@ -192,6 +192,31 @@ function readAssistantContent(payload: unknown): string {
       .trim();
   }
 
+  const fallbackContent = readFallbackAssistantText(firstChoice, message);
+  if (fallbackContent) {
+    return fallbackContent;
+  }
+
+  return "";
+}
+
+function readFallbackAssistantText(
+  firstChoice: unknown,
+  message: Record<string, unknown>
+): string {
+  const fallbackValues = [
+    message.reasoning_content,
+    message.reasoning,
+    message.text,
+    isRecord(firstChoice) ? firstChoice.text : undefined
+  ];
+
+  for (const value of fallbackValues) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
   return "";
 }
 
