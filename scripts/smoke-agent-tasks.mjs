@@ -40,13 +40,10 @@ async function main() {
     assertNonEmptyString(mockTask.taskId, "mock taskId");
     assertEqual(mockTask.status, "queued", "mock initial status");
 
-    const mockFinal = await waitForTask(baseUrl, mockTask.taskId, (data) =>
-      ["succeeded", "degraded", "failed"].includes(String(data.status))
+    const mockPartial = await waitForTask(baseUrl, mockTask.taskId, (data) =>
+      data.hasPartialResult === true || ["partial_ready", "succeeded", "degraded"].includes(String(data.status))
     );
-    assertEqual(mockFinal.status, "succeeded", "mock final status");
-    assertStage(mockFinal, "intent_expand", ["succeeded"]);
-    assertStage(mockFinal, "partial_compose", ["succeeded"]);
-    assertStage(mockFinal, "evidence_extract", ["skipped", "degraded"]);
+    assertEqual(mockPartial.hasPartialResult, true, "mock partial flag");
 
     const view = await requestJson(`${baseUrl}/api/agent/tasks/${mockTask.taskId}/view`);
     assertSuccess(view, "mock view");
@@ -54,9 +51,24 @@ async function main() {
     assertNonEmptyArray(view.body.data.result.paths, "mock view paths");
     assertNonEmptyArray(view.body.data.result.people, "mock view people");
 
+    const mockFinal = await waitForTask(baseUrl, mockTask.taskId, (data) =>
+      ["succeeded", "degraded", "failed"].includes(String(data.status))
+    );
+    if (!["succeeded", "degraded"].includes(String(mockFinal.status))) {
+      throw new Error(`mock final status: expected succeeded or degraded, got ${String(mockFinal.status)}`);
+    }
+    assertStage(mockFinal, "intent_expand", ["succeeded"]);
+    assertStage(mockFinal, "partial_compose", ["succeeded"]);
+    const mockEvidenceStage = assertStage(mockFinal, "evidence_extract", ["succeeded", "degraded", "timed_out"]);
+
     const result = await requestJson(`${baseUrl}/api/agent/tasks/${mockTask.taskId}/result`);
     assertSuccess(result, "mock result");
     assertEqual(result.body.data.result.dataMode, "mock", "mock final dataMode");
+    assertEvidenceResult(result.body.data.result, mockEvidenceStage.status, "mock final evidence");
+    if (mockEvidenceStage.status !== "succeeded") {
+      assertEqual(mockFinal.degraded, true, "mock degraded flag");
+      assertIncludes(mockFinal.failedStages, "evidence_extract", "mock failedStages");
+    }
 
     const realTask = await createTask(baseUrl, {
       query: "真实模式失败时不能静默返回 mock",
@@ -117,7 +129,8 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       BACKEND_PORT: String(port),
       AGENT_TASK_STORE: "sqlite",
       AGENT_TASK_DB_PATH: dbPath,
-      DATA_MODE: "mock"
+      DATA_MODE: "mock",
+      LLM_ENABLED: "false"
     });
     await waitForBackend(`http://127.0.0.1:${port}`);
 
@@ -132,6 +145,9 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     );
     assertEqual(final.hasPartialResult, true, "sqlite before restart has partial result");
     assertEqual(final.hasFinalResult, true, "sqlite before restart has final result");
+    const sqliteEvidenceStage = assertStage(final, "evidence_extract", ["degraded", "timed_out"]);
+    assertEqual(final.degraded, true, "sqlite before restart degraded flag");
+    assertIncludes(final.failedStages, "evidence_extract", "sqlite before restart failedStages");
 
     await stopBackendServer(server);
     server = null;
@@ -140,7 +156,8 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       BACKEND_PORT: String(port),
       AGENT_TASK_STORE: "sqlite",
       AGENT_TASK_DB_PATH: dbPath,
-      DATA_MODE: "mock"
+      DATA_MODE: "mock",
+      LLM_ENABLED: "false"
     });
     await waitForBackend(baseUrl);
 
@@ -149,6 +166,8 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(restoredStatus.body.data.taskId, created.taskId, "sqlite restored taskId");
     assertEqual(restoredStatus.body.data.hasPartialResult, true, "sqlite restored partial flag");
     assertEqual(restoredStatus.body.data.hasFinalResult, true, "sqlite restored final flag");
+    const restoredEvidenceStage = assertStage(restoredStatus.body.data, "evidence_extract", ["degraded", "timed_out"]);
+    assertEqual(restoredEvidenceStage.status, sqliteEvidenceStage.status, "sqlite restored evidence stage status");
 
     const restoredView = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/view`);
     assertSuccess(restoredView, "sqlite restored view");
@@ -157,6 +176,11 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     const restoredResult = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/result`);
     assertSuccess(restoredResult, "sqlite restored result");
     assertEqual(restoredResult.body.data.result.dataMode, "mock", "sqlite restored final dataMode");
+    assertEvidenceResult(
+      restoredResult.body.data.result,
+      restoredEvidenceStage.status,
+      "sqlite restored evidence"
+    );
   } finally {
     if (server) {
       await stopBackendServer(server);
@@ -176,7 +200,7 @@ async function createTask(baseUrl, body) {
 
 async function waitForTask(baseUrl, taskId, predicate) {
   let latest = null;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
     await sleep(50);
     const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
     assertSuccess(response, "task status");
@@ -289,6 +313,22 @@ function assertStage(taskData, stageName, allowedStatuses) {
   if (!allowedStatuses.includes(String(stage.status))) {
     throw new Error(`Stage ${stageName} expected ${allowedStatuses.join(" or ")}, got ${String(stage.status)}`);
   }
+
+  return stage;
+}
+
+function assertEvidenceResult(result, stageStatus, label) {
+  const record = readRecord(result, `${label} result`);
+  const meta = readRecord(record.meta, `${label} meta`);
+  const evidenceExtract = readRecord(meta.evidenceExtract, `${label} meta.evidenceExtract`);
+  assertEqual(evidenceExtract.status, stageStatus, `${label} evidence status`);
+  assertNonEmptyArray(meta.evidenceSamples, `${label} evidence samples`);
+
+  if (stageStatus === "succeeded") {
+    assertEqual(evidenceExtract.llmExtracted, true, `${label} llmExtracted`);
+  } else {
+    assertIncludes(meta.fallbackStages, "evidence_extract", `${label} fallbackStages`);
+  }
 }
 
 function readRecord(value, label) {
@@ -316,6 +356,12 @@ function assertNonEmptyString(value, label) {
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
     throw new Error(`${label}: expected ${String(expected)}, got ${String(actual)}`);
+  }
+}
+
+function assertIncludes(value, expected, label) {
+  if (!Array.isArray(value) || !value.includes(expected)) {
+    throw new Error(`${label}: expected array to include ${expected}, got ${JSON.stringify(value)}`);
   }
 }
 

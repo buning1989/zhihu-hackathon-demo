@@ -7,9 +7,15 @@ import type { SearchItem, SearchMatchedQuery } from "../types/api.types.js";
 import {
   DEMO_SCHEMA_VERSION,
   type DemoDataMode,
+  type DemoSearchResponse,
   type DemoSearchQueryPlan
 } from "../types/demo.types.js";
 import { HttpError } from "../utils/httpError.js";
+import {
+  applyAgentEvidenceExtractResult,
+  buildEvidenceCandidatesFromDemoResult,
+  runAgentEvidenceExtract
+} from "../llm/agentEvidenceExtract.js";
 import { getLlmTaskTimeoutMs } from "../llm/llmTimeout.js";
 import { buildFallbackSearchQueryPlan } from "../llm/searchQueryPlan.js";
 import { agentTaskStore } from "./taskStoreFactory.js";
@@ -108,11 +114,7 @@ export class AgentTaskRunner {
         partialReadyAt: new Date().toISOString()
       });
 
-      this.skipOptionalEnhancementStage(
-        taskId,
-        "evidence_extract",
-        "MVP keeps evidence_extract as a retryable background enhancement"
-      );
+      const finalResult = await this.runEvidenceExtractStage(taskId, partialResult, intent);
       this.skipOptionalEnhancementStage(
         taskId,
         "experience_summary",
@@ -129,7 +131,7 @@ export class AgentTaskRunner {
         "MVP derives persona entries from rule-composed people; product persona preparation is deferred"
       );
 
-      this.finishWithResult(taskId, partialResult);
+      this.finishWithResult(taskId, finalResult);
     } catch (error) {
       this.failTask(taskId, error);
     }
@@ -203,11 +205,7 @@ export class AgentTaskRunner {
       partialReadyAt: new Date().toISOString()
     });
 
-    this.skipOptionalEnhancementStage(
-      taskId,
-      "evidence_extract",
-      "explicit mock mode keeps LLM evidence extraction disabled"
-    );
+    const finalResult = await this.runEvidenceExtractStage(taskId, result, snapshot.task.intent);
     this.skipOptionalEnhancementStage(
       taskId,
       "experience_summary",
@@ -223,7 +221,7 @@ export class AgentTaskRunner {
       "persona_prepare",
       "explicit mock mode uses mock persona entries"
     );
-    this.finishWithResult(taskId, result);
+    this.finishWithResult(taskId, finalResult);
   }
 
   private async runRetrieveStage(
@@ -447,6 +445,54 @@ export class AgentTaskRunner {
     return result;
   }
 
+  private async runEvidenceExtractStage(
+    taskId: string,
+    partialResult: unknown,
+    intent: unknown
+  ): Promise<unknown> {
+    const snapshot = this.requireTask(taskId);
+    const candidates = buildEvidenceCandidatesFromDemoResult(partialResult, 5);
+
+    this.startStage(taskId, "evidence_extract", {
+      timeoutMs: getLlmTaskTimeoutMs("evidence_extract"),
+      inputSummary: {
+        candidateCount: candidates.length,
+        maxCandidates: 5,
+        sourceRefs: candidates.map((candidate) => candidate.sourceRefId)
+      }
+    });
+
+    const extraction = await runAgentEvidenceExtract({
+      query: snapshot.task.query,
+      intent,
+      candidates,
+      maxCandidates: 5
+    });
+
+    const enhancedResult = isDemoSearchResponse(partialResult)
+      ? applyAgentEvidenceExtractResult(partialResult, extraction)
+      : partialResult;
+
+    this.store.setFinalResult(taskId, enhancedResult);
+    this.finishStage(taskId, "evidence_extract", extraction.status, {
+      provider: extraction.provider,
+      model: extraction.model,
+      outputSummary: {
+        llmExtracted: extraction.llmExtracted,
+        evidenceRefCount: extraction.output.evidenceRefs.length,
+        inputCandidateCount: extraction.inputCandidateCount,
+        promptCandidateCount: extraction.promptCandidateCount
+      },
+      errorCode: extraction.errorCode,
+      errorMessage: extraction.errorMessage,
+      fallbackUsed: extraction.status !== "succeeded",
+      fallbackReason: extraction.fallbackReason,
+      retryable: extraction.retryable
+    });
+
+    return enhancedResult;
+  }
+
   private startStage(
     taskId: string,
     stageName: AgentStageName,
@@ -481,6 +527,8 @@ export class AgentTaskRunner {
     status: AgentStageStatus,
     options: {
       outputSummary?: Record<string, unknown>;
+      provider?: string;
+      model?: string;
       errorCode?: string;
       errorMessage?: string;
       fallbackUsed?: boolean;
@@ -492,6 +540,8 @@ export class AgentTaskRunner {
       status,
       finishedAt: new Date().toISOString(),
       outputSummary: options.outputSummary,
+      provider: options.provider,
+      model: options.model,
       errorCode: options.errorCode,
       errorMessage: options.errorMessage,
       fallbackUsed: options.fallbackUsed ?? false,
@@ -533,7 +583,11 @@ export class AgentTaskRunner {
       stage.status === "degraded" || stage.status === "timed_out"
     );
     const failedStages = snapshot.stages
-      .filter((stage) => stage.status === "failed" || stage.status === "timed_out")
+      .filter((stage) =>
+        stage.status === "failed" ||
+        stage.status === "timed_out" ||
+        (stage.name === "evidence_extract" && stage.status === "degraded")
+      )
       .map((stage) => stage.name);
     const retryableStages = snapshot.stages
       .filter((stage) => stage.retryable)
@@ -768,6 +822,18 @@ function createEmptyAgentResult(input: {
       retryable: true
     }
   };
+}
+
+function isDemoSearchResponse(value: unknown): value is DemoSearchResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as DemoSearchResponse).paths) &&
+    Array.isArray((value as DemoSearchResponse).people) &&
+    typeof (value as DemoSearchResponse).meta === "object" &&
+    (value as DemoSearchResponse).meta !== null &&
+    Array.isArray((value as DemoSearchResponse).meta.sourceRefs)
+  );
 }
 
 function truncateText(value: string, maxLength: number): string {

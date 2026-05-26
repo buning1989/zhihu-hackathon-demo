@@ -286,13 +286,19 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
     data.status === "succeeded" || data.status === "degraded" || data.status === "failed"
   );
 
-  assertEqual(finalMockStatus.status, "succeeded", "agent mock final status");
+  if (finalMockStatus.status !== "succeeded" && finalMockStatus.status !== "degraded") {
+    throw new Error(`agent mock final status: expected succeeded or degraded, got ${String(finalMockStatus.status)}`);
+  }
   assertEqual(finalMockStatus.hasPartialResult, true, "agent mock has partial result");
   assertEqual(finalMockStatus.hasFinalResult, true, "agent mock has final result");
   assertAgentStage(finalMockStatus, "intent_expand", ["succeeded"]);
   assertAgentStage(finalMockStatus, "retrieve_search", ["skipped"]);
   assertAgentStage(finalMockStatus, "partial_compose", ["succeeded"]);
-  assertAgentStage(finalMockStatus, "evidence_extract", ["skipped"]);
+  const mockEvidenceStage = assertAgentStage(finalMockStatus, "evidence_extract", [
+    "succeeded",
+    "degraded",
+    "timed_out"
+  ]);
 
   const mockView = await requestJson(`${baseUrl}/api/agent/tasks/${mockTaskId}/view`);
   assertEqual(mockView.status, 200, "GET /api/agent/tasks/:taskId/view mock status");
@@ -305,6 +311,15 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
   assertEqual(mockResult.status, 200, "GET /api/agent/tasks/:taskId/result mock status");
   assertEqual(mockResult.body.success, true, "GET /api/agent/tasks/:taskId/result mock success");
   assertEqual(mockResult.body.data.result.dataMode, "mock", "agent mock final dataMode");
+  assertEvidenceExtractResult(
+    mockResult.body.data.result,
+    String(mockEvidenceStage.status),
+    "agent mock final evidence"
+  );
+  if (mockEvidenceStage.status !== "succeeded") {
+    assertEqual(finalMockStatus.degraded, true, "agent mock degraded after evidence fallback");
+    assertIncludes(finalMockStatus.failedStages, "evidence_extract", "agent mock failedStages");
+  }
 
   const originalSearch = searchService.search;
   searchService.search = async () => {
@@ -358,7 +373,7 @@ async function waitForAgentTask(
 ): Promise<Record<string, unknown>> {
   let latest: Record<string, unknown> | null = null;
 
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 260; attempt += 1) {
     await sleep(25);
     const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
     assertEqual(response.status, 200, `${label} poll status`);
@@ -381,7 +396,7 @@ function assertAgentStage(
   taskData: unknown,
   stageName: string,
   allowedStatuses: string[]
-): void {
+): Record<string, unknown> {
   if (!isRecord(taskData) || !Array.isArray(taskData.stages)) {
     throw new Error(`agent stage ${stageName}: expected task stages`);
   }
@@ -395,6 +410,29 @@ function assertAgentStage(
     throw new Error(
       `agent stage ${stageName}: expected ${allowedStatuses.join(" or ")}, got ${String(stage.status)}`
     );
+  }
+
+  return stage;
+}
+
+function assertEvidenceExtractResult(
+  result: unknown,
+  stageStatus: string,
+  label: string
+): void {
+  if (!isRecord(result) || !isRecord(result.meta)) {
+    throw new Error(`${label}: expected result meta`);
+  }
+
+  if (!isRecord(result.meta.evidenceExtract)) {
+    throw new Error(`${label}: expected meta.evidenceExtract`);
+  }
+
+  assertEqual(result.meta.evidenceExtract.status, stageStatus, `${label} status`);
+  assertNonEmptyArray(result.meta.evidenceSamples, `${label} evidenceSamples`);
+
+  if (stageStatus !== "succeeded") {
+    assertIncludes(result.meta.fallbackStages, "evidence_extract", `${label} fallbackStages`);
   }
 }
 
@@ -464,6 +502,13 @@ function assertNonEmptyString(value: unknown, label: string): void {
 }
 
 function assertIncludes(value: unknown, expected: string, label: string): void {
+  if (Array.isArray(value)) {
+    if (!value.includes(expected)) {
+      throw new Error(`${label}: expected ${JSON.stringify(value)} to include ${expected}`);
+    }
+    return;
+  }
+
   if (typeof value !== "string" || !value.includes(expected)) {
     throw new Error(`${label}: expected ${String(value)} to include ${expected}`);
   }
