@@ -350,6 +350,7 @@ export interface DemoMeta {
   fallbackStages?: string[];
   llmStages?: DemoLlmStageMeta[];
   timedOutStages?: string[];
+  experienceSummary?: DemoExperienceSummaryMeta;
 }
 
 export interface DemoLlmStageMeta {
@@ -359,6 +360,17 @@ export interface DemoLlmStageMeta {
   status: "success" | "fallback" | "timeout" | "skipped";
   durationMs: number;
   fallbackReason: string;
+}
+
+export interface DemoExperienceSummaryMeta {
+  status: "succeeded" | "degraded" | "timed_out";
+  llmGenerated: boolean;
+  provider?: string;
+  model?: string;
+  inputCandidateCount: number;
+  promptCandidateCount: number;
+  acceptedSummaryCount: number;
+  fallbackReason?: string;
 }
 
 export interface DemoSearchQueryPlan {

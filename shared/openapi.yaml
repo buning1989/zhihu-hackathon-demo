@@ -2493,6 +2493,44 @@ components:
         latencyMs:
           type: integer
           minimum: 0
+        experienceSummary:
+          $ref: "#/components/schemas/DemoExperienceSummaryMeta"
+    DemoExperienceSummaryMeta:
+      type: object
+      description: >
+        Background Agent Task summary-stage metadata. When status is not
+        succeeded, frontend should keep existing grounded result text and treat
+        this as degraded rather than mocked content.
+      required:
+        - status
+        - llmGenerated
+        - inputCandidateCount
+        - promptCandidateCount
+        - acceptedSummaryCount
+      properties:
+        status:
+          type: string
+          enum:
+            - succeeded
+            - degraded
+            - timed_out
+        llmGenerated:
+          type: boolean
+        provider:
+          type: string
+        model:
+          type: string
+        inputCandidateCount:
+          type: integer
+          minimum: 0
+        promptCandidateCount:
+          type: integer
+          minimum: 0
+        acceptedSummaryCount:
+          type: integer
+          minimum: 0
+        fallbackReason:
+          type: string
     DemoDebug:
       type: object
       additionalProperties: true

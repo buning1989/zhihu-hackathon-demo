@@ -16,6 +16,11 @@ import {
   buildEvidenceCandidatesFromDemoResult,
   runAgentEvidenceExtract
 } from "../llm/agentEvidenceExtract.js";
+import {
+  applyAgentExperienceSummaryResult,
+  buildExperienceSummaryCandidatesFromDemoResult,
+  runAgentExperienceSummary
+} from "../llm/agentExperienceSummary.js";
 import { getLlmTaskTimeoutMs } from "../llm/llmTimeout.js";
 import { buildFallbackSearchQueryPlan } from "../llm/searchQueryPlan.js";
 import { agentTaskStore } from "./taskStoreFactory.js";
@@ -156,12 +161,8 @@ export class AgentTaskRunner {
         partialReadyAt: new Date().toISOString()
       });
 
-      const finalResult = await this.runEvidenceExtractStage(taskId, partialResult, intent);
-      this.skipOptionalEnhancementStage(
-        taskId,
-        "experience_summary",
-        "MVP keeps experience_summary as a background enhancement"
-      );
+      const evidenceResult = await this.runEvidenceExtractStage(taskId, partialResult, intent);
+      const finalResult = await this.runExperienceSummaryStage(taskId, evidenceResult);
       this.skipOptionalEnhancementStage(
         taskId,
         "grounding_guard",
@@ -247,12 +248,8 @@ export class AgentTaskRunner {
       partialReadyAt: new Date().toISOString()
     });
 
-    const finalResult = await this.runEvidenceExtractStage(taskId, result, snapshot.task.intent);
-    this.skipOptionalEnhancementStage(
-      taskId,
-      "experience_summary",
-      "explicit mock mode keeps LLM summary disabled"
-    );
+    const evidenceResult = await this.runEvidenceExtractStage(taskId, result, snapshot.task.intent);
+    const finalResult = await this.runExperienceSummaryStage(taskId, evidenceResult);
     this.skipOptionalEnhancementStage(
       taskId,
       "grounding_guard",
@@ -573,7 +570,8 @@ export class AgentTaskRunner {
     candidates: ReturnType<typeof buildEvidenceCandidatesFromDemoResult>
   ): Promise<void> {
     try {
-      const finalResult = await this.completeEvidenceExtractStage(taskId, partialResult, intent, candidates);
+      const evidenceResult = await this.completeEvidenceExtractStage(taskId, partialResult, intent, candidates);
+      const finalResult = await this.runExperienceSummaryStage(taskId, evidenceResult);
       this.finishWithResult(taskId, finalResult);
     } catch (error) {
       const message = toErrorMessage(error);
@@ -585,6 +583,78 @@ export class AgentTaskRunner {
         retryable: true
       });
       this.finishWithResult(taskId, partialResult);
+    }
+  }
+
+  private async runExperienceSummaryStage(
+    taskId: string,
+    currentResult: unknown
+  ): Promise<unknown> {
+    if (!isDemoSearchResponse(currentResult)) {
+      this.skipOptionalEnhancementStage(
+        taskId,
+        "experience_summary",
+        "current result is not a demo search response"
+      );
+      return currentResult;
+    }
+
+    const candidates = buildExperienceSummaryCandidatesFromDemoResult(currentResult, 5);
+    this.startStage(taskId, "experience_summary", {
+      timeoutMs: getLlmTaskTimeoutMs("experience_summary"),
+      taskStatus: "partial_ready",
+      inputSummary: {
+        candidateCount: candidates.length,
+        maxCandidates: 5,
+        sourceRefs: candidates.map((candidate) => candidate.sourceRefId),
+        evidenceFirst: candidates.some((candidate) => Boolean(candidate.evidenceText))
+      }
+    });
+
+    try {
+      const snapshot = this.requireTask(taskId);
+      const summary = await runAgentExperienceSummary({
+        query: snapshot.task.query,
+        result: currentResult,
+        maxCandidates: 5
+      });
+
+      const enhancedResult = applyAgentExperienceSummaryResult(currentResult, summary);
+      this.store.setFinalResult(taskId, enhancedResult);
+      this.finishStage(taskId, "experience_summary", summary.status, {
+        provider: summary.provider,
+        model: summary.model,
+        outputSummary: {
+          llmGenerated: summary.llmGenerated,
+          acceptedSummaryCount: summary.acceptedSummaryCount,
+          inputCandidateCount: summary.inputCandidateCount,
+          promptCandidateCount: summary.promptCandidateCount
+        },
+        errorCode: summary.errorCode,
+        errorMessage: summary.errorMessage,
+        fallbackUsed: summary.status !== "succeeded",
+        fallbackReason: summary.fallbackReason,
+        retryable: summary.retryable
+      });
+
+      return enhancedResult;
+    } catch (error) {
+      const message = toErrorMessage(error);
+      this.finishStage(taskId, "experience_summary", "degraded", {
+        outputSummary: {
+          llmGenerated: false,
+          acceptedSummaryCount: 0,
+          inputCandidateCount: candidates.length,
+          promptCandidateCount: 0
+        },
+        errorCode: toErrorCode(error),
+        errorMessage: message,
+        fallbackUsed: true,
+        fallbackReason: message,
+        retryable: false
+      });
+      this.store.setFinalResult(taskId, currentResult);
+      return currentResult;
     }
   }
 
@@ -703,7 +773,8 @@ export class AgentTaskRunner {
       .filter((stage) =>
         stage.status === "failed" ||
         stage.status === "timed_out" ||
-        (stage.name === "evidence_extract" && stage.status === "degraded")
+        ((stage.name === "evidence_extract" || stage.name === "experience_summary") &&
+          stage.status === "degraded")
       )
       .map((stage) => stage.name);
     const retryableStages = snapshot.stages

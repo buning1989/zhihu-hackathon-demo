@@ -456,6 +456,12 @@
     );
   }
 
+  function hasBackgroundEnhancementRunning(taskData) {
+    return ["evidence_extract", "experience_summary"].some((stageName) =>
+      isStageRunning(taskData, stageName)
+    );
+  }
+
   function hasEvidenceExtractIssue(taskData, result = null) {
     const failedStages = new Set([
       ...(Array.isArray(taskData?.failedStages) ? taskData.failedStages : []),
@@ -1089,7 +1095,7 @@
       context.partialShown = partialShown || context.partialShown;
     }
 
-    if (isTerminalTaskStatus(taskData) || (taskData.hasFinalResult && !isStageRunning(taskData, "evidence_extract"))) {
+    if (isTerminalTaskStatus(taskData) || (taskData.hasFinalResult && !hasBackgroundEnhancementRunning(taskData))) {
       await completeBackendTask(taskData.taskId, taskStatus, requestId, context);
       return;
     }

@@ -60,14 +60,20 @@ async function main() {
     assertStage(mockFinal, "intent_expand", ["succeeded"]);
     assertStage(mockFinal, "partial_compose", ["succeeded"]);
     const mockEvidenceStage = assertStage(mockFinal, "evidence_extract", ["succeeded", "degraded", "timed_out"]);
+    const mockSummaryStage = assertStage(mockFinal, "experience_summary", ["succeeded", "degraded", "timed_out"]);
 
     const result = await requestJson(`${baseUrl}/api/agent/tasks/${mockTask.taskId}/result`);
     assertSuccess(result, "mock result");
     assertEqual(result.body.data.result.dataMode, "mock", "mock final dataMode");
     assertEvidenceResult(result.body.data.result, mockEvidenceStage.status, "mock final evidence");
+    assertExperienceSummaryResult(result.body.data.result, mockSummaryStage.status, "mock final experience summary");
     if (mockEvidenceStage.status !== "succeeded") {
       assertEqual(mockFinal.degraded, true, "mock degraded flag");
       assertIncludes(mockFinal.failedStages, "evidence_extract", "mock failedStages");
+    }
+    if (mockSummaryStage.status !== "succeeded") {
+      assertEqual(mockFinal.degraded, true, "mock summary degraded flag");
+      assertIncludes(mockFinal.failedStages, "experience_summary", "mock summary failedStages");
     }
     const unsupportedRetry = await retryStage(baseUrl, mockTask.taskId, "intent_expand");
     assertEqual(unsupportedRetry.status, 400, "unsupported retry status");
@@ -153,8 +159,10 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(final.hasPartialResult, true, "sqlite before restart has partial result");
     assertEqual(final.hasFinalResult, true, "sqlite before restart has final result");
     const sqliteEvidenceStage = assertStage(final, "evidence_extract", ["degraded", "timed_out"]);
+    const sqliteSummaryStage = assertStage(final, "experience_summary", ["degraded", "timed_out"]);
     assertEqual(final.degraded, true, "sqlite before restart degraded flag");
     assertIncludes(final.failedStages, "evidence_extract", "sqlite before restart failedStages");
+    assertIncludes(final.failedStages, "experience_summary", "sqlite before restart summary failedStages");
 
     await stopBackendServer(server);
     server = null;
@@ -174,7 +182,9 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(restoredStatus.body.data.hasPartialResult, true, "sqlite restored partial flag");
     assertEqual(restoredStatus.body.data.hasFinalResult, true, "sqlite restored final flag");
     const restoredEvidenceStage = assertStage(restoredStatus.body.data, "evidence_extract", ["degraded", "timed_out"]);
+    const restoredSummaryStage = assertStage(restoredStatus.body.data, "experience_summary", ["degraded", "timed_out"]);
     assertEqual(restoredEvidenceStage.status, sqliteEvidenceStage.status, "sqlite restored evidence stage status");
+    assertEqual(restoredSummaryStage.status, sqliteSummaryStage.status, "sqlite restored summary stage status");
 
     const restoredView = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/view`);
     assertSuccess(restoredView, "sqlite restored view");
@@ -187,6 +197,11 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       restoredResult.body.data.result,
       restoredEvidenceStage.status,
       "sqlite restored evidence"
+    );
+    assertExperienceSummaryResult(
+      restoredResult.body.data.result,
+      restoredSummaryStage.status,
+      "sqlite restored experience summary"
     );
 
     const retryStarted = await retryStage(baseUrl, created.taskId, "evidence_extract");
@@ -203,6 +218,7 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       ["succeeded", "degraded", "failed"].includes(String(data.status))
     );
     const retryEvidenceStage = assertStage(retryFinal, "evidence_extract", ["degraded", "timed_out"]);
+    const retrySummaryStage = assertStage(retryFinal, "experience_summary", ["degraded", "timed_out"]);
     if (Number(retryEvidenceStage.attempt) < Number(restoredEvidenceStage.attempt) + 1) {
       throw new Error(
         `sqlite retry final attempt expected >= ${Number(restoredEvidenceStage.attempt) + 1}, got ${String(retryEvidenceStage.attempt)}`
@@ -211,6 +227,7 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(retryFinal.hasPartialResult, true, "sqlite retry final keeps partial result");
     assertEqual(retryFinal.hasFinalResult, true, "sqlite retry final keeps final result");
     assertIncludes(retryFinal.failedStages, "evidence_extract", "sqlite retry final failedStages");
+    assertIncludes(retryFinal.failedStages, "experience_summary", "sqlite retry final summary failedStages");
 
     const retryResult = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/result`);
     assertSuccess(retryResult, "sqlite retry result");
@@ -218,6 +235,11 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       retryResult.body.data.result,
       retryEvidenceStage.status,
       "sqlite retry evidence"
+    );
+    assertExperienceSummaryResult(
+      retryResult.body.data.result,
+      retrySummaryStage.status,
+      "sqlite retry experience summary"
     );
 
     await stopBackendServer(server);
@@ -239,10 +261,20 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       "evidence_extract",
       ["degraded", "timed_out"]
     );
+    const retryRestoredSummaryStage = assertStage(
+      retryRestoredStatus.body.data,
+      "experience_summary",
+      ["degraded", "timed_out"]
+    );
     assertEqual(
       retryRestoredStage.attempt,
       retryEvidenceStage.attempt,
       "sqlite retry restored attempt"
+    );
+    assertEqual(
+      retryRestoredSummaryStage.status,
+      retrySummaryStage.status,
+      "sqlite retry restored summary status"
     );
   } finally {
     if (server) {
@@ -272,7 +304,7 @@ async function retryStage(baseUrl, taskId, stageName) {
 
 async function waitForTask(baseUrl, taskId, predicate) {
   let latest = null;
-  for (let attempt = 0; attempt < 180; attempt += 1) {
+  for (let attempt = 0; attempt < 320; attempt += 1) {
     await sleep(50);
     const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
     assertSuccess(response, "task status");
@@ -400,6 +432,30 @@ function assertEvidenceResult(result, stageStatus, label) {
     assertEqual(evidenceExtract.llmExtracted, true, `${label} llmExtracted`);
   } else {
     assertIncludes(meta.fallbackStages, "evidence_extract", `${label} fallbackStages`);
+  }
+}
+
+function assertExperienceSummaryResult(result, stageStatus, label) {
+  const record = readRecord(result, `${label} result`);
+  const meta = readRecord(record.meta, `${label} meta`);
+  const experienceSummary = readRecord(meta.experienceSummary, `${label} meta.experienceSummary`);
+  assertEqual(experienceSummary.status, stageStatus, `${label} summary status`);
+
+  if (stageStatus === "succeeded") {
+    assertEqual(experienceSummary.llmGenerated, true, `${label} llmGenerated`);
+    const people = assertNonEmptyArray(record.people, `${label} people`);
+    const hasSummary = people.some((person) =>
+      isRecord(person) &&
+      typeof person.experienceSummary === "string" &&
+      person.experienceSummary.trim().length > 0
+    );
+    if (!hasSummary) {
+      throw new Error(`${label}: expected at least one people[].experienceSummary`);
+    }
+  } else {
+    assertIncludes(meta.fallbackStages, "experience_summary", `${label} fallbackStages`);
+    const people = assertNonEmptyArray(record.people, `${label} people fallback`);
+    assertNonEmptyArray(people[0]?.articles, `${label} fallback people articles`);
   }
 }
 

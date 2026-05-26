@@ -299,6 +299,11 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
     "degraded",
     "timed_out"
   ]);
+  const mockSummaryStage = assertAgentStage(finalMockStatus, "experience_summary", [
+    "succeeded",
+    "degraded",
+    "timed_out"
+  ]);
 
   const mockView = await requestJson(`${baseUrl}/api/agent/tasks/${mockTaskId}/view`);
   assertEqual(mockView.status, 200, "GET /api/agent/tasks/:taskId/view mock status");
@@ -316,9 +321,18 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
     String(mockEvidenceStage.status),
     "agent mock final evidence"
   );
+  assertExperienceSummaryResult(
+    mockResult.body.data.result,
+    String(mockSummaryStage.status),
+    "agent mock final experience summary"
+  );
   if (mockEvidenceStage.status !== "succeeded") {
     assertEqual(finalMockStatus.degraded, true, "agent mock degraded after evidence fallback");
     assertIncludes(finalMockStatus.failedStages, "evidence_extract", "agent mock failedStages");
+  }
+  if (mockSummaryStage.status !== "succeeded") {
+    assertEqual(finalMockStatus.degraded, true, "agent mock degraded after summary fallback");
+    assertIncludes(finalMockStatus.failedStages, "experience_summary", "agent mock summary failedStages");
   }
 
   const originalSearch = searchService.search;
@@ -373,7 +387,7 @@ async function waitForAgentTask(
 ): Promise<Record<string, unknown>> {
   let latest: Record<string, unknown> | null = null;
 
-  for (let attempt = 0; attempt < 260; attempt += 1) {
+  for (let attempt = 0; attempt < 520; attempt += 1) {
     await sleep(25);
     const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
     assertEqual(response.status, 200, `${label} poll status`);
@@ -433,6 +447,30 @@ function assertEvidenceExtractResult(
 
   if (stageStatus !== "succeeded") {
     assertIncludes(result.meta.fallbackStages, "evidence_extract", `${label} fallbackStages`);
+  }
+}
+
+function assertExperienceSummaryResult(
+  result: unknown,
+  stageStatus: string,
+  label: string
+): void {
+  if (!isRecord(result) || !isRecord(result.meta)) {
+    throw new Error(`${label}: expected result meta`);
+  }
+
+  if (!isRecord(result.meta.experienceSummary)) {
+    throw new Error(`${label}: expected meta.experienceSummary`);
+  }
+
+  assertEqual(result.meta.experienceSummary.status, stageStatus, `${label} status`);
+
+  if (stageStatus === "succeeded") {
+    assertEqual(result.meta.experienceSummary.llmGenerated, true, `${label} llmGenerated`);
+    assertNonEmptyArray(result.people, `${label} people`);
+  } else {
+    assertIncludes(result.meta.fallbackStages, "experience_summary", `${label} fallbackStages`);
+    assertNonEmptyArray(result.people, `${label} fallback people`);
   }
 }
 
