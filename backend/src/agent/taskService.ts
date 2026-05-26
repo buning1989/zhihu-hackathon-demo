@@ -8,6 +8,7 @@ import { agentTaskRunner, type AgentTaskRunner } from "./taskRunner.js";
 import type {
   AgentStageName,
   AgentStageRecord,
+  AgentStageStatus,
   AgentTaskRecord,
   AgentTaskSnapshot
 } from "./taskTypes.js";
@@ -113,6 +114,14 @@ export class AgentTaskService {
     };
   }
 
+  retryTaskStage(taskId: string, stageNameValue: string): AgentTaskStatusView {
+    const stageName = parseRetryStageName(stageNameValue);
+    const snapshot = this.requireTask(taskId);
+    validateStageRetry(snapshot, stageName);
+    const retrySnapshot = this.runner.retryEvidenceExtract(taskId);
+    return toTaskStatusView(retrySnapshot);
+  }
+
   private requireTask(taskId: string): AgentTaskSnapshot {
     const snapshot = this.store.getTask(taskId);
     if (!snapshot) {
@@ -124,6 +133,13 @@ export class AgentTaskService {
 }
 
 export const agentTaskService = new AgentTaskService(agentTaskStore, agentTaskRunner);
+
+const RETRYABLE_EVIDENCE_STAGE_STATUSES = new Set<AgentStageStatus>([
+  "degraded",
+  "timed_out",
+  "failed",
+  "skipped"
+]);
 
 function parseCreateTaskRequest(body: unknown): {
   query: string;
@@ -245,6 +261,50 @@ function parseDataMode(value: unknown, fallback: DemoDataMode): DemoDataMode {
   }
 
   return fallback;
+}
+
+function parseRetryStageName(value: string): "evidence_extract" {
+  if (value !== "evidence_extract") {
+    throw new HttpError(
+      400,
+      "STAGE_RETRY_NOT_SUPPORTED",
+      "Only evidence_extract retry is supported in this version."
+    );
+  }
+
+  return "evidence_extract";
+}
+
+function validateStageRetry(snapshot: AgentTaskSnapshot, stageName: "evidence_extract"): void {
+  if (snapshot.task.status === "canceled") {
+    throw new HttpError(409, "TASK_CANCELED", "Canceled tasks cannot be retried.");
+  }
+
+  if (snapshot.partialResult === undefined) {
+    throw new HttpError(
+      409,
+      "STAGE_RETRY_REQUIRES_PARTIAL_RESULT",
+      "Cannot retry evidence_extract before partial result is ready."
+    );
+  }
+
+  const stage = snapshot.stages.find((item) => item.name === stageName);
+  if (!stage) {
+    throw new HttpError(404, "STAGE_NOT_FOUND", `Stage not found: ${stageName}`);
+  }
+
+  if (stage.status === "running") {
+    throw new HttpError(409, "STAGE_RETRY_IN_PROGRESS", "evidence_extract is already running.");
+  }
+
+  const failedStageRequested = snapshot.task.failedStages.includes(stageName);
+  if (!RETRYABLE_EVIDENCE_STAGE_STATUSES.has(stage.status) && !failedStageRequested) {
+    throw new HttpError(
+      409,
+      "STAGE_RETRY_NOT_AVAILABLE",
+      "evidence_extract can only be retried after it is skipped, failed, degraded, or timed out."
+    );
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

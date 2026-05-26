@@ -69,6 +69,13 @@ async function main() {
       assertEqual(mockFinal.degraded, true, "mock degraded flag");
       assertIncludes(mockFinal.failedStages, "evidence_extract", "mock failedStages");
     }
+    const unsupportedRetry = await retryStage(baseUrl, mockTask.taskId, "intent_expand");
+    assertEqual(unsupportedRetry.status, 400, "unsupported retry status");
+    assertEqual(
+      unsupportedRetry.body.error.code,
+      "STAGE_RETRY_NOT_SUPPORTED",
+      "unsupported retry code"
+    );
 
     const realTask = await createTask(baseUrl, {
       query: "真实模式失败时不能静默返回 mock",
@@ -181,6 +188,62 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       restoredEvidenceStage.status,
       "sqlite restored evidence"
     );
+
+    const retryStarted = await retryStage(baseUrl, created.taskId, "evidence_extract");
+    assertSuccess(retryStarted, "sqlite evidence retry start");
+    const retryStartedStage = assertStage(retryStarted.body.data, "evidence_extract", ["running"]);
+    assertEqual(
+      retryStartedStage.attempt,
+      restoredEvidenceStage.attempt + 1,
+      "sqlite retry attempt increments on start"
+    );
+    assertEqual(retryStarted.body.data.hasPartialResult, true, "sqlite retry keeps partial flag");
+
+    const retryFinal = await waitForTask(baseUrl, created.taskId, (data) =>
+      ["succeeded", "degraded", "failed"].includes(String(data.status))
+    );
+    const retryEvidenceStage = assertStage(retryFinal, "evidence_extract", ["degraded", "timed_out"]);
+    if (Number(retryEvidenceStage.attempt) < Number(restoredEvidenceStage.attempt) + 1) {
+      throw new Error(
+        `sqlite retry final attempt expected >= ${Number(restoredEvidenceStage.attempt) + 1}, got ${String(retryEvidenceStage.attempt)}`
+      );
+    }
+    assertEqual(retryFinal.hasPartialResult, true, "sqlite retry final keeps partial result");
+    assertEqual(retryFinal.hasFinalResult, true, "sqlite retry final keeps final result");
+    assertIncludes(retryFinal.failedStages, "evidence_extract", "sqlite retry final failedStages");
+
+    const retryResult = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/result`);
+    assertSuccess(retryResult, "sqlite retry result");
+    assertEvidenceResult(
+      retryResult.body.data.result,
+      retryEvidenceStage.status,
+      "sqlite retry evidence"
+    );
+
+    await stopBackendServer(server);
+    server = null;
+
+    server = startBackendServer(serverPath, {
+      BACKEND_PORT: String(port),
+      AGENT_TASK_STORE: "sqlite",
+      AGENT_TASK_DB_PATH: dbPath,
+      DATA_MODE: "mock",
+      LLM_ENABLED: "false"
+    });
+    await waitForBackend(baseUrl);
+
+    const retryRestoredStatus = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}`);
+    assertSuccess(retryRestoredStatus, "sqlite retry restored status");
+    const retryRestoredStage = assertStage(
+      retryRestoredStatus.body.data,
+      "evidence_extract",
+      ["degraded", "timed_out"]
+    );
+    assertEqual(
+      retryRestoredStage.attempt,
+      retryEvidenceStage.attempt,
+      "sqlite retry restored attempt"
+    );
   } finally {
     if (server) {
       await stopBackendServer(server);
@@ -196,6 +259,15 @@ async function createTask(baseUrl, body) {
   });
   assertSuccess(response, "create task");
   return readRecord(response.body.data, "create task data");
+}
+
+async function retryStage(baseUrl, taskId, stageName) {
+  return await requestJson(
+    `${baseUrl}/api/agent/tasks/${taskId}/stages/${stageName}/retry`,
+    {
+      method: "POST"
+    }
+  );
 }
 
 async function waitForTask(baseUrl, taskId, predicate) {

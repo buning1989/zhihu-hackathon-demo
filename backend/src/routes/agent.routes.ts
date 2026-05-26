@@ -57,3 +57,16 @@ agentRoutes.get("/tasks/:taskId/result", (req, res, next) => {
     next(error);
   }
 });
+
+agentRoutes.post("/tasks/:taskId/stages/:stageName/retry", (req, res, next) => {
+  try {
+    const data = agentTaskService.retryTaskStage(req.params.taskId, req.params.stageName);
+
+    res.json({
+      success: true,
+      data
+    } satisfies ApiSuccessResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});

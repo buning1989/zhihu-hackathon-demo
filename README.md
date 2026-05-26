@@ -68,6 +68,7 @@ docker compose -f infra/docker-compose.yml up
 - `POST /api/demo/search` 继续保留为同步兼容入口和本地 demo/smoke 入口，不作为长期产品主链路。
 - `POST /api/demo/search` 在请求体包含 `clarificationAnswers` 时，会返回 `intent + focusTags + searchPlan + debug`，用于澄清卡后的知乎搜索计划生成；未包含澄清答案时继续返回完整 demo 结果结构。
 - Agent Task 默认使用 SQLite 持久化 task/stage/result，默认数据库文件为 `./data/agent-tasks.sqlite`；可用 `AGENT_TASK_DB_PATH` 指定路径，或用 `AGENT_TASK_STORE=memory` 切回本地调试用内存模式。
+- Agent Task 支持 `POST /api/agent/tasks/:taskId/stages/evidence_extract/retry` 单阶段重试；当前只开放 `evidence_extract`，重试会保留已有 partial result，成功后更新 final result，失败时继续明确 degraded/retryable。
 - 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
 - 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。

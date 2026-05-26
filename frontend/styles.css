@@ -1144,6 +1144,27 @@ img {
   font-size: 12px;
 }
 
+.agent-degraded-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid #f0d8a8;
+  border-radius: var(--radius-sm);
+  background: #fff9ed;
+  color: #705321;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.result-notice-action {
+  flex: 0 0 auto;
+  color: #765317;
+  font-weight: 600;
+}
+
 .feed-summary .status-clarify {
   flex: 0 0 auto;
 }

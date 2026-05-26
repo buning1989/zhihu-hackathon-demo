@@ -575,6 +575,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /api/agent/tasks/{taskId}/stages/{stageName}/retry:
+    post:
+      tags:
+        - Agent
+      summary: Retry one supported agent stage
+      description: >
+        Implemented for evidence_extract only. The retry keeps the existing
+        partial result, restarts evidence extraction in the background, and
+        updates task/stage status plus final result when the stage completes.
+      operationId: retryAgentTaskStage
+      x-implementation-status: implemented
+      parameters:
+        - $ref: "#/components/parameters/AgentTaskId"
+        - name: stageName
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - evidence_extract
+          description: Only evidence_extract is retryable in this version.
+      responses:
+        "200":
+          description: Stage retry accepted. The returned status usually has currentStage=evidence_extract.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTaskStatusSuccessResponse"
+        "400":
+          description: Stage retry is not supported for this stage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                unsupportedStage:
+                  value:
+                    success: false
+                    error:
+                      code: STAGE_RETRY_NOT_SUPPORTED
+                      message: Only evidence_extract retry is supported in this version.
+        "409":
+          description: Stage is not retryable yet, already running, canceled, or lacks partial result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "404":
+          description: Task or stage not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /api/demo/search:
     get:
       tags:

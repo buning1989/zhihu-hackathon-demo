@@ -204,6 +204,17 @@
     }
   }
 
+  function retryTaskStage(taskId, stageName, options = {}) {
+    return requestJson(
+      `/api/agent/tasks/${encodeURIComponent(taskId)}/stages/${encodeURIComponent(stageName)}/retry`,
+      {
+        method: "POST",
+        signal: options.signal,
+        headers: agentReadTokenHeaders(options.readToken)
+      }
+    );
+  }
+
   function refineTask(taskId, { answers = {}, refineQuery = "", metadata = {}, readToken = "", signal } = {}) {
     return requestJson(`/api/agent/tasks/${encodeURIComponent(taskId)}/refine`, {
       method: "POST",
@@ -320,6 +331,7 @@
     getTaskStatus,
     getTaskView,
     getTaskResult,
+    retryTaskStage,
     refineTask,
     readAgentResult
   };
@@ -338,6 +350,7 @@
     getAgentTaskStatus: getTaskStatus,
     getAgentTaskView: getTaskView,
     getAgentTaskResult: getTaskResult,
+    retryAgentTaskStage: retryTaskStage,
     refineAgentTask: refineTask,
     readAgentResult,
     AgentApiError

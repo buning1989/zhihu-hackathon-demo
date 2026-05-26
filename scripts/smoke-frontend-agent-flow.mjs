@@ -134,6 +134,7 @@ async function main() {
       "taskId"
     );
     const resultSummary = await readResultSummary(page);
+    const retrySummary = await assertEvidenceRetryUi(page, requests);
 
     console.log("PASS frontend agent task smoke");
     console.log(`frontend=${config.frontendUrl}`);
@@ -145,6 +146,9 @@ async function main() {
     );
     console.log(
       `display paths=${resultSummary.pathCount} people=${resultSummary.peopleCount} cards=${resultSummary.cardCount} snippets=${resultSummary.snippetCount}`
+    );
+    console.log(
+      `evidence degraded=${retrySummary.hasIssue} retryable=${retrySummary.retryable} retryClicked=${retrySummary.retryClicked} retryRequests=${countRequests(requests, "agentStageRetry")}`
     );
   } finally {
     await browser.close();
@@ -305,6 +309,9 @@ function classifyRequest(method, url) {
   if (/^\/api\/agent\/tasks\/[^/]+\/result$/.test(pathname) && normalizedMethod === "GET") {
     return "agentResult";
   }
+  if (/^\/api\/agent\/tasks\/[^/]+\/stages\/[^/]+\/retry$/.test(pathname) && normalizedMethod === "POST") {
+    return "agentStageRetry";
+  }
   if (pathname === "/api/demo/search") {
     return "demoSearch";
   }
@@ -371,6 +378,81 @@ async function readResultSummary(page) {
       peopleCount: Array.isArray(result.people) ? result.people.length : 0,
       cardCount: document.querySelectorAll(".person-card").length,
       snippetCount: document.querySelectorAll(".original-snippet, .person-meta").length
+    };
+  });
+}
+
+async function assertEvidenceRetryUi(page, requests) {
+  const state = await readEvidenceRetryState(page);
+  if (!state.hasIssue) {
+    if (state.retryButtonVisible) {
+      throw new Error("Retry evidence button is visible even though evidence_extract did not degrade.");
+    }
+    return {
+      ...state,
+      retryClicked: false
+    };
+  }
+
+  if (!state.bannerVisible) {
+    throw new Error("evidence_extract degraded but no degraded banner is visible.");
+  }
+
+  if (!state.retryable) {
+    return {
+      ...state,
+      retryClicked: false
+    };
+  }
+
+  if (!state.retryButtonVisible) {
+    throw new Error("evidence_extract is retryable but no retry button is visible.");
+  }
+
+  const before = await readResultSummary(page);
+  await page.click('[data-action="retry-evidence"]');
+  await waitFor(() => hasRequest(requests, "agentStageRetry", "request"), {
+    timeoutMs: 15000,
+    message: "Retry button was clicked but POST /api/agent/tasks/:taskId/stages/evidence_extract/retry was not observed."
+  });
+  await waitForDisplayableResult(page, 15000);
+  const after = await readResultSummary(page);
+  if (before.peopleCount > 0 && after.peopleCount === 0) {
+    throw new Error("Evidence retry cleared the existing partial result.");
+  }
+
+  return {
+    ...await readEvidenceRetryState(page),
+    retryClicked: true
+  };
+}
+
+async function readEvidenceRetryState(page) {
+  return await page.evaluate(() => {
+    const state = window.LifeSampleApp?.store?.getState?.() || {};
+    const task = state.task || {};
+    const result = state.result || {};
+    const failedStages = new Set([
+      ...(Array.isArray(task.failedStages) ? task.failedStages : []),
+      ...(Array.isArray(result.meta?.failedStages) ? result.meta.failedStages : [])
+    ]);
+    const fallbackStages = new Set(Array.isArray(result.meta?.fallbackStages) ? result.meta.fallbackStages : []);
+    const timedOutStages = new Set(Array.isArray(result.meta?.timedOutStages) ? result.meta.timedOutStages : []);
+    const evidenceRunning = Array.isArray(task.stages)
+      ? task.stages.some((stage) => stage?.name === "evidence_extract" && stage?.status === "running")
+      : false;
+    const hasIssue = failedStages.has("evidence_extract") ||
+      fallbackStages.has("evidence_extract") ||
+      timedOutStages.has("evidence_extract");
+    return {
+      hasIssue,
+      retryable: Boolean(task.retryable && hasIssue && !evidenceRunning),
+      bannerVisible: Boolean(document.querySelector(".agent-degraded-banner")),
+      retryButtonVisible: Boolean(document.querySelector('[data-action="retry-evidence"]')),
+      taskStatus: task.status || "",
+      failedStages: Array.from(failedStages),
+      fallbackStages: Array.from(fallbackStages),
+      timedOutStages: Array.from(timedOutStages)
     };
   });
 }

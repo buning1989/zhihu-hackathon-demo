@@ -89,7 +89,7 @@
     `;
   }
 
-  function renderFeedSummary(result) {
+  function renderFeedSummary(state, result) {
     const { escapeHtml } = App.utils;
     const notices = [];
     const summaryText = result.meta?.evidenceOnly
@@ -101,6 +101,7 @@
     if (result.meta?.emptyResult) {
       notices.push("暂时没有可展示样本");
     }
+    const evidenceNotice = renderEvidenceNotice(state, result);
 
     return `
       <header class="feed-summary">
@@ -108,6 +109,45 @@
         <button class="btn-text status-clarify" type="button" data-action="open-clarify">再说一点</button>
       </header>
       ${notices.length ? `<div class="result-notices">${notices.map((notice) => `<span>${escapeHtml(notice)}</span>`).join("")}</div>` : ""}
+      ${evidenceNotice}
+    `;
+  }
+
+  function renderEvidenceNotice(state, result) {
+    const { escapeHtml } = App.utils;
+    const task = state.task || {};
+    const failedStages = new Set([
+      ...(Array.isArray(task.failedStages) ? task.failedStages : []),
+      ...(Array.isArray(result.meta?.failedStages) ? result.meta.failedStages : [])
+    ]);
+    const fallbackStages = new Set(Array.isArray(result.meta?.fallbackStages) ? result.meta.fallbackStages : []);
+    const timedOutStages = new Set(Array.isArray(result.meta?.timedOutStages) ? result.meta.timedOutStages : []);
+    const evidenceRunning = Array.isArray(task.stages)
+      ? task.stages.some((stage) => stage?.name === "evidence_extract" && stage?.status === "running")
+      : false;
+    const hasEvidenceIssue = failedStages.has("evidence_extract") ||
+      fallbackStages.has("evidence_extract") ||
+      timedOutStages.has("evidence_extract");
+
+    if (!hasEvidenceIssue && !evidenceRunning) {
+      return "";
+    }
+
+    const canRetry = Boolean(task.retryable && hasEvidenceIssue && !evidenceRunning);
+    const message = evidenceRunning
+      ? "正在重试证据提取，基础结果会保留。"
+      : canRetry
+        ? "证据提取暂时失败，已先展示基础结果。可重试补全证据。"
+        : "证据提取暂时失败，已先展示基础结果。";
+    const retryButton = canRetry
+      ? `<button class="btn-text result-notice-action" type="button" data-action="retry-evidence">重试证据提取</button>`
+      : "";
+
+    return `
+      <div class="agent-degraded-banner" data-agent-degraded="evidence_extract" role="status">
+        <span>${escapeHtml(message)}</span>
+        ${retryButton}
+      </div>
     `;
   }
 
@@ -153,7 +193,7 @@
       <main class="layout layout-results ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
           ${renderSideNav(state, result)}
           <section class="main-feed">
-            ${renderFeedSummary(result)}
+            ${renderFeedSummary(state, result)}
           </section>
           <section class="feed-card-list">
             ${isEmpty ? renderEmptyResult(result) : modules}

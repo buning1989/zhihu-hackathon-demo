@@ -395,6 +395,8 @@
       failedStages: [],
       retryable: false,
       retryableStages: [],
+      retryingStage: "",
+      retryError: "",
       hasPartialResult: false,
       hasFinalResult: false,
       refinedFromTaskId: ""
@@ -439,10 +441,41 @@
       failedStages: Array.isArray(data?.failedStages) ? data.failedStages : [],
       retryable: Boolean(data?.retryable),
       retryableStages: Array.isArray(data?.retryableStages) ? data.retryableStages : [],
+      retryingStage: isStageRunning(data, "evidence_extract") ? "evidence_extract" : "",
+      retryError: data?.retryError || "",
       hasPartialResult: Boolean(data?.hasPartialResult),
       hasFinalResult: Boolean(data?.hasFinalResult),
       refinedFromTaskId: data?.refinedFromTaskId || ""
     };
+  }
+
+  function isStageRunning(taskData, stageName) {
+    const stages = Array.isArray(taskData?.stages) ? taskData.stages : [];
+    return stages.some((stage) =>
+      stage?.name === stageName && String(stage?.status || "") === "running"
+    );
+  }
+
+  function hasEvidenceExtractIssue(taskData, result = null) {
+    const failedStages = new Set([
+      ...(Array.isArray(taskData?.failedStages) ? taskData.failedStages : []),
+      ...(Array.isArray(result?.meta?.failedStages) ? result.meta.failedStages : [])
+    ]);
+    const fallbackStages = new Set(Array.isArray(result?.meta?.fallbackStages) ? result.meta.fallbackStages : []);
+    const timedOutStages = new Set(Array.isArray(result?.meta?.timedOutStages) ? result.meta.timedOutStages : []);
+    return Boolean(
+      failedStages.has("evidence_extract") ||
+      fallbackStages.has("evidence_extract") ||
+      timedOutStages.has("evidence_extract")
+    );
+  }
+
+  function canRetryEvidenceExtract(taskData, result = null) {
+    return Boolean(
+      taskData?.retryable &&
+      !isStageRunning(taskData, "evidence_extract") &&
+      hasEvidenceExtractIssue(taskData, result)
+    );
   }
 
   function applyTaskState(draft, data, overrides = {}) {
@@ -1056,7 +1089,7 @@
       context.partialShown = partialShown || context.partialShown;
     }
 
-    if (isTerminalTaskStatus(taskData) || taskData.hasFinalResult) {
+    if (isTerminalTaskStatus(taskData) || (taskData.hasFinalResult && !isStageRunning(taskData, "evidence_extract"))) {
       await completeBackendTask(taskData.taskId, taskStatus, requestId, context);
       return;
     }
@@ -1346,6 +1379,71 @@
         return;
       }
       setTaskError(requestId, error);
+    }
+  }
+
+  async function retryEvidenceExtract() {
+    const state = App.store.getState();
+    const taskId = state.task.taskId || state.result?.meta?.taskId || "";
+    if (!taskId || !canRetryEvidenceExtract(state.task, state.result)) {
+      return;
+    }
+
+    cancelPolling();
+    stopLoadingStageTicker();
+    const requestId = currentRequestId();
+    const readToken = state.task.readToken || "";
+    App.store.update((draft) => {
+      draft.search.requestId = requestId;
+      draft.search.status = "loaded";
+      draft.search.message = "正在重试证据提取";
+      draft.search.error = "";
+      draft.task = {
+        ...draft.task,
+        polling: true,
+        retryingStage: "evidence_extract",
+        retryError: "",
+        error: null
+      };
+      return draft;
+    });
+
+    try {
+      const retryStatus = await App.Api.retryAgentTaskStage(taskId, "evidence_extract", {
+        readToken
+      });
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      await handleTaskUpdate(retryStatus, requestId, {
+        query: state.query,
+        readToken,
+        pollStartedAt: Date.now(),
+        partialShown: true,
+        retryingStage: "evidence_extract"
+      });
+    } catch (error) {
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      const message = error?.message || "证据提取重试失败，已保留基础结果。";
+      App.store.update((draft) => {
+        draft.search.status = "loaded";
+        draft.search.message = "证据提取重试失败，已保留基础结果";
+        draft.task = {
+          ...draft.task,
+          polling: false,
+          degraded: true,
+          retryError: message,
+          error: {
+            errorCode: error?.code || "EVIDENCE_RETRY_FAILED",
+            errorMessage: message
+          }
+        };
+        return draft;
+      });
     }
   }
 
@@ -2068,6 +2166,8 @@
       await continueAfterClarify({ skip: true });
     } else if (action === "open-clarify") {
       openClarify();
+    } else if (action === "retry-evidence") {
+      await retryEvidenceExtract();
     } else if (action === "set-path") {
       setPath(target.dataset.pathId);
     } else if (action === "toggle-experience") {

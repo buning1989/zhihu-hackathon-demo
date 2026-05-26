@@ -24,6 +24,7 @@ import {
   type AgentIntentResult,
   type AgentStageName,
   type AgentStageStatus,
+  type AgentTaskStatus,
   type AgentTaskSnapshot
 } from "./taskTypes.js";
 
@@ -61,6 +62,47 @@ export class AgentTaskRunner {
         this.runningTaskIds.delete(taskId);
       });
     }, 0);
+  }
+
+  retryEvidenceExtract(taskId: string): AgentTaskSnapshot {
+    if (this.runningTaskIds.has(taskId)) {
+      throw new HttpError(409, "STAGE_RETRY_IN_PROGRESS", "Task already has a running background stage.");
+    }
+
+    const snapshot = this.requireTask(taskId);
+    if (snapshot.partialResult === undefined) {
+      throw new HttpError(409, "STAGE_RETRY_REQUIRES_PARTIAL_RESULT", "Cannot retry evidence_extract before partial result is ready.");
+    }
+
+    const stage = snapshot.stages.find((item) => item.name === "evidence_extract");
+    if (!stage) {
+      throw new HttpError(404, "STAGE_NOT_FOUND", "Stage not found: evidence_extract");
+    }
+
+    if (stage.status === "running") {
+      throw new HttpError(409, "STAGE_RETRY_IN_PROGRESS", "evidence_extract is already running.");
+    }
+
+    const attempt = stage.attempt + 1;
+    const partialResult = snapshot.partialResult;
+    const candidates = this.beginEvidenceExtractStage(taskId, partialResult, {
+      attempt,
+      retry: true,
+      previousStatus: stage.status,
+      taskStatus: "partial_ready",
+      clearFinishedAt: true
+    });
+    this.markEvidenceRetryStarted(taskId);
+
+    this.runningTaskIds.add(taskId);
+    setTimeout(() => {
+      void this.completeEvidenceExtractRetry(taskId, partialResult, snapshot.task.intent, candidates)
+        .finally(() => {
+          this.runningTaskIds.delete(taskId);
+        });
+    }, 0);
+
+    return this.requireTask(taskId);
   }
 
   private async run(taskId: string): Promise<void> {
@@ -450,18 +492,49 @@ export class AgentTaskRunner {
     partialResult: unknown,
     intent: unknown
   ): Promise<unknown> {
-    const snapshot = this.requireTask(taskId);
-    const candidates = buildEvidenceCandidatesFromDemoResult(partialResult, 5);
+    const candidates = this.beginEvidenceExtractStage(taskId, partialResult);
+    return this.completeEvidenceExtractStage(taskId, partialResult, intent, candidates);
+  }
 
+  private beginEvidenceExtractStage(
+    taskId: string,
+    partialResult: unknown,
+    options: {
+      attempt?: number;
+      retry?: boolean;
+      previousStatus?: AgentStageStatus;
+      taskStatus?: AgentTaskStatus;
+      clearFinishedAt?: boolean;
+    } = {}
+  ): ReturnType<typeof buildEvidenceCandidatesFromDemoResult> {
+    const candidates = buildEvidenceCandidatesFromDemoResult(partialResult, 5);
     this.startStage(taskId, "evidence_extract", {
+      attempt: options.attempt,
       timeoutMs: getLlmTaskTimeoutMs("evidence_extract"),
+      taskStatus: options.taskStatus ?? "partial_ready",
+      clearFinishedAt: options.clearFinishedAt,
       inputSummary: {
         candidateCount: candidates.length,
         maxCandidates: 5,
-        sourceRefs: candidates.map((candidate) => candidate.sourceRefId)
+        sourceRefs: candidates.map((candidate) => candidate.sourceRefId),
+        ...(options.retry
+          ? {
+              retry: true,
+              previousStatus: options.previousStatus
+            }
+          : {})
       }
     });
+    return candidates;
+  }
 
+  private async completeEvidenceExtractStage(
+    taskId: string,
+    partialResult: unknown,
+    intent: unknown,
+    candidates: ReturnType<typeof buildEvidenceCandidatesFromDemoResult>
+  ): Promise<unknown> {
+    const snapshot = this.requireTask(taskId);
     const extraction = await runAgentEvidenceExtract({
       query: snapshot.task.query,
       intent,
@@ -493,17 +566,60 @@ export class AgentTaskRunner {
     return enhancedResult;
   }
 
+  private async completeEvidenceExtractRetry(
+    taskId: string,
+    partialResult: unknown,
+    intent: unknown,
+    candidates: ReturnType<typeof buildEvidenceCandidatesFromDemoResult>
+  ): Promise<void> {
+    try {
+      const finalResult = await this.completeEvidenceExtractStage(taskId, partialResult, intent, candidates);
+      this.finishWithResult(taskId, finalResult);
+    } catch (error) {
+      const message = toErrorMessage(error);
+      this.finishStage(taskId, "evidence_extract", "failed", {
+        errorCode: toErrorCode(error),
+        errorMessage: message,
+        fallbackUsed: true,
+        fallbackReason: message,
+        retryable: true
+      });
+      this.finishWithResult(taskId, partialResult);
+    }
+  }
+
+  private markEvidenceRetryStarted(taskId: string): void {
+    const snapshot = this.requireTask(taskId);
+    const failedStages = snapshot.task.failedStages.filter((stage) => stage !== "evidence_extract");
+    const retryableStages = snapshot.task.retryableStages.filter((stage) => stage !== "evidence_extract");
+    this.store.patchTask(taskId, {
+      failedStages,
+      retryableStages,
+      retryable: retryableStages.length > 0,
+      degraded: snapshot.task.degraded,
+      degradedReason: "正在重试证据提取，已保留基础结果",
+      degradedReasons: unique([
+        ...snapshot.task.degradedReasons,
+        "正在重试证据提取，已保留基础结果"
+      ]),
+      error: undefined
+    });
+  }
+
   private startStage(
     taskId: string,
     stageName: AgentStageName,
     options: {
+      attempt?: number;
       timeoutMs?: number;
       inputSummary?: Record<string, unknown>;
+      taskStatus?: AgentTaskStatus;
+      clearFinishedAt?: boolean;
     } = {}
   ): void {
     this.store.patchStage(taskId, stageName, {
       status: "running",
-      attempt: 1,
+      attempt: options.attempt ?? 1,
       timeoutMs: options.timeoutMs ?? 0,
       startedAt: new Date().toISOString(),
       finishedAt: null,
@@ -515,9 +631,10 @@ export class AgentTaskRunner {
       retryable: false
     });
     this.store.patchTask(taskId, {
-      status: "running",
+      status: options.taskStatus ?? "running",
       currentStage: stageName,
-      progress: Math.min(STAGE_PROGRESS[stageName], 0.98)
+      progress: Math.min(STAGE_PROGRESS[stageName], 0.98),
+      ...(options.clearFinishedAt ? { finishedAt: null } : {})
     });
   }
 
