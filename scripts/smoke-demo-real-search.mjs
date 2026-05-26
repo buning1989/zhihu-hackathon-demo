@@ -28,6 +28,15 @@ async function main() {
   const repoRoot = dirname(scriptDir);
   process.chdir(repoRoot);
 
+  const validationQueries = readQueryListEnv("DEMO_SMOKE_QUERIES", DEFAULT_QUERIES);
+  const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
+  const dataMode = resolveSmokeDataMode();
+  process.env.DATA_MODE = process.env.DATA_MODE || dataMode;
+  if (dataMode !== "real" && process.env.LLM_ENABLED === undefined) {
+    process.env.LLM_ENABLED = "false";
+  }
+  printZhihuRiskNotice(dataMode, validationQueries.length);
+
   const appPath = join(repoRoot, "backend", "dist", "app.js");
   if (!existsSync(appPath)) {
     throw new Error("backend/dist/app.js not found. Run `npm run build -w backend` first.");
@@ -44,33 +53,31 @@ async function main() {
     }
 
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const validationQueries = readQueryListEnv("DEMO_SMOKE_QUERIES", DEFAULT_QUERIES);
-    const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
     const runs = [];
 
     for (const [index, query] of validationQueries.entries()) {
-      runs.push(await runDemoSearch(baseUrl, query, count, `search query ${index + 1}`));
+      runs.push(await runDemoSearch(baseUrl, query, count, dataMode, `search query ${index + 1}`));
     }
 
     for (const run of runs) {
       printSearchInspection(run);
     }
 
-    console.log("PASS demo real search smoke");
+    console.log(`PASS demo ${dataMode} search smoke`);
     console.log(`validation queries=${runs.length}`);
   } finally {
     await closeServer(server);
   }
 }
 
-async function runDemoSearch(baseUrl, query, count, label) {
+async function runDemoSearch(baseUrl, query, count, dataMode, label) {
   const startedAt = Date.now();
   const response = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
     body: {
       query,
       count,
-      dataMode: "real"
+      dataMode
     }
   });
   const durationMs = Date.now() - startedAt;
@@ -96,6 +103,40 @@ async function runDemoSearch(baseUrl, query, count, label) {
     debug,
     search
   };
+}
+
+function resolveSmokeDataMode() {
+  const requested = String(process.env.DATA_MODE || process.env.DEMO_SMOKE_DATA_MODE || "")
+    .trim()
+    .toLowerCase();
+  if (["replay", "cache_first", "real"].includes(requested)) {
+    return requested;
+  }
+
+  return isTruthy(process.env.ALLOW_REAL_ZH_API) ? "real" : "replay";
+}
+
+function printZhihuRiskNotice(dataMode, queryCount) {
+  const allowReal = dataMode === "real" || isTruthy(process.env.ALLOW_REAL_ZH_API);
+  const estimatedSearchRounds = queryCount * 6;
+  if (!allowReal) {
+    console.log(
+      `Zhihu API guard: dataMode=${dataMode}; replay/cache-first smoke should consume 0 real Zhihu API calls.`
+    );
+    return;
+  }
+
+  console.warn("WARNING: real Zhihu API smoke is enabled.");
+  console.warn(
+    `Estimated upper bound: ${queryCount} demo queries * 6 search rounds = ${estimatedSearchRounds} real search attempts before fixture/cache hits.`
+  );
+  console.warn(
+    `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`
+  );
+}
+
+function isTruthy(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
 function assertSearchDebug(search, label) {

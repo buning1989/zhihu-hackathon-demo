@@ -218,8 +218,8 @@ paths:
         Implemented. This is the existing frontend-friendly Zhihu search
         mapping endpoint and remains available for compatibility, debugging
         and product-layer recall. The P0 AI persona product contract is POST
-        /api/demo/search. Without a real Zhihu key, this endpoint returns a
-        clear JSON error instead of crashing.
+        /api/demo/search. By default local development should use replay
+        fixtures or cache-first mode; real Zhihu calls require explicit opt-in.
       operationId: getSearch
       x-implementation-status: implemented
       parameters:
@@ -239,6 +239,19 @@ paths:
             maximum: 20
             default: 5
           example: 1
+        - name: dataMode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - cache_first
+              - replay
+              - real
+          description: >
+            Search data mode for this debug endpoint. replay requires a local
+            fixture and never calls Zhihu. real may call Zhihu only when
+            credentials and real-call guardrails allow it.
       responses:
         "200":
           description: Search succeeded and was mapped into frontend-friendly fields.
@@ -328,6 +341,16 @@ paths:
             maximum: 20
             default: 5
           example: 1
+        - name: dataMode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - cache_first
+              - replay
+              - real
+          description: Same replay/cache/real control as GET /api/search.
       responses:
         "200":
           description: Raw Zhihu response.
@@ -484,6 +507,11 @@ paths:
                   query: 真实模式不允许静默返回 mock
                   count: 5
                   dataMode: real
+              replay:
+                value:
+                  query: 不工作了能去哪儿
+                  count: 5
+                  dataMode: replay
       responses:
         "200":
           description: Task accepted and staged execution started.
@@ -656,8 +684,10 @@ paths:
         persona indexes, sections and metadata. The existing GET /api/search
         contract remains implemented and must not be broken. During P0
         implementation, this endpoint supports mock/stub data through
-        dataMode=mock. dataMode=real does not silently downgrade to mock unless
-        allowMockFallback is explicitly set to true.
+        dataMode=mock and local fixture replay through dataMode=replay.
+        dataMode=real does not silently downgrade to mock unless
+        allowMockFallback is explicitly set to true, and real Zhihu calls are
+        protected by fixture cache and daily budget logs.
       operationId: createDemoSearch
       x-implementation-status: implemented
       requestBody:
@@ -1220,11 +1250,12 @@ components:
           enum:
             - mock
             - cache_first
+            - replay
             - real
-          default: real
+          default: mock
           description: >
-            real never silently falls back to mock. mock is only for explicit
-            local demo or test runs.
+            mock never calls Zhihu. replay uses local fixtures and fails when a
+            fixture is missing. real never silently falls back to mock.
         metadata:
           type: object
           additionalProperties: true
@@ -1300,12 +1331,14 @@ components:
           enum:
             - mock
             - cache_first
+            - replay
             - real
         requestedDataMode:
           type: string
           enum:
             - mock
             - cache_first
+            - replay
             - real
         degraded:
           type: boolean
@@ -1492,14 +1525,16 @@ components:
           enum:
             - mock
             - cache_first
+            - replay
             - real
           default: mock
-          description: Data mode. P0 must work in mock mode without Zhihu or LLM keys.
+          description: Data mode. P0 must work in mock/replay mode without real Zhihu calls.
         dataMode:
           type: string
           enum:
             - mock
             - cache_first
+            - replay
             - real
           default: mock
           description: Data mode used by the implemented backend. mode remains a compatibility alias.
@@ -1515,8 +1550,9 @@ components:
           type: boolean
           default: false
           description: >
-            Explicit opt-in for demo fallback data when dataMode=real fails.
-            The default keeps real-link tests from being masked by mock data.
+            Explicit opt-in for demo fallback data when dataMode=real or
+            dataMode=replay fails. The default keeps real/replay-link tests
+            from being masked by mock data.
         sessionId:
           type: string
           description: Optional client-provided session id for local demo continuity.
@@ -1656,6 +1692,7 @@ components:
           enum:
             - mock
             - cache_first
+            - replay
             - real
         contextUsed:
           $ref: "#/components/schemas/DemoContextUsed"

@@ -51,7 +51,7 @@ export interface DemoSearchRequest {
 
 const DEFAULT_COUNT = 5;
 const MAX_COUNT = 20;
-const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "real"]);
+const DATA_MODES = new Set<DemoDataMode>(["mock", "cache_first", "replay", "real"]);
 const DEMO_SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEMO_SEARCH_BUDGET_MS = config.demoSearch.requestBudgetMs;
 const REQUIRED_CLARIFICATION_QUESTIONS = 3;
@@ -92,7 +92,7 @@ export class DemoSearchService {
       return cacheDemoResponse(cachedResponse);
     }
 
-    if (request.dataMode === "real") {
+    if (request.dataMode === "real" || request.dataMode === "replay") {
       try {
         const response = await withRequestBudget(
           composeMultiLlmDemoSearchResponse({
@@ -135,7 +135,7 @@ export class DemoSearchService {
           resolvedDataMode: "mock",
           pathSource: "fallback",
           notes: [
-            "real mode fallback to mock demo data",
+            `${request.dataMode} mode fallback to mock demo data`,
             formatErrorSummary(error)
           ],
           clarificationContext: clarificationContext ?? undefined
@@ -162,7 +162,7 @@ export class DemoSearchService {
           }));
           response.debug.notes = unique([
             ...response.debug.notes,
-            "real Zhihu search degraded; mock product response kept the page shape while preserving debug.search"
+            `${request.dataMode} Zhihu search degraded; mock product response kept the page shape while preserving debug.search`
           ]);
         }
         response.contextUsed = createDemoContextUsed(userContext, [
@@ -2294,7 +2294,11 @@ function parseDataMode(value: unknown): DemoDataMode {
     return mode as DemoDataMode;
   }
 
-  throw new HttpError(400, "DATA_MODE_INVALID", "dataMode must be mock, cache_first, or real");
+  throw new HttpError(
+    400,
+    "DATA_MODE_INVALID",
+    "dataMode must be mock, cache_first, replay, or real"
+  );
 }
 
 function parseCount(value: unknown): number {
@@ -2392,7 +2396,7 @@ function logRealSearchFallback(
   startedAt: number
 ): void {
   const action = request.allowMockFallback ? "falling back to mock" : "returning real-link error";
-  console.error(`[DemoSearch] real Zhihu search failed; ${action}`, {
+  console.error(`[DemoSearch] ${request.dataMode} Zhihu search failed; ${action}`, {
     query: request.query,
     count: request.count,
     requestedDataMode: request.dataMode,

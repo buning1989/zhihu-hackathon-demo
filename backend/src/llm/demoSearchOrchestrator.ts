@@ -313,6 +313,7 @@ export async function composeMultiLlmDemoSearchResponse(
     searchIntent,
     recalledSearch,
     input.count,
+    input.dataMode,
     input.userContext,
     budget
   );
@@ -1177,7 +1178,7 @@ async function searchByExpandedQueries(
   for (const [index, queryPlan] of searchRoundQueries.entries()) {
     const roundIndex = index + 1;
     try {
-      const result = await searchService.search(queryPlan.query, perQueryCount);
+      const result = await searchService.search(queryPlan.query, perQueryCount, { dataMode });
       const rawResultCount = result.items.length;
       const queryItems = result.items
         .slice(0, perQueryCount)
@@ -1201,6 +1202,9 @@ async function searchByExpandedQueries(
     } catch (error) {
       const errorCode = readSearchErrorCode(error);
       const errorMessage = readSearchErrorMessage(error);
+      if (dataMode === "replay" && errorCode === "ZHIHU_REPLAY_FIXTURE_MISSING") {
+        throw error;
+      }
       searchRounds.push({
         query: queryPlan.query,
         roundIndex,
@@ -1429,6 +1433,7 @@ async function runCandidatePipeline(
   intent: IntentExpandOutput,
   recalledSearch: SearchByExpandedQueriesResult,
   count: number,
+  dataMode: DemoDataMode,
   userContext?: UserContext,
   budget?: PipelineBudget
 ): Promise<CandidatePipelineResult> {
@@ -1509,7 +1514,7 @@ async function runCandidatePipeline(
     refillQueries = buildRefillQueries(intent, selectedAssessments, recalledSearch.searchQueries);
 
     if (refillQueries.length > 0) {
-      const refillSearch = await searchByQueryPlans(refillQueries, 5);
+      const refillSearch = await searchByQueryPlans(refillQueries, 5, dataMode);
       refillCandidateCount = refillSearch.items.length;
       allItems = dedupeSearchItems([...allItems, ...refillSearch.items]);
       assessments = assessSearchCandidates(
@@ -1589,14 +1594,15 @@ async function runCandidatePipeline(
 
 async function searchByQueryPlans(
   queries: DemoSearchQueryPlan[],
-  perQueryCount: number
+  perQueryCount: number,
+  dataMode: DemoDataMode
 ): Promise<{ items: SearchItem[]; results: DemoSearchQueryResultDebug[] }> {
   const items: SearchItem[] = [];
   const results: DemoSearchQueryResultDebug[] = [];
 
   for (const queryPlan of queries) {
     try {
-      const result = await searchService.search(queryPlan.query, perQueryCount);
+      const result = await searchService.search(queryPlan.query, perQueryCount, { dataMode });
       const queryItems = result.items
         .slice(0, perQueryCount)
         .map((item) => attachMatchedQuery(item, queryPlan));
@@ -1606,6 +1612,12 @@ async function searchByQueryPlans(
         returnedCount: queryItems.length
       });
     } catch (error) {
+      if (
+        dataMode === "replay" &&
+        readSearchErrorCode(error) === "ZHIHU_REPLAY_FIXTURE_MISSING"
+      ) {
+        throw error;
+      }
       results.push({
         ...queryPlan,
         returnedCount: 0,

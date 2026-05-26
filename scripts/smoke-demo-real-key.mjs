@@ -54,6 +54,13 @@ async function main() {
   const repoRoot = dirname(scriptDir);
   process.chdir(repoRoot);
 
+  const validationQueries = readQueryListEnv("DEMO_SMOKE_QUERIES", VALIDATION_QUERIES);
+  const chatMessages = readQueryListEnv("DEMO_SMOKE_CHAT_MESSAGES", DEFAULT_CHAT_MESSAGES);
+  const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
+  const dataMode = resolveSmokeDataMode();
+  process.env.DATA_MODE = process.env.DATA_MODE || dataMode;
+  printZhihuRiskNotice(dataMode, validationQueries.length);
+
   const appPath = join(repoRoot, "backend", "dist", "app.js");
   if (!existsSync(appPath)) {
     throw new Error("backend/dist/app.js not found. Run `npm run build -w backend` first.");
@@ -70,16 +77,21 @@ async function main() {
     }
 
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const validationQueries = readQueryListEnv("DEMO_SMOKE_QUERIES", VALIDATION_QUERIES);
-    const chatMessages = readQueryListEnv("DEMO_SMOKE_CHAT_MESSAGES", DEFAULT_CHAT_MESSAGES);
-    const count = parsePositiveInt(process.env.DEMO_SMOKE_COUNT, 3);
 
     const validationRuns = [];
     for (const [index, query] of validationQueries.entries()) {
-      validationRuns.push(await runDemoSearch(baseUrl, query, count, `validation query ${index + 1}`));
+      validationRuns.push(
+        await runDemoSearch(baseUrl, query, count, dataMode, `validation query ${index + 1}`)
+      );
     }
 
-    const cacheHitRun = await runDemoSearch(baseUrl, validationQueries[0], count, "cache hit query");
+    const cacheHitRun = await runDemoSearch(
+      baseUrl,
+      validationQueries[0],
+      count,
+      dataMode,
+      "cache hit query"
+    );
 
     assertEqual(
       readRecord(cacheHitRun.data.debug, "cache hit data.debug").cacheHit,
@@ -123,7 +135,7 @@ async function main() {
       });
     }
 
-    console.log("PASS demo real LLM/persona smoke");
+    console.log(`PASS demo ${dataMode} LLM/persona smoke`);
     console.log(`demo counts paths=${demoData.paths.length} people=${demoData.people.length} derivedPersonas=${people.length}`);
     console.log(
       `demo stages ${REQUIRED_DEMO_STAGES.map((stage) => `${stage}=recorded`).join(" ")}`
@@ -136,14 +148,14 @@ async function main() {
   }
 }
 
-async function runDemoSearch(baseUrl, query, count, label) {
+async function runDemoSearch(baseUrl, query, count, dataMode, label) {
   const startedAt = Date.now();
   const demoSearch = await requestJson(`${baseUrl}/api/demo/search`, {
     method: "POST",
     body: {
       query,
       count,
-      dataMode: "real"
+      dataMode
     }
   });
   const durationMs = Date.now() - startedAt;
@@ -178,6 +190,40 @@ async function runDemoSearch(baseUrl, query, count, label) {
     durationMs,
     data
   };
+}
+
+function resolveSmokeDataMode() {
+  const requested = String(process.env.DATA_MODE || process.env.DEMO_SMOKE_DATA_MODE || "")
+    .trim()
+    .toLowerCase();
+  if (["replay", "cache_first", "real"].includes(requested)) {
+    return requested;
+  }
+
+  return isTruthy(process.env.ALLOW_REAL_ZH_API) ? "real" : "replay";
+}
+
+function printZhihuRiskNotice(dataMode, queryCount) {
+  const allowReal = dataMode === "real" || isTruthy(process.env.ALLOW_REAL_ZH_API);
+  const estimatedSearchRounds = queryCount * 6;
+  if (!allowReal) {
+    console.log(
+      `Zhihu API guard: dataMode=${dataMode}; replay/cache-first smoke should consume 0 real Zhihu API calls.`
+    );
+    return;
+  }
+
+  console.warn("WARNING: real Zhihu API + LLM/persona smoke is enabled.");
+  console.warn(
+    `Estimated upper bound: ${queryCount} demo queries * 6 search rounds = ${estimatedSearchRounds} real search attempts before fixture/cache hits.`
+  );
+  console.warn(
+    `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`
+  );
+}
+
+function isTruthy(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
 function assertDerivedTopLevelFieldsOmitted(data, label) {

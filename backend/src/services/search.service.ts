@@ -1,10 +1,15 @@
 import { mapZhihuSearchResponse } from "../providers/zhihu/zhihu.mapper.js";
 import { zhihuProvider } from "../providers/zhihu/zhihu.provider.js";
+import type { ZhihuSearchOptions } from "../providers/zhihu/zhihu.types.js";
 import type { SearchResult } from "../types/api.types.js";
 import { HttpError } from "../utils/httpError.js";
 
 export class SearchService {
-  async search(query: string, count: number): Promise<SearchResult> {
+  async search(
+    query: string,
+    count: number,
+    options?: ZhihuSearchOptions
+  ): Promise<SearchResult> {
     const normalizedQuery = query.trim();
 
     if (!normalizedQuery) {
@@ -14,7 +19,7 @@ export class SearchService {
     const rawResponse = await zhihuProvider.searchRaw({
       query: normalizedQuery,
       count
-    });
+    }, options);
 
     return mapZhihuSearchResponse(normalizedQuery, count, rawResponse);
   }

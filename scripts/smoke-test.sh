@@ -18,10 +18,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf "Checking search error handling without Zhihu key: %s/api/search\n" "$BACKEND_URL"
+printf "Checking replay search fixture without real Zhihu API: %s/api/search\n" "$BACKEND_URL"
 search_status="$(
   curl -sS -o "$search_body" -w "%{http_code}" \
-    "$BACKEND_URL/api/search?query=%E4%B8%8D%E5%B7%A5%E4%BD%9C%E4%BA%86%E8%83%BD%E5%8E%BB%E5%93%AA%E5%84%BF&count=1"
+    "$BACKEND_URL/api/search?query=%E4%B8%8D%E5%B7%A5%E4%BD%9C%E4%BA%86%E8%83%BD%E5%8E%BB%E5%93%AA%E5%84%BF&count=1&dataMode=replay"
 )"
 
 if [ "$search_status" -lt 200 ] || [ "$search_status" -ge 600 ]; then
@@ -30,14 +30,14 @@ if [ "$search_status" -lt 200 ] || [ "$search_status" -ge 600 ]; then
   exit 1
 fi
 
-if ! grep -q '"success"[[:space:]]*:[[:space:]]*false' "$search_body"; then
-  printf "Search response did not contain success=false JSON error.\n" >&2
+if ! grep -q '"success"[[:space:]]*:[[:space:]]*true' "$search_body"; then
+  printf "Replay search response did not contain success=true.\n" >&2
   cat "$search_body" >&2
   exit 1
 fi
 
-if ! grep -q '"code"[[:space:]]*:[[:space:]]*"ZHIHU_AUTH_FAILED"' "$search_body"; then
-  printf "Search response did not contain ZHIHU_AUTH_FAILED.\n" >&2
+if ! grep -q '本地回放' "$search_body"; then
+  printf "Replay search response did not contain fixture content.\n" >&2
   cat "$search_body" >&2
   exit 1
 fi

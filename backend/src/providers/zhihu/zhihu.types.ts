@@ -5,6 +5,12 @@ export interface ZhihuSearchParams {
   count: number;
 }
 
+export type ZhihuSearchDataMode = "cache_first" | "replay" | "real";
+
+export interface ZhihuSearchOptions {
+  dataMode?: "mock" | ZhihuSearchDataMode;
+}
+
 export interface ZhihuSearchRawResponse {
   Code?: number | string;
   Message?: string;

@@ -160,7 +160,7 @@ function parseCreateTaskRequest(body: unknown): {
     record.dataMode ?? record.mode ?? metadata.dataMode,
     config.dataMode
   );
-  const dataMode: DemoDataMode = requestedDataMode === "cache_first" ? "real" : requestedDataMode;
+  const dataMode: DemoDataMode = requestedDataMode;
 
   return {
     query,
@@ -256,7 +256,7 @@ function parseCount(value: unknown): number {
 }
 
 function parseDataMode(value: unknown, fallback: DemoDataMode): DemoDataMode {
-  if (value === "mock" || value === "real" || value === "cache_first") {
+  if (value === "mock" || value === "real" || value === "replay" || value === "cache_first") {
     return value;
   }
 

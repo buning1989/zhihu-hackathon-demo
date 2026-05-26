@@ -5,9 +5,19 @@ import type {
   ZhihuPublishPinRawResponse,
   ZhihuPublishPinToRingParams,
   ZhihuPublishPinToRingResult,
+  ZhihuSearchOptions,
   ZhihuSearchParams,
   ZhihuSearchRawResponse
 } from "./zhihu.types.js";
+import {
+  consumeZhihuRealApiBudget,
+  isRealZhihuApiAllowed,
+  logZhihuSearchUsage,
+  normalizeZhihuSearchQuery,
+  readZhihuSearchFixture,
+  resolveZhihuSearchDataMode,
+  writeZhihuSearchFixture
+} from "./zhihuSearchFixtures.js";
 
 const RING_PUBLISH_RATE_LIMIT = 5;
 const RING_PUBLISH_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -16,14 +26,83 @@ let ringPublishWindowStartedAt = Date.now();
 let ringPublishCount = 0;
 
 export class ZhihuProvider {
-  async searchRaw(params: ZhihuSearchParams): Promise<ZhihuSearchRawResponse> {
+  async searchRaw(
+    params: ZhihuSearchParams,
+    options?: ZhihuSearchOptions
+  ): Promise<ZhihuSearchRawResponse> {
+    const dataMode = resolveZhihuSearchDataMode(options);
+    const normalizedQuery = normalizeZhihuSearchQuery(params.query);
+    const fixture = readZhihuSearchFixture(params);
+
+    if (fixture) {
+      logZhihuSearchUsage({
+        mode: dataMode,
+        query: params.query,
+        normalizedQuery,
+        count: params.count,
+        action: "fixture_hit",
+        consumed: 0,
+        fixtureId: fixture.id
+      });
+      return fixture.response;
+    }
+
+    if (dataMode === "replay") {
+      logZhihuSearchUsage({
+        mode: dataMode,
+        query: params.query,
+        normalizedQuery,
+        count: params.count,
+        action: "fixture_missing",
+        consumed: 0,
+        reason: "replay_fixture_missing"
+      });
+      throw new HttpError(
+        404,
+        "ZHIHU_REPLAY_FIXTURE_MISSING",
+        `知乎搜索 replay fixture 缺失：query="${params.query}", count=${params.count}`
+      );
+    }
+
+    if (!isRealZhihuApiAllowed(dataMode)) {
+      logZhihuSearchUsage({
+        mode: dataMode,
+        query: params.query,
+        normalizedQuery,
+        count: params.count,
+        action: "real_blocked",
+        consumed: 0,
+        reason: "real_api_not_allowed"
+      });
+      throw new HttpError(
+        409,
+        "ZHIHU_REAL_API_NOT_ALLOWED",
+        "当前模式不允许真实调用知乎 API；请使用 replay fixture，或显式设置 DATA_MODE=real / ALLOW_REAL_ZH_API=1"
+      );
+    }
+
     if (!config.zhihu.accessSecret) {
+      logZhihuSearchUsage({
+        mode: dataMode,
+        query: params.query,
+        normalizedQuery,
+        count: params.count,
+        action: "real_blocked",
+        consumed: 0,
+        reason: "missing_access_secret"
+      });
       throw new HttpError(
         500,
         "ZHIHU_AUTH_FAILED",
         "缺少 ZH_ACCESS_SECRET 或 ZHIHU_API_KEY，无法调用知乎 API"
       );
     }
+
+    consumeZhihuRealApiBudget({
+      mode: dataMode,
+      query: params.query,
+      count: params.count
+    });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), config.zhihu.timeoutMs);
@@ -57,16 +136,47 @@ export class ZhihuProvider {
         );
       }
 
-      return isRecord(body) ? body : { Code: response.status, Message: "OK", Data: body };
+      const rawResponse = isRecord(body)
+        ? body
+        : { Code: response.status, Message: "OK", Data: body };
+      writeZhihuSearchFixture(params, rawResponse);
+      return rawResponse;
     } catch (error) {
       if (error instanceof HttpError) {
+        logZhihuSearchUsage({
+          mode: dataMode,
+          query: params.query,
+          normalizedQuery,
+          count: params.count,
+          action: "real_failed",
+          consumed: 0,
+          reason: error.code
+        });
         throw error;
       }
 
       if (error instanceof Error && error.name === "AbortError") {
+        logZhihuSearchUsage({
+          mode: dataMode,
+          query: params.query,
+          normalizedQuery,
+          count: params.count,
+          action: "real_failed",
+          consumed: 0,
+          reason: "ZHIHU_TIMEOUT"
+        });
         throw new HttpError(504, "ZHIHU_TIMEOUT", "知乎 API 请求超时");
       }
 
+      logZhihuSearchUsage({
+        mode: dataMode,
+        query: params.query,
+        normalizedQuery,
+        count: params.count,
+        action: "real_failed",
+        consumed: 0,
+        reason: "ZHIHU_REQUEST_FAILED"
+      });
       throw new HttpError(502, "ZHIHU_REQUEST_FAILED", buildRequestFailedMessage(error));
     } finally {
       clearTimeout(timeout);

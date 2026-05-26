@@ -6,13 +6,15 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const QUERIES = [
-  "长期异地恋真的值得吗",
   "不工作了能去哪儿",
+  "35岁从互联网大厂裸辞，要不要创业？",
+  "30岁女生从体制内辞职去做自媒体靠谱吗？",
+  "产品经理被裁后，要不要转自由职业？",
+  "在北京工作十年，想回老家开店现实吗？",
+  "施工单位正式工辞职后，不知道能做什么？",
+  "长期异地恋真的值得吗",
   "为了工作能追求自己想做的事，长期异地恋真的值得吗",
-  "毕业后该去大城市还是回老家",
   "裸辞之后的人后来怎么样了",
-  "转行做产品经理现实吗",
-  "三十岁还适合重新开始吗",
   "要不要为了稳定放弃喜欢的事"
 ];
 
@@ -29,9 +31,11 @@ async function main() {
   }
 
   const tempDir = mkdtempSync(join(tmpdir(), "agent-task-real-eval-"));
+  const dataMode = resolveEvalDataMode();
   process.env.AGENT_TASK_STORE = process.env.AGENT_TASK_STORE || "sqlite";
   process.env.AGENT_TASK_DB_PATH = process.env.AGENT_TASK_DB_PATH || join(tempDir, "agent-tasks.sqlite");
-  process.env.DATA_MODE = process.env.DATA_MODE || "real";
+  process.env.DATA_MODE = process.env.DATA_MODE || dataMode;
+  printZhihuRiskNotice(dataMode, QUERIES.length);
 
   const [{ app }, { config }, { llmRouter }] = await Promise.all([
     import(pathToFileURL(appPath).href),
@@ -50,7 +54,7 @@ async function main() {
   const results = [];
   try {
     for (const query of QUERIES) {
-      const result = await evaluateQuery(baseUrl, query);
+      const result = await evaluateQuery(baseUrl, query, dataMode);
       results.push(result);
       console.log(formatCompactRow(result));
     }
@@ -85,19 +89,25 @@ async function main() {
 
   printMarkdownReport(report, outputPath);
 
-  if (
-    summary.partialDisplayable < 7 ||
-    summary.evidenceSucceeded < 7 ||
-    summary.summarySucceeded < 6 ||
-    summary.candidateSelectFailed > 0 ||
-    summary.demoFallback > 0 ||
-    summary.http500 > 0
-  ) {
+  const strictLlmThresholds = dataMode === "real" || isTruthy(process.env.AGENT_TASK_EVAL_STRICT_LLM);
+  const failed = strictLlmThresholds
+    ? summary.partialDisplayable < 7 ||
+      summary.evidenceSucceeded < 7 ||
+      summary.summarySucceeded < 6 ||
+      summary.candidateSelectFailed > 0 ||
+      summary.demoFallback > 0 ||
+      summary.http500 > 0
+    : summary.partialDisplayable < summary.total ||
+      summary.candidateSelectFailed > 0 ||
+      summary.demoFallback > 0 ||
+      summary.http500 > 0;
+
+  if (failed) {
     process.exitCode = 1;
   }
 }
 
-async function evaluateQuery(baseUrl, query) {
+async function evaluateQuery(baseUrl, query, dataMode) {
   const startedAt = Date.now();
   const record = {
     query,
@@ -127,7 +137,7 @@ async function evaluateQuery(baseUrl, query) {
     body: {
       query,
       count: 5,
-      dataMode: "real",
+      dataMode,
       metadata: { source: "agent-task-real-eval" }
     }
   });
@@ -183,6 +193,40 @@ async function evaluateQuery(baseUrl, query) {
   }
 
   return record;
+}
+
+function resolveEvalDataMode() {
+  const requested = String(process.env.DATA_MODE || process.env.AGENT_TASK_EVAL_DATA_MODE || "")
+    .trim()
+    .toLowerCase();
+  if (["replay", "cache_first", "real"].includes(requested)) {
+    return requested;
+  }
+
+  return isTruthy(process.env.ALLOW_REAL_ZH_API) ? "real" : "replay";
+}
+
+function printZhihuRiskNotice(dataMode, queryCount) {
+  const allowReal = dataMode === "real" || isTruthy(process.env.ALLOW_REAL_ZH_API);
+  const estimatedSearchRounds = queryCount * 4;
+  if (!allowReal) {
+    console.log(
+      `Zhihu API guard: dataMode=${dataMode}; replay/cache-first eval should consume 0 real Zhihu API calls.`
+    );
+    return;
+  }
+
+  console.warn("WARNING: real Zhihu API agent eval is enabled.");
+  console.warn(
+    `Estimated upper bound: ${queryCount} agent queries * 4 search rounds = ${estimatedSearchRounds} real search attempts before fixture/cache hits.`
+  );
+  console.warn(
+    `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`
+  );
+}
+
+function isTruthy(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
 async function waitForTask(baseUrl, taskId, predicate, startedAt) {

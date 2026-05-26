@@ -1,0 +1,803 @@
+{
+  "schemaVersion": "zhihu-search-fixture-catalog.v1",
+  "generatedAt": "2026-05-26T00:00:00.000Z",
+  "notes": [
+    "Local replay fixtures for backend smoke/eval. Items are explicit replay samples, not live Zhihu recall.",
+    "Aliases cover deterministic expanded search queries used by the demo and agent pipelines."
+  ],
+  "fixtures": [
+    {
+      "id": "core_35_internet_resign_startup",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "35岁从互联网大厂裸辞，要不要创业？",
+      "aliases": [
+        "35岁 大厂 裸辞",
+        "互联网 大厂 裸辞",
+        "互联网大厂 裸辞 创业",
+        "大厂 裸辞 创业",
+        "裸辞 创业",
+        "35岁 裸辞 创业",
+        "35岁 创业",
+        "创业 裸辞 后悔",
+        "35岁从互联网大厂裸辞 真实经历",
+        "35岁从互联网大厂裸辞 失败复盘",
+        "中年职业转型 真实经历",
+        "中年职业转型 失败复盘",
+        "35岁从互联网大厂裸辞，要不要创业？ 真实经历",
+        "35岁从互联网大厂裸辞，要不要创业？ 后来怎么样",
+        "35岁从互联网大厂裸辞，要不要创业？ 怎么选"
+      ],
+      "params": {
+        "query": "35岁从互联网大厂裸辞，要不要创业？",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_35_internet_resign_startup",
+          "Items": [
+            {
+              "ContentID": "fixture_35_startup_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：35岁大厂裸辞后先做低成本创业验证",
+              "ContentText": "本地回放 fixture（非真实召回）。样本记录一位互联网从业者在35岁裸辞后没有马上押上全部积蓄，而是用三个月验证客户、现金流和合伙边界，最后决定把创业当作小步试验。",
+              "Url": "https://www.zhihu.com/question/fixture-35-startup/answer/001",
+              "AuthorName": "回放样本A",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 128,
+              "CommentCount": 18,
+              "RankingScore": 0.92,
+              "EditTime": 1716600000
+            },
+            {
+              "ContentID": "fixture_35_startup_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：从大厂出来创业前先保留回流接口",
+              "ContentText": "本地回放 fixture（非真实召回）。回答强调35岁离开大厂时要把家庭现金流、行业人脉、可回撤岗位和试错周期分开计算，创业不是情绪出口，而是一个需要连续验证的项目。",
+              "Url": "https://www.zhihu.com/question/fixture-35-startup/answer/002",
+              "AuthorName": "回放样本B",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 96,
+              "CommentCount": 11,
+              "RankingScore": 0.84,
+              "EditTime": 1716513600
+            },
+            {
+              "ContentID": "fixture_35_startup_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：裸辞创业后最大的压力来自节奏失控",
+              "ContentText": "本地回放 fixture（非真实召回）。样本提到离开互联网大厂后，真正困难不是没人理解创业，而是每天没有外部结构，销售、交付、账期和自我怀疑会同时压过来，需要先搭一个稳定节奏。",
+              "Url": "https://www.zhihu.com/question/fixture-35-startup/answer/003",
+              "AuthorName": "回放样本C",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 77,
+              "CommentCount": 9,
+              "RankingScore": 0.78,
+              "EditTime": 1716427200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_30_system_resign_media",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "30岁女生从体制内辞职去做自媒体靠谱吗？",
+      "aliases": [
+        "30岁 体制内 辞职",
+        "体制内 辞职",
+        "体制内 辞职 自媒体",
+        "30岁 辞职 自媒体",
+        "辞职 自媒体",
+        "30岁 自媒体",
+        "30岁女性 真实经历",
+        "30岁女性 失败复盘",
+        "可行路径 真实经历",
+        "可行路径 失败复盘",
+        "体制内 自媒体 后悔",
+        "30岁女生从体制内辞职去做自媒体靠谱吗？ 真实经历",
+        "30岁女生从体制内辞职去做自媒体靠谱吗？ 后悔吗",
+        "30岁女生从体制内辞职去做自媒体靠谱吗？ 怎么开始"
+      ],
+      "params": {
+        "query": "30岁女生从体制内辞职去做自媒体靠谱吗？",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_30_system_resign_media",
+          "Items": [
+            {
+              "ContentID": "fixture_media_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：体制内辞职做自媒体前先算六个月现金流",
+              "ContentText": "本地回放 fixture（非真实召回）。样本把体制内稳定收入和自媒体波动收入拆开看，建议先用下班时间验证选题、更新频率和变现方式，再决定是否辞职。",
+              "Url": "https://www.zhihu.com/question/fixture-media/answer/001",
+              "AuthorName": "回放样本D",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 142,
+              "CommentCount": 21,
+              "RankingScore": 0.9,
+              "EditTime": 1716340800
+            },
+            {
+              "ContentID": "fixture_media_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：做自媒体不是离开组织后的自动自由",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到30岁转向自媒体后，时间自由会被流量焦虑、选题压力和收入不确定替代，需要把内容能力当成长期资产而不是逃离按钮。",
+              "Url": "https://www.zhihu.com/question/fixture-media/answer/002",
+              "AuthorName": "回放样本E",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 88,
+              "CommentCount": 10,
+              "RankingScore": 0.81,
+              "EditTime": 1716254400
+            },
+            {
+              "ContentID": "fixture_media_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：从稳定岗位转内容行业的试错清单",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议把账号定位、内容库存、第一批用户反馈、收入上限和失败回撤放进同一张表，避免只因为不喜欢当前工作就仓促离开。",
+              "Url": "https://www.zhihu.com/question/fixture-media/answer/003",
+              "AuthorName": "回放样本F",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 66,
+              "CommentCount": 8,
+              "RankingScore": 0.76,
+              "EditTime": 1716168000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_pm_layoff_freelance",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "产品经理被裁后，要不要转自由职业？",
+      "aliases": [
+        "产品经理 被裁",
+        "产品经理 被裁 自由职业",
+        "被裁 自由职业",
+        "产品经理 自由职业",
+        "产品经理 被裁 复盘",
+        "被裁 自由职业 后悔",
+        "职业 真实经历",
+        "职业 后来怎么样",
+        "产品经理被裁后 真实经历",
+        "产品经理被裁后 失败复盘",
+        "产品经理被裁后，要不要转自由职业？ 真实经历",
+        "产品经理被裁后，要不要转自由职业？ 后来怎么样",
+        "产品经理被裁后，要不要转自由职业？ 怎么选"
+      ],
+      "params": {
+        "query": "产品经理被裁后，要不要转自由职业？",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_pm_layoff_freelance",
+          "Items": [
+            {
+              "ContentID": "fixture_pm_freelance_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：产品经理被裁后先接项目而不是立刻自由职业",
+              "ContentText": "本地回放 fixture（非真实召回）。样本提到被裁后的前三个月先恢复现金流和作品集，用短项目验证客户来源，再判断自由职业是否能持续。",
+              "Url": "https://www.zhihu.com/question/fixture-pm-freelance/answer/001",
+              "AuthorName": "回放样本G",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 121,
+              "CommentCount": 17,
+              "RankingScore": 0.89,
+              "EditTime": 1716081600
+            },
+            {
+              "ContentID": "fixture_pm_freelance_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：自由职业最先考验销售和交付边界",
+              "ContentText": "本地回放 fixture（非真实召回）。回答把产品经理能力拆成需求、沟通、交付和获客，提醒不要把在公司里的岗位能力直接等同于独立接单能力。",
+              "Url": "https://www.zhihu.com/question/fixture-pm-freelance/answer/002",
+              "AuthorName": "回放样本H",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 84,
+              "CommentCount": 12,
+              "RankingScore": 0.8,
+              "EditTime": 1715995200
+            },
+            {
+              "ContentID": "fixture_pm_freelance_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：被裁后转自由职业要保留求职窗口",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议同时保留求职、项目合作和技能补齐三条线，避免把一次裁员变成不可逆的职业身份切换。",
+              "Url": "https://www.zhihu.com/question/fixture-pm-freelance/answer/003",
+              "AuthorName": "回放样本I",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 59,
+              "CommentCount": 6,
+              "RankingScore": 0.73,
+              "EditTime": 1715908800
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_beijing_hometown_shop",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "在北京工作十年，想回老家开店现实吗？",
+      "aliases": [
+        "北京 工作十年 回老家",
+        "北京 工作十年 回老家 开店",
+        "北京 回老家 开店",
+        "工作十年 回老家 开店",
+        "回老家 开店",
+        "工作 回老家 北京 后来怎么样",
+        "工作 回老家 北京 有哪些路径",
+        "工作 回老家 北京 真实经历",
+        "工作 回老家 北京 失败复盘",
+        "在北京工作十年 真实经历",
+        "在北京工作十年 失败复盘",
+        "回老家 开店 后悔",
+        "留在北京还是回老家",
+        "北京 回老家",
+        "留在北京还是回老家 真实经历",
+        "留在北京还是回老家 怎么选",
+        "在北京工作十年，想回老家开店现实吗？ 真实经历"
+      ],
+      "params": {
+        "query": "在北京工作十年，想回老家开店现实吗？",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_beijing_hometown_shop",
+          "Items": [
+            {
+              "ContentID": "fixture_hometown_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：回老家开店前先做淡旺季测算",
+              "ContentText": "本地回放 fixture（非真实召回）。样本从北京回老家后先盘点租金、人流、供应链和家庭关系，发现开店不是生活降速，而是另一种高密度经营。",
+              "Url": "https://www.zhihu.com/question/fixture-hometown/answer/001",
+              "AuthorName": "回放样本J",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 117,
+              "CommentCount": 16,
+              "RankingScore": 0.87,
+              "EditTime": 1715822400
+            },
+            {
+              "ContentID": "fixture_hometown_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：一线城市回流不等于压力消失",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到回老家会减少通勤和房租压力，但也可能带来职业机会变少、熟人社会和家庭期待，需要先试住和试运营。",
+              "Url": "https://www.zhihu.com/question/fixture-hometown/answer/002",
+              "AuthorName": "回放样本K",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 91,
+              "CommentCount": 13,
+              "RankingScore": 0.82,
+              "EditTime": 1715736000
+            },
+            {
+              "ContentID": "fixture_hometown_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：回老家前保留北京职业连接",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议把北京的人脉、远程合作和备用岗位当作缓冲，不要把回老家开店设计成没有退路的一次性决定。",
+              "Url": "https://www.zhihu.com/question/fixture-hometown/answer/003",
+              "AuthorName": "回放样本L",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 63,
+              "CommentCount": 7,
+              "RankingScore": 0.75,
+              "EditTime": 1715649600
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_construction_formal_resign",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "施工单位正式工辞职后，不知道能做什么？",
+      "aliases": [
+        "施工单位 正式工 辞职",
+        "正式工 辞职",
+        "施工单位正式工 辞职 出路",
+        "正式工 辞职 出路",
+        "施工单位 辞职 出路",
+        "正式工 出路",
+        "辞职 出路",
+        "辞职 出路 后悔",
+        "正式工辞职 复盘",
+        "出路 失败 复盘",
+        "施工单位正式工辞职后 真实经历",
+        "施工单位正式工辞职后 失败复盘",
+        "施工单位正式工辞职后，不知道能做什么？ 真实经历",
+        "施工单位正式工辞职后，不知道能做什么？ 后悔吗",
+        "施工单位正式工辞职后，不知道能做什么？ 怎么办"
+      ],
+      "params": {
+        "query": "施工单位正式工辞职后，不知道能做什么？",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_construction_formal_resign",
+          "Items": [
+            {
+              "ContentID": "fixture_construction_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：施工单位离职后先把证书和项目经验变现",
+              "ContentText": "本地回放 fixture（非真实召回）。样本提到正式工辞职前要盘点证书、项目管理经验、造价和安全方向，先找可迁移岗位而不是只问能做什么。",
+              "Url": "https://www.zhihu.com/question/fixture-construction/answer/001",
+              "AuthorName": "回放样本M",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 109,
+              "CommentCount": 14,
+              "RankingScore": 0.86,
+              "EditTime": 1715563200
+            },
+            {
+              "ContentID": "fixture_construction_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：从工地节奏切到城市岗位需要过渡期",
+              "ContentText": "本地回放 fixture（非真实召回）。回答强调施工单位经历能迁移到甲方、咨询、造价和项目协调，但需要补齐简历表达、办公软件和城市岗位面试方式。",
+              "Url": "https://www.zhihu.com/question/fixture-construction/answer/002",
+              "AuthorName": "回放样本N",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 74,
+              "CommentCount": 8,
+              "RankingScore": 0.79,
+              "EditTime": 1715476800
+            },
+            {
+              "ContentID": "fixture_construction_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：正式工辞职后不要切断行业入口",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议先通过短期项目、证书考试和同行访谈确认方向，避免因为厌倦现场环境就完全否定已有经验。",
+              "Url": "https://www.zhihu.com/question/fixture-construction/answer/003",
+              "AuthorName": "回放样本O",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 58,
+              "CommentCount": 5,
+              "RankingScore": 0.72,
+              "EditTime": 1715390400
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_relationship_work_choice",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "为了工作能追求自己想做的事，长期异地恋真的值得吗？",
+      "aliases": [
+        "长期异地恋 工作选择",
+        "异地恋 职业发展 后悔吗",
+        "异地恋 为了工作 分开",
+        "异地恋 追求梦想 真实经历",
+        "异地恋 工作机会 怎么选",
+        "异地恋 异地工作 坚持下来",
+        "异地恋 团聚 城市选择",
+        "为了工作 异地恋 值得吗",
+        "异地恋 未来规划 沟通",
+        "异地恋 工作调动 代价",
+        "长期异地恋真的值得吗",
+        "长期异地恋真的值得吗 真实经历"
+      ],
+      "params": {
+        "query": "为了工作能追求自己想做的事，长期异地恋真的值得吗？",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_relationship_work_choice",
+          "Items": [
+            {
+              "ContentID": "fixture_relationship_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：为了工作异地后先约定团聚时间表",
+              "ContentText": "本地回放 fixture（非真实召回）。样本记录一段长期异地恋和职业选择的冲突，双方先把工作机会、见面频率、团聚城市和截止时间说清楚，再判断是否继续坚持。",
+              "Url": "https://www.zhihu.com/question/fixture-relationship-work/answer/001",
+              "AuthorName": "回放样本P",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 156,
+              "CommentCount": 26,
+              "RankingScore": 0.94,
+              "EditTime": 1715304000
+            },
+            {
+              "ContentID": "fixture_relationship_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：异地恋最怕工作选择没有共同期限",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到追求想做的工作可以理解，但如果城市、收入和未来规划长期没有交集，关系会被等待和猜测慢慢消耗。",
+              "Url": "https://www.zhihu.com/question/fixture-relationship-work/answer/002",
+              "AuthorName": "回放样本Q",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 134,
+              "CommentCount": 20,
+              "RankingScore": 0.9,
+              "EditTime": 1715217600
+            },
+            {
+              "ContentID": "fixture_relationship_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：为了职业发展分开后复盘沟通成本",
+              "ContentText": "本地回放 fixture（非真实召回）。样本复盘异地工作和恋爱关系的取舍，认为真正需要比较的是职业成长、关系承诺、迁移成本和双方是否愿意共同承担代价。",
+              "Url": "https://www.zhihu.com/question/fixture-relationship-work/answer/003",
+              "AuthorName": "回放样本R",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 102,
+              "CommentCount": 15,
+              "RankingScore": 0.85,
+              "EditTime": 1715131200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_stop_work",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "不工作了能去哪儿",
+      "aliases": [
+        "不工作了能去哪儿 真实经历",
+        "不工作了能去哪儿 后来怎么样",
+        "不工作了能去哪儿 有哪些路径",
+        "不工作了能去哪儿 怎么开始",
+        "不工作了能去哪儿 失败复盘",
+        "不工作了能去哪儿 后悔吗",
+        "我不想上班但也不知道能干嘛",
+        "我不想上班但也不知道能干嘛 真实经历",
+        "不上班 出路",
+        "不工作 出路",
+        "工作 不工作 后来怎么样",
+        "工作 不工作 有哪些路径"
+      ],
+      "params": {
+        "query": "不工作了能去哪儿",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_stop_work",
+          "Items": [
+            {
+              "ContentID": "fixture_stop_work_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：不工作后先恢复生活节奏",
+              "ContentText": "本地回放 fixture（非真实召回）。样本提到暂停工作后先处理睡眠、现金流和社交断层，再慢慢试远程、副业和短期项目，而不是马上给人生定一个新标签。",
+              "Url": "https://www.zhihu.com/question/fixture-stop-work/answer/001",
+              "AuthorName": "回放样本S",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 140,
+              "CommentCount": 19,
+              "RankingScore": 0.91,
+              "EditTime": 1715044800
+            },
+            {
+              "ContentID": "fixture_stop_work_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：不上班不是目的，重新组织生活才是",
+              "ContentText": "本地回放 fixture（非真实召回）。回答把不工作后的选择拆成休整、学习、接单、旅行和回流，每一步都需要预算、期限和可撤回条件。",
+              "Url": "https://www.zhihu.com/question/fixture-stop-work/answer/002",
+              "AuthorName": "回放样本T",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 97,
+              "CommentCount": 12,
+              "RankingScore": 0.83,
+              "EditTime": 1714958400
+            },
+            {
+              "ContentID": "fixture_stop_work_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：离开工作结构后的三个小入口",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议先找低成本试验：短期志愿项目、兼职交付、城市试住，借这些入口观察自己真正想逃离的是什么。",
+              "Url": "https://www.zhihu.com/question/fixture-stop-work/answer/003",
+              "AuthorName": "回放样本U",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 69,
+              "CommentCount": 7,
+              "RankingScore": 0.74,
+              "EditTime": 1714872000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_postgrad_quit",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "不想读研了怎么办",
+      "aliases": [
+        "不想读研了怎么办 真实经历",
+        "不想读研了怎么办 后来怎么样",
+        "不想读研了怎么办 怎么选",
+        "读研 后悔吗",
+        "要不要 读研",
+        "读研 失败 复盘",
+        "不想读研 怎么开始"
+      ],
+      "params": {
+        "query": "不想读研了怎么办",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_postgrad_quit",
+          "Items": [
+            {
+              "ContentID": "fixture_postgrad_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：不想读研时先区分厌学和方向不合",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议把导师关系、课题兴趣、就业压力和身体状态分开判断，不要把所有痛苦都归因于读研本身。",
+              "Url": "https://www.zhihu.com/question/fixture-postgrad/answer/001",
+              "AuthorName": "回放样本V",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 112,
+              "CommentCount": 18,
+              "RankingScore": 0.88,
+              "EditTime": 1714785600
+            },
+            {
+              "ContentID": "fixture_postgrad_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：退学或换方向前先做信息访谈",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到可以和同门、毕业生、目标行业从业者分别聊一次，再决定是休学、换题、就业还是继续完成学位。",
+              "Url": "https://www.zhihu.com/question/fixture-postgrad/answer/002",
+              "AuthorName": "回放样本W",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 83,
+              "CommentCount": 9,
+              "RankingScore": 0.79,
+              "EditTime": 1714699200
+            },
+            {
+              "ContentID": "fixture_postgrad_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：读研中途迷茫需要一个最小决策表",
+              "ContentText": "本地回放 fixture（非真实召回）。样本把继续、延期、转方向和就业四种路径列出成本，提醒先确认毕业门槛和可承受损失。",
+              "Url": "https://www.zhihu.com/question/fixture-postgrad/answer/003",
+              "AuthorName": "回放样本X",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 51,
+              "CommentCount": 6,
+              "RankingScore": 0.71,
+              "EditTime": 1714612800
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_stability_passion",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "要不要为了稳定放弃喜欢的事",
+      "aliases": [
+        "稳定工作 喜欢的事",
+        "为了稳定 放弃热爱",
+        "稳定 放弃梦想 后悔吗",
+        "稳定收入 做喜欢的事",
+        "稳定工作 不喜欢 要不要",
+        "热爱 现实 稳定 选择",
+        "体制内 放弃热爱",
+        "兴趣 事业 稳定 取舍",
+        "喜欢的事 变成工作 后悔吗",
+        "稳定 追求梦想 真实经历"
+      ],
+      "params": {
+        "query": "要不要为了稳定放弃喜欢的事",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_stability_passion",
+          "Items": [
+            {
+              "ContentID": "fixture_stability_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：稳定工作和喜欢的事可以先并行验证",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议不要立刻把稳定和热爱做成二选一，先用固定时间试作品、客户和收入，再判断是否需要切换主业。",
+              "Url": "https://www.zhihu.com/question/fixture-stability/answer/001",
+              "AuthorName": "回放样本Y",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 148,
+              "CommentCount": 22,
+              "RankingScore": 0.93,
+              "EditTime": 1714526400
+            },
+            {
+              "ContentID": "fixture_stability_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：为了稳定放弃热爱后最容易后悔的是没试过",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到稳定收入能托住生活，但如果完全不保留喜欢的事，几年后可能很难判断自己到底是不适合还是从未验证。",
+              "Url": "https://www.zhihu.com/question/fixture-stability/answer/002",
+              "AuthorName": "回放样本Z",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 104,
+              "CommentCount": 14,
+              "RankingScore": 0.86,
+              "EditTime": 1714440000
+            },
+            {
+              "ContentID": "fixture_stability_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：喜欢的事变成工作后也有现实成本",
+              "ContentText": "本地回放 fixture（非真实召回）。样本提醒把兴趣变成事业后，会出现客户、交付、商业化和重复劳动，热爱需要被现实结构保护。",
+              "Url": "https://www.zhihu.com/question/fixture-stability/answer/003",
+              "AuthorName": "回放样本AA",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 71,
+              "CommentCount": 8,
+              "RankingScore": 0.77,
+              "EditTime": 1714353600
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_resign_afterwards",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "裸辞之后的人后来怎么样了",
+      "aliases": [
+        "裸辞之后的人后来怎么样了 真实经历",
+        "裸辞之后的人后来怎么样了 后来怎么样",
+        "裸辞之后的人后来怎么样了 后悔吗",
+        "裸辞 后悔",
+        "裸辞 复盘",
+        "裸辞 真实经历",
+        "35岁裸辞是不是完了",
+        "35岁 裸辞",
+        "35岁裸辞是不是完了 真实经历"
+      ],
+      "params": {
+        "query": "裸辞之后的人后来怎么样了",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_resign_afterwards",
+          "Items": [
+            {
+              "ContentID": "fixture_resign_after_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：裸辞半年后最先恢复的是作息",
+              "ContentText": "本地回放 fixture（非真实召回）。样本记录裸辞后先经历失控和焦虑，后来通过预算、运动和短项目慢慢恢复节奏，再重新判断要不要回到职场。",
+              "Url": "https://www.zhihu.com/question/fixture-resign-after/answer/001",
+              "AuthorName": "回放样本AB",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 133,
+              "CommentCount": 19,
+              "RankingScore": 0.9,
+              "EditTime": 1714267200
+            },
+            {
+              "ContentID": "fixture_resign_after_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：裸辞后悔通常来自准备不足",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到后悔的原因多半不是离开本身，而是没有现金流、没有下一步试验、也没有和家人沟通预期。",
+              "Url": "https://www.zhihu.com/question/fixture-resign-after/answer/002",
+              "AuthorName": "回放样本AC",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 89,
+              "CommentCount": 12,
+              "RankingScore": 0.82,
+              "EditTime": 1714180800
+            },
+            {
+              "ContentID": "fixture_resign_after_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：裸辞后的重新开始需要外部反馈",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议不要一个人空想未来，可以用面试、兼职和作品发布获得反馈，降低长期待业带来的自我怀疑。",
+              "Url": "https://www.zhihu.com/question/fixture-resign-after/answer/003",
+              "AuthorName": "回放样本AD",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 57,
+              "CommentCount": 7,
+              "RankingScore": 0.73,
+              "EditTime": 1714094400
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "core_parent_disagree",
+      "recordedAt": "2026-05-26T00:00:00.000Z",
+      "query": "父母不同意我的选择怎么办",
+      "aliases": [
+        "父母不同意我的选择怎么办 真实经历",
+        "父母不同意我的选择怎么办 后来怎么样",
+        "父母不同意我的选择怎么办 怎么选",
+        "父母 不同意 选择",
+        "父母 不同意 怎么办",
+        "要不要和长期消耗我的朋友断联",
+        "要不要和长期消耗我的朋友断联 真实经历",
+        "朋友 断联 怎么选",
+        "长期消耗 断联"
+      ],
+      "params": {
+        "query": "父母不同意我的选择怎么办",
+        "count": 5
+      },
+      "response": {
+        "Code": 200,
+        "Message": "OK",
+        "Data": {
+          "HasMore": false,
+          "SearchHashId": "fixture_core_parent_disagree",
+          "Items": [
+            {
+              "ContentID": "fixture_family_001",
+              "ContentType": "answer",
+              "Title": "本地回放样本：父母不同意时先把选择拆成可验证步骤",
+              "ContentText": "本地回放 fixture（非真实召回）。样本建议把和父母的冲突从输赢改成信息同步，先说明预算、风险、期限和退路，让选择变得可讨论。",
+              "Url": "https://www.zhihu.com/question/fixture-family-choice/answer/001",
+              "AuthorName": "回放样本AE",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 118,
+              "CommentCount": 17,
+              "RankingScore": 0.87,
+              "EditTime": 1714008000
+            },
+            {
+              "ContentID": "fixture_family_002",
+              "ContentType": "answer",
+              "Title": "本地回放样本：长期消耗关系需要边界而不是突然消失",
+              "ContentText": "本地回放 fixture（非真实召回）。回答提到面对长期消耗自己的朋友或家人，可以先降低频率、说明边界和观察反馈，不必把所有关系都推向断裂。",
+              "Url": "https://www.zhihu.com/question/fixture-family-choice/answer/002",
+              "AuthorName": "回放样本AF",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 92,
+              "CommentCount": 10,
+              "RankingScore": 0.81,
+              "EditTime": 1713921600
+            },
+            {
+              "ContentID": "fixture_family_003",
+              "ContentType": "answer",
+              "Title": "本地回放样本：自己的选择要配套承担方式",
+              "ContentText": "本地回放 fixture（非真实召回）。样本提醒如果希望家人接受选择，需要同时展示自己如何承担后果，包括钱、住处、时间表和失败后的处理方案。",
+              "Url": "https://www.zhihu.com/question/fixture-family-choice/answer/003",
+              "AuthorName": "回放样本AG",
+              "AuthorBadgeText": "本地 fixture",
+              "VoteUpCount": 64,
+              "CommentCount": 8,
+              "RankingScore": 0.76,
+              "EditTime": 1713835200
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

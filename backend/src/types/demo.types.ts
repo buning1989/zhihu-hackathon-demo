@@ -5,7 +5,7 @@ export const PERSONA_CHAT_FALLBACK_BOUNDARY_NOTICE =
   "当前回复基于有限公开内容生成，只能作为阅读辅助，不代表作者本人实时回应。";
 
 export type DemoSchemaVersion = typeof DEMO_SCHEMA_VERSION;
-export type DemoDataMode = "mock" | "cache_first" | "real";
+export type DemoDataMode = "mock" | "cache_first" | "replay" | "real";
 export type DemoPersonaChatMode = "off" | "mock" | "real";
 export type DemoExperienceSummarySource = "llm" | "fallback" | "none";
 export type DemoExperienceSummaryStatus = "ready" | "pending" | "failed";

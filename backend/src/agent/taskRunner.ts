@@ -280,13 +280,14 @@ export class AgentTaskRunner {
 
     const executableQueries = intent.searchQueries.slice(0, 4);
     const searchCount = Math.min(Math.max(requestedCount, 5), 10);
+    const dataMode = this.requireTask(taskId).task.dataMode;
     const failedQueries: string[] = [];
     const emptyQueries: string[] = [];
     const items: SearchItem[] = [];
 
     for (const [index, plan] of executableQueries.entries()) {
       try {
-        const result = await searchService.search(plan.query, searchCount);
+        const result = await searchService.search(plan.query, searchCount, { dataMode });
         if (result.items.length === 0) {
           emptyQueries.push(plan.query);
           continue;
@@ -298,6 +299,9 @@ export class AgentTaskRunner {
           )
         );
       } catch (error) {
+        if (dataMode === "replay" && toErrorCode(error) === "ZHIHU_REPLAY_FIXTURE_MISSING") {
+          throw error;
+        }
         failedQueries.push(`${plan.query}: ${toErrorMessage(error)}`);
       }
     }

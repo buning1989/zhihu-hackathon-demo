@@ -13,6 +13,7 @@
     "smoke:agent": "node scripts/smoke-agent-tasks.mjs",
     "smoke:agent-real-eval": "node scripts/agent-task-real-eval.mjs",
     "smoke:frontend-agent": "node scripts/smoke-frontend-agent-flow.mjs",
+    "smoke:demo-replay": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:search": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:llm-persona": "node scripts/smoke-demo-real-key.mjs",

@@ -1,5 +1,25 @@
 # AI Handoff
 
+## 2026-05-26 - Zhihu search replay fixtures and API budget guardrails
+
+本轮目标：降低知乎真实搜索 API 消耗，让本地 smoke/eval 默认通过 fixture 回放跑通。
+
+已完成：
+
+- 新增 `dataMode=replay`：`/api/demo/search` 和 Agent 任务会走真实产品层组合链路，但知乎搜索只读 `backend/fixtures/zhihu-search`，缺 fixture 返回 `ZHIHU_REPLAY_FIXTURE_MISSING`。
+- `ZhihuProvider.searchRaw` 增加 fixture-first 保护：real/cache_first 命中本地 fixture 时不请求知乎；真实请求成功后自动写入 `recorded-*.json` fixture。
+- 增加真实调用日志和预算：默认写入 `data/zhihu-api-usage/YYYY-MM-DD.jsonl`，日志包含 query、normalizedQuery、fixture hit/real request、consumed、usedToday、budget；`ZH_API_DAILY_DEV_BUDGET` 默认 50。
+- 默认脚本防护：
+  - `npm run smoke:demo-replay` / `npm run smoke:demo-real` 默认 `replay`。
+  - `smoke-agent-tasks` 和 `agent-task-real-eval` 默认不消耗真实知乎 API。
+  - 只有 `DATA_MODE=real` 或 `ALLOW_REAL_ZH_API=1` 才允许真实请求，脚本会先打印风险提示和预计搜索轮数。
+- 固化 10+ 个核心中文 query fixture，并覆盖 deterministic expanded query aliases。
+
+验证记录：
+
+- `npm run build -w backend` 通过。
+- `npm run smoke:demo-replay` 通过，日志中所有 `[ZhihuSearch]` 均为 `action=fixture_hit consumed=0`。
+
 ## 2026-05-25 - display copy responsibility cleanup
 
 本轮目标：收敛 `analysis / people[].oneLine / people[].lesson / people[].experienceSummary` 的展示职责，避免前端把不同字段拼成重复的人物卡总结。

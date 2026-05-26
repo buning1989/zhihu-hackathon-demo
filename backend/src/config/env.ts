@@ -19,7 +19,7 @@ const DEFAULT_ZHIHU_OPENAPI_BASE = "https://openapi.zhihu.com";
 const DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_DEEPSEEK_STAGE_MODEL = "deepseek-v4-flash";
-const DATA_MODES = new Set(["mock", "cache_first", "real"]);
+const DATA_MODES = new Set(["mock", "cache_first", "replay", "real"]);
 const LLM_PROVIDERS = new Set(["openai_compatible"]);
 const AGENT_TASK_STORES = new Set(["sqlite", "memory"]);
 const zhihuAccessSecret = firstNonEmpty(process.env.ZH_ACCESS_SECRET, process.env.ZHIHU_API_KEY);
@@ -51,7 +51,7 @@ function parseNonNegativeInteger(value: string | undefined, fallback: number): n
 
 export const config = {
   nodeEnv: process.env.NODE_ENV || process.env.APP_ENV || "development",
-  dataMode: parseDataMode(process.env.DATA_MODE, zhihuAccessSecret ? "real" : "mock"),
+  dataMode: parseDataMode(process.env.DATA_MODE, "mock"),
   host: process.env.HOST || "127.0.0.1",
   port: parsePositiveInteger(process.env.PORT ?? process.env.BACKEND_PORT, 8000),
   frontendUrl: process.env.FRONTEND_URL || "http://127.0.0.1:5173",
@@ -81,7 +81,11 @@ export const config = {
     timeoutMs: parsePositiveInteger(
       process.env.ZH_API_TIMEOUT_MS ?? process.env.ZHIHU_API_TIMEOUT,
       10000
-    )
+    ),
+    fixtureDir: firstNonEmpty(process.env.ZH_API_FIXTURE_DIR) || defaultZhihuFixtureDir(),
+    usageLogDir: firstNonEmpty(process.env.ZH_API_USAGE_LOG_DIR) || defaultZhihuUsageLogDir(),
+    dailyDevBudget: parseNonNegativeInteger(process.env.ZH_API_DAILY_DEV_BUDGET, 50),
+    allowRealApi: parseBoolean(process.env.ALLOW_REAL_ZH_API, false)
   },
   llm: {
     enabled: parseBoolean(
@@ -140,9 +144,11 @@ export const config = {
 
 function parseDataMode(
   value: string | undefined,
-  fallback: "mock" | "cache_first" | "real"
-): "mock" | "cache_first" | "real" {
-  return value && DATA_MODES.has(value) ? (value as "mock" | "cache_first" | "real") : fallback;
+  fallback: "mock" | "cache_first" | "replay" | "real"
+): "mock" | "cache_first" | "replay" | "real" {
+  return value && DATA_MODES.has(value)
+    ? (value as "mock" | "cache_first" | "replay" | "real")
+    : fallback;
 }
 
 function firstNonEmpty(...values: Array<string | undefined>): string {
@@ -179,4 +185,16 @@ function defaultAgentTaskDbPath(): string {
   const cwd = process.cwd();
   const repoRoot = basename(cwd) === "backend" ? resolve(cwd, "..") : cwd;
   return resolve(repoRoot, "data", "agent-tasks.sqlite");
+}
+
+function defaultZhihuFixtureDir(): string {
+  const cwd = process.cwd();
+  const repoRoot = basename(cwd) === "backend" ? resolve(cwd, "..") : cwd;
+  return resolve(repoRoot, "backend", "fixtures", "zhihu-search");
+}
+
+function defaultZhihuUsageLogDir(): string {
+  const cwd = process.cwd();
+  const repoRoot = basename(cwd) === "backend" ? resolve(cwd, "..") : cwd;
+  return resolve(repoRoot, "data", "zhihu-api-usage");
 }

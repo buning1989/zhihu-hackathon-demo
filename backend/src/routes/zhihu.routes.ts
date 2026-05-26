@@ -14,7 +14,8 @@ zhihuRoutes.get("/search", async (req, res, next) => {
   try {
     const query = parseQuery(req.query.query);
     const count = parseCount(req.query.count);
-    const rawResponse = await zhihuProvider.searchRaw({ query, count });
+    const dataMode = parseDataMode(req.query.dataMode ?? req.query.mode);
+    const rawResponse = await zhihuProvider.searchRaw({ query, count }, { dataMode });
 
     res.json(rawResponse);
   } catch (error) {
@@ -50,6 +51,18 @@ function parseQuery(value: unknown): string {
   }
 
   return query;
+}
+
+function parseDataMode(value: unknown): "cache_first" | "replay" | "real" | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === "cache_first" || value === "replay" || value === "real") {
+    return value;
+  }
+
+  throw new HttpError(400, "DATA_MODE_INVALID", "dataMode must be cache_first, replay, or real");
 }
 
 function parseCount(value: unknown): number {

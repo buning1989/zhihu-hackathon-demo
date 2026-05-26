@@ -15,6 +15,9 @@ async function main() {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   const repoRoot = dirname(scriptDir);
   process.chdir(repoRoot);
+  const dataMode = resolveSmokeDataMode();
+  process.env.DATA_MODE = process.env.DATA_MODE || dataMode;
+  printZhihuRiskNotice(dataMode, 1);
 
   const appPath = join(repoRoot, "backend", "dist", "app.js");
   if (!existsSync(appPath)) {
@@ -84,9 +87,9 @@ async function main() {
     );
 
     const realTask = await createTask(baseUrl, {
-      query: "真实模式失败时不能静默返回 mock",
+      query: dataMode === "real" ? "真实模式失败时不能静默返回 mock" : "不工作了能去哪儿",
       count: 3,
-      dataMode: "real"
+      dataMode
     });
     const realFinal = await waitForTask(baseUrl, realTask.taskId, (data) =>
       ["succeeded", "degraded", "failed"].includes(String(data.status))
@@ -108,6 +111,39 @@ async function main() {
   } finally {
     await closeServer(server);
   }
+}
+
+function resolveSmokeDataMode() {
+  const requested = String(process.env.DATA_MODE || process.env.AGENT_SMOKE_DATA_MODE || "")
+    .trim()
+    .toLowerCase();
+  if (["replay", "cache_first", "real"].includes(requested)) {
+    return requested;
+  }
+
+  return isTruthy(process.env.ALLOW_REAL_ZH_API) ? "real" : "replay";
+}
+
+function printZhihuRiskNotice(dataMode, queryCount) {
+  const allowReal = dataMode === "real" || isTruthy(process.env.ALLOW_REAL_ZH_API);
+  if (!allowReal) {
+    console.log(
+      `Zhihu API guard: dataMode=${dataMode}; agent smoke should consume 0 real Zhihu API calls.`
+    );
+    return;
+  }
+
+  console.warn("WARNING: real Zhihu API agent smoke is enabled.");
+  console.warn(
+    `Estimated upper bound: ${queryCount} agent queries * 4 search rounds = ${queryCount * 4} real search attempts before fixture/cache hits.`
+  );
+  console.warn(
+    `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`
+  );
+}
+
+function isTruthy(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
 async function assertInMemoryStoreCanCreateTask(repoRoot) {
