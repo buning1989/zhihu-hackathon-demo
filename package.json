@@ -11,9 +11,13 @@
     "start": "npm run start -w backend",
     "smoke": "bash scripts/smoke-test.sh",
     "smoke:agent": "node scripts/smoke-agent-tasks.mjs",
+    "smoke:frontend-agent": "node scripts/smoke-frontend-agent-flow.mjs",
     "smoke:demo-real": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:search": "node scripts/smoke-demo-real-search.mjs",
     "smoke:demo-real:llm-persona": "node scripts/smoke-demo-real-key.mjs",
     "smoke:demo-real:full": "npm run smoke:demo-real:search && npm run smoke:demo-real:llm-persona"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
   }
 }
