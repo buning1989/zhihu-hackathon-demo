@@ -10,6 +10,7 @@
   const mockMinimumLoadingMs = 5200;
   const defaultMinimumLoadingMs = 5200;
   const defaultPollMs = 1500;
+  const agentPollingTimeoutMs = 90000;
   const loadingStageIntervalMs = 900;
   const entryPlaceholderTypeMs = 90;
   const entryPlaceholderHoldTicks = 36;
@@ -23,29 +24,29 @@
   ];
   const loadingStages = [
     {
+      id: "create",
+      label: "创建任务",
+      message: "正在创建任务"
+    },
+    {
       id: "understand",
-      label: "理解处境",
-      message: "正在理解你的处境"
+      label: "理解问题",
+      message: "正在理解问题"
     },
     {
       id: "search",
-      label: "寻找样本",
-      message: "正在寻找真实内容样本"
+      label: "搜索内容",
+      message: "正在搜索真实内容"
     },
     {
-      id: "evidence",
-      label: "整理片段",
-      message: "正在整理公开内容片段"
+      id: "compose",
+      label: "整理结果",
+      message: "正在整理可展示结果"
     },
     {
-      id: "paths",
-      label: "整理样本",
-      message: "正在整理样本方向"
-    },
-    {
-      id: "people",
-      label: "组织片段",
-      message: "正在整理可展示内容样本"
+      id: "enhance",
+      label: "后台补全",
+      message: "正在补全证据和总结"
     }
   ];
 
@@ -192,17 +193,23 @@
 
     if (
       text.includes("grounding_guard")
+      || text.includes("persona_prepare")
+      || text.includes("experience_summary")
       || text.includes("结果已准备好")
       || text.includes("代表人物")
       || text.includes("生成结果")
       || text.includes("succeeded")
       || text.includes("completed")
+      || text.includes("final")
     ) {
       return 4;
     }
 
     if (
       text.includes("response_compose")
+      || text.includes("partial_compose")
+      || text.includes("partial_ready")
+      || text.includes("可展示")
       || text.includes("整理路径")
       || text.includes("路径和样本")
       || text.includes("整理几种")
@@ -213,10 +220,13 @@
 
     if (
       text.includes("evidence_extract")
+      || text.includes("candidate_select")
       || text.includes("抽取证据")
       || text.includes("证据片段")
       || text.includes("检查证据")
       || text.includes("继续检查证据")
+      || text.includes("筛选")
+      || text.includes("候选")
     ) {
       return 2;
     }
@@ -224,27 +234,33 @@
     if (
       text.includes("plan_search")
       || text.includes("retrieve_sources")
+      || text.includes("retrieve_search")
       || text.includes("normalize_candidates")
       || text.includes("规划检索")
       || text.includes("检索")
       || text.includes("查找")
       || text.includes("搜索")
       || text.includes("寻找")
-      || text.includes("筛选")
-      || text.includes("候选")
       || text.includes("相似经历")
       || text.includes("公开内容")
+    ) {
+      return 2;
+    }
+
+    if (
+      text.includes("intent_expand")
+      || text.includes("understand")
+      || text.includes("理解")
+      || text.includes("处境")
+      || text.includes("问题")
     ) {
       return 1;
     }
 
     if (
-      text.includes("understand")
-      || text.includes("理解")
-      || text.includes("处境")
-      || text.includes("问题")
-      || text.includes("queued")
+      text.includes("queued")
       || text.includes("created")
+      || text.includes("创建")
     ) {
       return 0;
     }
@@ -376,6 +392,11 @@
       reused: false,
       degraded: false,
       degradedReason: null,
+      failedStages: [],
+      retryable: false,
+      retryableStages: [],
+      hasPartialResult: false,
+      hasFinalResult: false,
       refinedFromTaskId: ""
     };
   }
@@ -392,12 +413,21 @@
   }
 
   function normalizeTaskData(data) {
+    const rawProgress = Number.isFinite(data?.progressPercent)
+      ? data.progressPercent
+      : Number.isFinite(data?.progress)
+        ? data.progress
+        : 0;
+    const progressPercent = rawProgress > 0 && rawProgress <= 1
+      ? Math.round(rawProgress * 100)
+      : rawProgress;
+
     return {
       taskId: data?.taskId || "",
       readToken: data?.readToken || "",
       status: data?.status || "",
       frontendStatus: data?.frontendStatus || "",
-      progressPercent: Number.isFinite(data?.progressPercent) ? data.progressPercent : 0,
+      progressPercent,
       stages: Array.isArray(data?.stages) ? data.stages : [],
       polling: ["queued", "running", "partial_ready"].includes(data?.status),
       error: data?.error || null,
@@ -406,6 +436,11 @@
       reused: Boolean(data?.reused),
       degraded: Boolean(data?.degraded),
       degradedReason: data?.degradedReason || null,
+      failedStages: Array.isArray(data?.failedStages) ? data.failedStages : [],
+      retryable: Boolean(data?.retryable),
+      retryableStages: Array.isArray(data?.retryableStages) ? data.retryableStages : [],
+      hasPartialResult: Boolean(data?.hasPartialResult),
+      hasFinalResult: Boolean(data?.hasFinalResult),
       refinedFromTaskId: data?.refinedFromTaskId || ""
     };
   }
@@ -507,6 +542,20 @@
     return Boolean(
       fallbackCodes.has(String(error?.code || error?.errorCode || ""))
       || [0, 404, 405, 501].includes(Number(error?.status || 0))
+    );
+  }
+
+  function shouldUseDemoSearchFallback(error) {
+    if (error?.name === "AbortError") {
+      return false;
+    }
+
+    const status = Number(error?.status || 0);
+    const code = String(error?.code || error?.errorCode || "");
+    return (
+      [404, 405, 501].includes(status)
+      || status >= 500
+      || ["BACKEND_UNAVAILABLE", "ROUTE_NOT_FOUND", "AGENT_ROUTE_NOT_FOUND", "NOT_IMPLEMENTED"].includes(code)
     );
   }
 
@@ -818,6 +867,26 @@
     setTransitionPhase("feed");
   }
 
+  async function fallbackToDemoSearch(query, requestId, answers = {}, options = {}) {
+    if (!isCurrentRequest(requestId)) {
+      return;
+    }
+
+    const reason = options.reason || "Agent Task unavailable";
+    console.warn("[AgentTask] falling back to /api/demo/search", {
+      reason,
+      code: options.error?.code || options.error?.errorCode || "",
+      status: options.error?.status || 0
+    });
+
+    await loadResults(query, requestId, answers, {
+      pageBeforeSubmit: options.pageBeforeSubmit,
+      allowClarification: options.allowClarification,
+      forceDemoSearch: true,
+      demoFallbackReason: reason
+    });
+  }
+
   async function fallbackToMockSearch(query, requestId, answers = {}, options = {}) {
     if (!isCurrentRequest(requestId)) {
       return;
@@ -899,9 +968,23 @@
       return draft;
     });
 
-    await loadResults(cleanQuery, requestId, clarifyAnswers, {
+    if (App.Api.isMockMode()) {
+      await loadResults(cleanQuery, requestId, clarifyAnswers, {
+        pageBeforeSubmit,
+        allowClarification: !options.skipClarify
+      });
+      return;
+    }
+
+    await startBackendTask(cleanQuery, requestId, {
       pageBeforeSubmit,
-      allowClarification: !options.skipClarify
+      answers: clarifyAnswers,
+      skipClarify: Boolean(options.skipClarify),
+      metadata: {
+        hasClarifyAnswers: hasClarifyAnswers(clarifyAnswers),
+        clarificationAnswers: clarifyAnswers,
+        skipNeedInput: Boolean(options.skipClarify)
+      }
     });
   }
 
@@ -909,6 +992,7 @@
     try {
       const started = await App.Api.createAgentTask({
         query,
+        count: options.count || 5,
         metadata: buildTaskMetadata(options.metadata || {})
       });
 
@@ -922,9 +1006,20 @@
         answers: options.answers || {},
         skipClarify: Boolean(options.skipClarify || options.metadata?.skipNeedInput || options.metadata?.hasShownInitialClarify),
         start: started,
-        readToken: started.readToken || ""
+        readToken: started.readToken || "",
+        pollStartedAt: Date.now(),
+        partialShown: false
       });
     } catch (error) {
+      if (shouldUseDemoSearchFallback(error)) {
+        await fallbackToDemoSearch(query, requestId, options.answers || {}, {
+          pageBeforeSubmit: options.pageBeforeSubmit,
+          allowClarification: !options.skipClarify,
+          reason: "Agent Task 创建失败，已降级到 /api/demo/search",
+          error
+        });
+        return;
+      }
       if (shouldUseMockFallback(error)) {
         await fallbackToMockSearch(query, requestId, options.answers || {}, {
           pageBeforeSubmit: options.pageBeforeSubmit,
@@ -953,16 +1048,33 @@
       return;
     }
 
-    if (taskData.status === "failed") {
-      setTaskError(requestId, taskData.error || {
-        code: "AGENT_TASK_FAILED",
-        message: "任务失败，请稍后再试。"
-      });
+    if (taskData.hasPartialResult && !context.partialShown) {
+      const partialShown = await showBackendTaskPartial(taskData.taskId, taskStatus, requestId, context);
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+      context.partialShown = partialShown || context.partialShown;
+    }
+
+    if (isTerminalTaskStatus(taskData) || taskData.hasFinalResult) {
+      await completeBackendTask(taskData.taskId, taskStatus, requestId, context);
       return;
     }
 
-    if (taskData.status === "succeeded") {
-      await completeBackendTask(taskData.taskId, taskStatus, requestId, context);
+    if (context.partialShown) {
+      App.store.updateSilent((draft) => {
+        applyTaskState(draft, taskStatus, {
+          polling: true,
+          cacheHit: Boolean(taskData.cacheHit || context.start?.cacheHit),
+          reused: Boolean(taskData.reused || context.start?.reused)
+        });
+        return draft;
+      });
+      if (isAgentPollingTimedOut(context)) {
+        handleTaskPollingTimeout(taskData.taskId, requestId, context);
+        return;
+      }
+      schedulePoll(taskData.taskId, requestId, taskData.pollAfterMs, context);
       return;
     }
 
@@ -1002,7 +1114,104 @@
       syncLoadingStageDom(App.store.getState().search.loadingStageIndex);
     }
 
+    if (isAgentPollingTimedOut(context)) {
+      handleTaskPollingTimeout(taskData.taskId, requestId, context);
+      return;
+    }
+
     schedulePoll(taskData.taskId, requestId, taskData.pollAfterMs, context);
+  }
+
+  function isTerminalTaskStatus(taskData) {
+    return ["succeeded", "degraded", "failed", "canceled"].includes(String(taskData?.status || ""));
+  }
+
+  async function showBackendTaskPartial(taskId, taskStatus, requestId, context = {}) {
+    try {
+      const view = await App.Api.getAgentTaskView(taskId, {
+        readToken: context.readToken || taskStatus.readToken || App.store.getState().task.readToken
+      });
+      if (!isCurrentRequest(requestId)) {
+        return false;
+      }
+
+      const result = App.adapters.normalizeAgentResult(view.result || view, {
+        task: {
+          ...taskStatus,
+          degraded: Boolean(view.degraded || taskStatus.degraded),
+          degradedReason: view.degradedReason || taskStatus.degradedReason || null
+        },
+        query: view.result?.query || taskStatus.query || App.store.getState().query
+      });
+
+      if (!App.adapters.isDisplayableAgentResult(result) && !result.meta?.emptyResult && !view.degraded) {
+        return false;
+      }
+
+      stopLoadingStageTicker();
+      App.store.update((draft) => {
+        draft.page = "feed";
+        draft.result = result;
+        draft.search.status = "loaded";
+        draft.search.message = view.degraded ? "已生成部分结果，部分阶段降级" : "已生成部分结果";
+        draft.search.error = "";
+        draft.search.clarifyOpen = false;
+        draft.search.clarifyCard = null;
+        draft.search.clarificationStage = null;
+        applyTaskState(draft, taskStatus, {
+          polling: !isTerminalTaskStatus(taskStatus),
+          degraded: Boolean(result.degraded || result.meta?.degraded || view.degraded || taskStatus.degraded),
+          degradedReason: result.degradedReason || result.meta?.degradedReason || view.degradedReason || taskStatus.degradedReason || null,
+          cacheHit: Boolean(taskStatus.cacheHit || context.start?.cacheHit),
+          reused: Boolean(taskStatus.reused || context.start?.reused)
+        });
+        draft.transitionPhase = "feed";
+        draft.activePathId = result.paths.some((path) => path.id === draft.activePathId)
+          ? draft.activePathId
+          : "all";
+        return draft;
+      });
+      return true;
+    } catch (error) {
+      if (error?.code === "RESULT_NOT_READY") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  function isAgentPollingTimedOut(context = {}) {
+    const startedAt = Number(context.pollStartedAt || 0);
+    return Boolean(startedAt && Date.now() - startedAt > agentPollingTimeoutMs);
+  }
+
+  function handleTaskPollingTimeout(taskId, requestId, context = {}) {
+    stopLoadingStageTicker();
+    const hasPartial = Boolean(context.partialShown || App.store.getState().result);
+    if (hasPartial) {
+      App.store.update((draft) => {
+        applyTaskState(draft, {
+          taskId,
+          status: "degraded",
+          degraded: true,
+          degradedReason: "后台补全超时，先保留已生成的部分结果"
+        }, {
+          polling: false,
+          degraded: true,
+          degradedReason: "后台补全超时，先保留已生成的部分结果"
+        });
+        draft.search.status = "loaded";
+        draft.search.message = "后台补全超时，已保留部分结果";
+        draft.transitionPhase = "feed";
+        return draft;
+      });
+      return;
+    }
+
+    setTaskError(requestId, {
+      code: "AGENT_POLL_TIMEOUT",
+      message: "任务生成时间过长，请稍后重试。"
+    });
   }
 
   function schedulePoll(taskId, requestId, pollAfterMs, context = {}) {
@@ -1079,6 +1288,33 @@
       });
 
       if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      if (context.partialShown || App.store.getState().result) {
+        stopLoadingStageTicker();
+        App.store.update((draft) => {
+          draft.page = "feed";
+          draft.result = result;
+          draft.search.status = "loaded";
+          draft.search.message = "";
+          draft.search.error = "";
+          draft.search.clarifyOpen = false;
+          draft.search.clarifyCard = null;
+          draft.search.clarificationStage = null;
+          applyTaskState(draft, taskStatus, {
+            polling: false,
+            degraded: Boolean(result.degraded || result.meta?.degraded || taskStatus.degraded),
+            degradedReason: result.degradedReason || result.meta?.degradedReason || taskStatus.degradedReason || null,
+            cacheHit: Boolean(result.meta?.cacheHit || taskStatus.cacheHit || context.start?.cacheHit),
+            reused: Boolean(result.meta?.reused || taskStatus.reused || context.start?.reused)
+          });
+          draft.activePathId = result.paths.some((path) => path.id === draft.activePathId)
+            ? draft.activePathId
+            : "all";
+          draft.transitionPhase = "feed";
+          return draft;
+        });
         return;
       }
 
@@ -1207,6 +1443,15 @@
     }
 
     const result = response.data;
+    if (options.demoFallbackReason && result && typeof result === "object") {
+      result.meta = {
+        ...(result.meta || {}),
+        agentFallback: true,
+        agentFallbackReason: options.demoFallbackReason
+      };
+      result.degraded = true;
+      result.degradedReason = options.demoFallbackReason;
+    }
     if (options.allowClarification !== false && shouldShowDemoClarification(result)) {
       await showClarifyQuestions({
         card: result.clarifyingCard,
@@ -1300,9 +1545,24 @@
       startLoadingStageTicker(requestId);
     }
 
-    await loadResults(state.query || state.pendingQuery, requestId, nextAnswers, {
+    if (App.Api.isMockMode()) {
+      await loadResults(state.query || state.pendingQuery, requestId, nextAnswers, {
+        pageBeforeSubmit: state.page,
+        allowClarification: !options.skip
+      });
+      return;
+    }
+
+    await startBackendTask(state.query || state.pendingQuery, requestId, {
       pageBeforeSubmit: state.page,
-      allowClarification: !options.skip
+      answers: nextAnswers,
+      skipClarify: Boolean(options.skip),
+      metadata: {
+        ...clarifyMetadata,
+        clarificationAnswers: nextAnswers,
+        hasClarifyAnswers: hasClarifyAnswers(nextAnswers),
+        skipNeedInput: Boolean(options.skip)
+      }
     });
   }
 

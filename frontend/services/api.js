@@ -89,13 +89,20 @@
     let response;
     let body;
     try {
+      const requestBody = options.body === undefined
+        ? undefined
+        : typeof options.body === "string"
+          ? options.body
+          : JSON.stringify(options.body);
+
       response = await window.fetch(buildUrl(path, baseUrl), {
         ...options,
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(options.headers || {})
-        }
+        },
+        body: requestBody
       });
     } catch (error) {
       if (error?.name === "AbortError") {
@@ -149,14 +156,16 @@
     return "后端处理失败，请稍后再试。";
   }
 
-  function createTask({ query, metadata = {}, signal }) {
+  function createTask({ query, count = 5, dataMode = resolveDemoDataMode(), metadata = {}, signal } = {}) {
     return requestJson("/api/agent/tasks", {
       method: "POST",
       signal,
-      body: JSON.stringify({
+      body: {
         query,
+        count,
+        dataMode,
         metadata
-      })
+      }
     });
   }
 
@@ -200,11 +209,11 @@
       method: "POST",
       signal,
       headers: agentReadTokenHeaders(readToken),
-      body: JSON.stringify({
+      body: {
         answers,
         refineQuery,
         metadata
-      })
+      }
     });
   }
 
@@ -221,7 +230,7 @@
     const data = await requestJson("/api/demo/search", {
       method: "POST",
       signal,
-      body: JSON.stringify(body)
+      body
     });
 
     return {
