@@ -135,6 +135,472 @@ export function sortSearchQueryPlans(plans: DemoSearchQueryPlan[]): DemoSearchQu
   return [original, ...rest.sort(compareSearchQueryPlans)];
 }
 
+export interface TargetedSupplementalSearchInput {
+  originalQuery: string;
+  intent?: {
+    userCoreQuestion?: string;
+    focusTags?: string[];
+    topicSignals?: string[];
+    searchQueries?: DemoSearchQueryPlan[];
+  };
+  metadata?: Record<string, unknown>;
+  profileSignals?: string[];
+  executedQueries?: DemoSearchQueryPlan[];
+  maxQueries?: number;
+}
+
+interface SupplementalSignal {
+  value: string;
+  source: string;
+}
+
+const SUPPLEMENTAL_GENERIC_QUERY_FRAGMENTS = [
+  "真实经历",
+  "亲身经历",
+  "人生复盘",
+  "真实记录",
+  "选择后",
+  "我后来"
+];
+
+const CLARIFICATION_VALUE_LABELS: Record<string, string> = {
+  under_1_month: "1个月以内",
+  under_6_months: "6个月以内",
+  "1_to_3_months": "1-3个月",
+  "3_to_6_months": "3-6个月",
+  "6_to_12_months": "6-12个月",
+  over_12_months: "12个月以上",
+  "1_to_2_years": "1-2年",
+  "2_to_3_years": "2-3年",
+  over_3_years: "3年以上",
+  under_25: "25岁以下",
+  around_30: "30岁",
+  around_35: "35岁",
+  middle_age: "中年",
+  graduated_three_years: "毕业三年内",
+  big_tech: "大厂",
+  state_owned: "国企",
+  public_sector: "体制内",
+  startup_company: "创业公司",
+  traditional_company: "传统企业",
+  internet: "互联网",
+  education: "教育",
+  healthcare: "医疗",
+  finance: "金融",
+  construction: "施工单位",
+  consumer_service: "消费服务",
+  first_tier: "一线城市",
+  new_first_tier: "新一线",
+  second_tier: "二线城市",
+  county_home: "老家",
+  beijing_shanghai: "北京 上海",
+  target_city: "目标城市",
+  target_role: "目标岗位",
+  interview_leads: "面试机会",
+  local_network: "本地人脉",
+  place_to_stay: "落脚住处",
+  job_leads: "工作机会",
+  family_support: "家人支持",
+  housing: "住处",
+  available_money: "可用资金",
+  low_cost: "低生活成本",
+  industry_experience: "行业经验",
+  project_experience: "项目经验",
+  transferable_skill: "可迁移技能",
+  industry_knowledge: "行业知识",
+  technical_skill: "技术能力",
+  network: "没人带路",
+  professional_skill: "专业技能",
+  portfolio: "作品案例",
+  client_network: "客户人脉",
+  content_account: "内容账号",
+  sellable_product: "可售产品",
+  sporadic_projects: "零散项目",
+  stable_side_income: "稳定副业",
+  fixed_clients: "固定客户",
+  passive_income: "被动收入",
+  local_job: "本地工作",
+  family_business: "家里生意",
+  open_shop: "开店",
+  remote_work: "远程 自由职业",
+  rest_first: "先休整"
+};
+
+export function buildTargetedSupplementalSearchQueries(
+  input: TargetedSupplementalSearchInput
+): DemoSearchQueryPlan[] {
+  const originalQuery = normalizeText(input.originalQuery);
+  const metadataSignals = extractSupplementalMetadataSignals(input.metadata);
+  const profileSignals = (input.profileSignals ?? [])
+    .map((value) => normalizeText(value))
+    .filter(isSupplementalToken)
+    .map((value) => ({ value, source: "用户资料" }));
+  const allSignals = uniqueSignals([...metadataSignals, ...profileSignals]);
+  const combinedText = normalizeText([
+    originalQuery,
+    input.intent?.userCoreQuestion ?? "",
+    ...(input.intent?.focusTags ?? []),
+    ...(input.intent?.topicSignals ?? []),
+    ...allSignals.map((signal) => signal.value)
+  ].join(" "));
+  const objectiveContext = buildObjectiveSearchContext(
+    combinedText,
+    readMetadataRecord(input.metadata, "objectiveSlots")
+  );
+  const slots = objectiveContext.objectiveSlots;
+  const executedKeys = new Set([
+    normalizeText(originalQuery),
+    ...(input.executedQueries ?? []).map((item) => normalizeText(item.query))
+  ]);
+  const result: DemoSearchQueryPlan[] = [];
+  const candidatePlans: DemoSearchQueryPlan[] = [];
+  const maxQueries = Math.min(Math.max(input.maxQueries ?? 3, 1), 3);
+  const purpose = buildSupplementalPurpose(originalQuery, allSignals);
+
+  appendScenarioSupplementalCandidates(candidatePlans, combinedText, slots, allSignals, purpose);
+  appendObjectiveSupplementalCandidates(candidatePlans, slots, purpose);
+  appendPlannedSupplementalCandidates(candidatePlans, input.intent?.searchQueries ?? [], executedKeys, purpose);
+
+  for (const item of candidatePlans) {
+    const normalized = normalizeText(item.query);
+    if (result.length >= maxQueries) {
+      break;
+    }
+    if (executedKeys.has(normalized) || result.some((existing) => normalizeText(existing.query) === normalized)) {
+      continue;
+    }
+    if (!isTargetedSupplementalQuery(item.query, combinedText)) {
+      continue;
+    }
+
+    result.push({
+      ...item,
+      query: truncateSearchQuery(normalized, 24),
+      purpose: truncateText(item.purpose || purpose, 80)
+    });
+  }
+
+  return result;
+}
+
+function appendPlannedSupplementalCandidates(
+  target: DemoSearchQueryPlan[],
+  plans: DemoSearchQueryPlan[],
+  executedKeys: Set<string>,
+  purpose: string
+): void {
+  for (const item of plans) {
+    const normalized = normalizeText(item.query);
+    if (executedKeys.has(normalized) || SUPPLEMENTAL_GENERIC_QUERY_FRAGMENTS.some((fragment) => normalized.includes(fragment))) {
+      continue;
+    }
+    if (item.type === "original") {
+      continue;
+    }
+
+    target.push({
+      ...item,
+      purpose: `${purpose}；沿用未执行搜索计划「${truncateText(item.purpose, 18)}」`
+    });
+  }
+}
+
+function appendScenarioSupplementalCandidates(
+  target: DemoSearchQueryPlan[],
+  text: string,
+  slots: DemoObjectiveSlots,
+  signals: SupplementalSignal[],
+  purpose: string
+): void {
+  const signalValues = signals.map((item) => item.value);
+  const strongestContext = firstSupplementalToken([
+    slots.age,
+    slots.role,
+    slots.industry,
+    slots.companyType,
+    ...signalValues
+  ]);
+
+  if (isRelationshipWorkQuery(text)) {
+    appendSupplementalPlan(target, ["异地恋", "工作选择"], "decision_conflict", purpose, 2);
+    appendSupplementalPlan(target, ["为了工作", "异地恋"], "decision_conflict", purpose, 2);
+    appendSupplementalPlan(target, ["异地恋", slots.city || "职业发展"], "life_path", purpose, 3);
+    return;
+  }
+
+  if (isRelationshipQuery(text)) {
+    appendSupplementalPlan(target, ["长期异地恋", "未来规划"], "life_path", purpose, 2);
+    appendSupplementalPlan(target, ["异地恋", "坚持下来"], "real_experience", purpose, 3);
+    appendSupplementalPlan(target, ["异地恋", "分手后悔"], "failure_review", purpose, 3);
+    return;
+  }
+
+  if (isProductManagerTransitionQuery(text)) {
+    const pmContext = firstSupplementalToken([
+      slots.age,
+      slots.role && !/产品经理|产品岗|pm/i.test(slots.role) ? slots.role : null,
+      slots.industry,
+      slots.companyType,
+      ...signalValues.filter((item) => !/产品经理|产品岗|项目经验|作品集|面试/.test(item))
+    ]) || "转行";
+    appendSupplementalPlan(
+      target,
+      pmContext === "转行" ? ["转行", "产品经理"] : [pmContext, "转产品经理"],
+      "real_experience",
+      purpose,
+      2
+    );
+    const pmEvidenceToken =
+      firstSupplementalToken(signalValues.filter((item) => /项目|作品|面试|能力|行业|技术|经验/.test(item))) ||
+      firstSupplementalToken([slots.constraint, ...signalValues]);
+    appendSupplementalPlan(target, ["转产品经理", pmEvidenceToken || "上岸"], "life_path", purpose, 2);
+    appendSupplementalPlan(target, ["转产品经理", "后悔吗"], "failure_review", purpose, 3);
+    return;
+  }
+
+  if (isCityHomeChoiceQuery(text)) {
+    appendSupplementalPlan(target, [slots.age || "毕业", "回老家", "后悔"], "failure_review", purpose, 2);
+    appendSupplementalPlan(target, [slots.age || "毕业", "去一线城市"], "real_experience", purpose, 2);
+    appendSupplementalPlan(target, ["大城市", "回老家", "成本"], "decision_conflict", purpose, 3);
+    return;
+  }
+
+  if (/裸辞/.test(text)) {
+    appendSupplementalPlan(target, [strongestContext, "裸辞后"], "real_experience", purpose, 2);
+    appendSupplementalPlan(target, ["裸辞", "空窗期"], "life_path", purpose, 2);
+    appendSupplementalPlan(target, ["裸辞", "后悔吗"], "failure_review", purpose, 3);
+    return;
+  }
+
+  if (/不工作|不上班|待业|失业/.test(text)) {
+    appendSupplementalPlan(target, ["不工作后", "生活"], "real_experience", purpose, 2);
+    appendSupplementalPlan(target, ["不上班之后", "生活"], "real_experience", purpose, 2);
+    appendSupplementalPlan(target, ["长期不上班", "状态"], "life_path", purpose, 3);
+    return;
+  }
+
+  if (isThirtyRestartQuery(text)) {
+    appendSupplementalPlan(target, [slots.age || "30岁", "重新开始"], "real_experience", purpose, 2);
+    appendSupplementalPlan(target, ["30岁", slots.direction || "转行"], "decision_conflict", purpose, 2);
+    appendSupplementalPlan(target, ["30岁", "学新技能"], "life_path", purpose, 3);
+    return;
+  }
+
+  if (isStabilityPassionQuery(text)) {
+    appendSupplementalPlan(target, ["稳定工作", "放弃热爱"], "decision_conflict", purpose, 2);
+    appendSupplementalPlan(target, ["稳定收入", "做喜欢的事"], "life_path", purpose, 2);
+    appendSupplementalPlan(target, [slots.companyType || "体制内", "放弃梦想"], "failure_review", purpose, 3);
+  }
+}
+
+function appendObjectiveSupplementalCandidates(
+  target: DemoSearchQueryPlan[],
+  slots: DemoObjectiveSlots,
+  purpose: string
+): void {
+  appendSupplementalPlan(target, [slots.role, slots.direction], "real_experience", purpose, 4);
+  appendSupplementalPlan(target, [slots.status, slots.direction], "decision_conflict", purpose, 4);
+  appendSupplementalPlan(target, [slots.city, slots.direction], "life_path", purpose, 5);
+  appendSupplementalPlan(target, [slots.companyType, slots.status, slots.direction], "failure_review", purpose, 5);
+  appendSupplementalPlan(target, [slots.direction, slots.constraint], "alternative_solution", purpose, 5);
+}
+
+function appendSupplementalPlan(
+  target: DemoSearchQueryPlan[],
+  parts: Array<string | null | undefined>,
+  type: DemoSearchQueryType,
+  purpose: string,
+  priority: number
+): void {
+  const query = formatSupplementalQuery(parts);
+  if (!query) {
+    return;
+  }
+
+  target.push(plan(query, type, purpose, priority));
+}
+
+function formatSupplementalQuery(parts: Array<string | null | undefined>): string {
+  const tokens = unique(
+    parts
+      .flatMap((item) => normalizeText(item ?? "").split(/\s+/))
+      .filter(isSupplementalToken)
+  ).slice(0, 4);
+
+  if (tokens.length < 2) {
+    return "";
+  }
+
+  return tokens.join(" ");
+}
+
+function buildSupplementalPurpose(originalQuery: string, signals: SupplementalSignal[]): string {
+  const core = extractCorePhrase(originalQuery);
+  const clarificationSignals = signals
+    .filter((item) => item.source === "澄清卡")
+    .map((item) => item.value)
+    .slice(0, 2);
+  const profileSignals = signals
+    .filter((item) => item.source === "用户资料")
+    .map((item) => item.value)
+    .slice(0, 1);
+  const parts = [`原问题核心「${truncateText(core, 16)}」`];
+
+  if (clarificationSignals.length > 0) {
+    parts.push(`澄清卡「${clarificationSignals.join("、")}」`);
+  }
+  if (profileSignals.length > 0) {
+    parts.push(`用户资料「${profileSignals.join("、")}」`);
+  }
+
+  return `补搜：来自${parts.join(" + ")}`;
+}
+
+function extractSupplementalMetadataSignals(metadata?: Record<string, unknown>): SupplementalSignal[] {
+  const signals: SupplementalSignal[] = [];
+  const clarificationSources = [
+    readMetadataRecord(metadata, "clarificationAnswers"),
+    readMetadataRecord(metadata, "answerLabels"),
+    readMetadataRecord(metadata, "clarificationAnswerLabels"),
+    readMetadataRecord(readMetadataRecord(metadata, "clarificationContext"), "answerLabels")
+  ];
+
+  for (const source of clarificationSources) {
+    for (const [key, value] of Object.entries(source)) {
+      const label = normalizeClarificationValue(key, value);
+      if (label) {
+        signals.push({ value: label, source: "澄清卡" });
+      }
+    }
+  }
+
+  for (const value of readStringArray(metadata?.searchHints)) {
+    const hint = sanitizeSupplementalToken(value);
+    if (hint) {
+      signals.push({ value: hint, source: "澄清卡" });
+    }
+  }
+
+  return uniqueSignals(signals);
+}
+
+function normalizeClarificationValue(key: string, value: unknown): string {
+  const raw = readString(value);
+  if (!raw) {
+    return "";
+  }
+
+  const mapped = CLARIFICATION_VALUE_LABELS[raw] || CLARIFICATION_VALUE_LABELS[normalizeText(raw)] || raw;
+  const normalized = sanitizeSupplementalToken(mapped);
+  if (!normalized || /^(none|unknown|other|不确定|暂时没有|还不确定|没有|无|其他)$/i.test(normalized)) {
+    return "";
+  }
+
+  if (/runway|cash|空窗/.test(key) && /\d|个月|年/.test(normalized)) {
+    return normalized;
+  }
+
+  return normalized;
+}
+
+function sanitizeSupplementalToken(value: string): string {
+  const normalized = normalizeText(value)
+    .replace(/[|/／]+/g, " ")
+    .replace(/[？?。！!；;：:，,、]+$/g, "");
+  if (!normalized || SUPPLEMENTAL_GENERIC_QUERY_FRAGMENTS.some((fragment) => normalized === fragment)) {
+    return "";
+  }
+
+  return normalized.length <= 14 ? normalized : "";
+}
+
+function firstSupplementalToken(values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const token = sanitizeSupplementalToken(value ?? "");
+    if (token && isSupplementalToken(token)) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
+function isSupplementalToken(value: string): boolean {
+  const normalized = normalizeText(value);
+  if (!normalized || normalized.length < 2 || normalized.length > 14) {
+    return false;
+  }
+
+  return !SUPPLEMENTAL_GENERIC_QUERY_FRAGMENTS.some((fragment) => normalized === fragment);
+}
+
+function isTargetedSupplementalQuery(query: string, contextText: string): boolean {
+  const normalized = normalizeText(query);
+  if (!isUsableSearchQuery(normalized)) {
+    return false;
+  }
+  if (SUPPLEMENTAL_GENERIC_QUERY_FRAGMENTS.some((fragment) => normalized === fragment || normalized.startsWith(`${fragment} `))) {
+    return false;
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const contextHitCount = tokens.filter((token) => contextText.includes(token)).length;
+  const synonymScenarioHit =
+    (/不工作|不上班|待业|失业/.test(contextText) && /不工作|不上班|待业|现金流|出路/.test(normalized)) ||
+    (/异地恋|长期异地|远距离恋爱/.test(contextText) && /异地恋|长期异地|见面|未来规划|坚持|分手|团聚/.test(normalized)) ||
+    (/转行|转岗|转产品|产品经理|产品岗|pm/i.test(contextText) && /转产品经理|产品经理|产品岗|项目经验|作品集|面试/.test(normalized)) ||
+    (/大城市|一线城市|回老家|老家|家乡/.test(contextText) && /大城市|一线城市|回老家|老家|毕业|成本/.test(normalized)) ||
+    (/裸辞|辞职|离职/.test(contextText) && /裸辞|辞职|空窗|找工作|后悔/.test(normalized)) ||
+    (/30岁|三十岁|重新开始/.test(contextText) && /30岁|三十岁|重新开始|转行|学新技能/.test(normalized)) ||
+    (/稳定|热爱|喜欢的事|梦想/.test(contextText) && /稳定|热爱|喜欢的事|梦想|放弃/.test(normalized));
+  const scenarioHit = [
+    "异地恋",
+    "工作",
+    "职业",
+    "产品经理",
+    "转产品经理",
+    "大城市",
+    "回老家",
+    "裸辞",
+    "不工作",
+    "不上班",
+    "待业",
+    "30岁",
+    "三十岁",
+    "稳定",
+    "热爱",
+    "喜欢的事"
+  ].some((token) => normalized.includes(token) && contextText.includes(token));
+
+  return synonymScenarioHit || scenarioHit || contextHitCount >= Math.min(2, tokens.length);
+}
+
+function readMetadataRecord(source: unknown, key: string): Record<string, unknown> {
+  if (!isRecord(source)) {
+    return {};
+  }
+
+  const value = source[key];
+  return isRecord(value) ? value : {};
+}
+
+function uniqueSignals(signals: SupplementalSignal[]): SupplementalSignal[] {
+  const seen = new Set<string>();
+  const result: SupplementalSignal[] = [];
+
+  for (const signal of signals) {
+    const key = normalizeText(signal.value);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push({ ...signal, value: key });
+  }
+
+  return result;
+}
+
 function completeSearchQueryPlan(
   originalPlan: DemoSearchQueryPlan,
   plannedQueries: DemoSearchQueryPlan[],
@@ -994,6 +1460,14 @@ function readString(value: unknown): string {
   }
 
   return "";
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(readString).filter(Boolean);
 }
 
 function readNumber(value: unknown): number | undefined {

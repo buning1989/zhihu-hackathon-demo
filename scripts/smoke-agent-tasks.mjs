@@ -135,7 +135,7 @@ function printZhihuRiskNotice(dataMode, queryCount) {
 
   console.warn("WARNING: real Zhihu API agent smoke is enabled.");
   console.warn(
-    `Estimated upper bound: ${queryCount} agent queries * 4 search rounds = ${queryCount * 4} real search attempts before fixture/cache hits.`
+    `Estimated upper bound: ${queryCount} agent queries * up to 7 search rounds = ${queryCount * 7} real search attempts before fixture/cache hits.`
   );
   console.warn(
     `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`

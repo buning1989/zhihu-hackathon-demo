@@ -26,8 +26,27 @@ const TEMPLATE_PATH_FRAGMENTS = [
   "有人把边界说清",
   "有人选择断联"
 ];
-const GUIDE_MARKERS = ["指南", "方法", "路径", "工具准备", "最快入门", "零基础", "教程", "攻略", "课程", "训练营"];
-const MARKETING_MARKERS = ["加微信", "私信", "报名", "咨询", "课程", "训练营", "推广", "带货", "官方", "学院", "教育"];
+const GUIDE_MARKERS = ["指南", "方法", "路径", "工具准备", "最快入门", "零基础", "教程", "攻略", "课程", "训练营", "抄作业"];
+const MARKETING_MARKERS = [
+  "加微信",
+  "私信",
+  "报名",
+  "咨询",
+  "课程",
+  "训练营",
+  "推广",
+  "带货",
+  "官方",
+  "学院",
+  "转行辅导",
+  "简历辅导",
+  "面试辅导",
+  "就业班",
+  "机构培训",
+  "培训毕业",
+  "报班",
+  "学员"
+];
 
 await main().catch((error) => {
   console.error(`FAIL ${error instanceof Error ? error.stack || error.message : String(error)}`);
@@ -108,7 +127,9 @@ async function main() {
     summary.pathMismatchCount > 1 ||
     summary.templatePathCount > 0 ||
     summary.opinionAsExperienceCount > 0 ||
-    summary.marketingSuspectCount > 0;
+    summary.marketingSuspectCount > 0 ||
+    summary.peopleIssueCount > 0 ||
+    summary.unsupportedPathCount > 0;
   const failed = strictLlmThresholds
     ? summary.partialDisplayable < 7 ||
       summary.evidenceSucceeded < 7 ||
@@ -153,8 +174,15 @@ async function evaluateQuery(baseUrl, query, dataMode) {
     weakCandidateCount: 0,
     opinionAsExperienceCount: 0,
     marketingSuspectCount: 0,
+    peopleIssueCount: 0,
     unsupportedPathCount: 0,
     templatePathCount: 0,
+    supplementalTriggered: false,
+    supplementalQueryCount: 0,
+    supplementalCandidateCount: 0,
+    supplementalQueries: [],
+    peopleTypeDistribution: {},
+    pathTypeDistribution: {},
     qualityIssues: [],
     failedStages: [],
     degradedReason: ""
@@ -204,6 +232,15 @@ async function evaluateQuery(baseUrl, query, dataMode) {
   record.evidenceDurationMs = durationBetween(evidenceStage?.startedAt, evidenceStage?.finishedAt);
   record.summaryStatus = String(summaryStage?.status || "missing");
   record.summaryDurationMs = durationBetween(summaryStage?.startedAt, summaryStage?.finishedAt);
+  const candidateOutputSummary = candidateSelectStage?.outputSummary && typeof candidateSelectStage.outputSummary === "object"
+    ? candidateSelectStage.outputSummary
+    : {};
+  record.supplementalTriggered = candidateOutputSummary.supplementalSearchTriggered === true;
+  record.supplementalQueryCount = Number(candidateOutputSummary.supplementalQueryCount || 0);
+  record.supplementalCandidateCount = Number(candidateOutputSummary.supplementalCandidateCount || 0);
+  record.supplementalQueries = Array.isArray(candidateOutputSummary.supplementalQueries)
+    ? candidateOutputSummary.supplementalQueries
+    : [];
 
   const resultResponse = await requestJson(`${baseUrl}/api/agent/tasks/${encodeURIComponent(record.taskId)}/result`);
   record.http500 = record.http500 || resultResponse.status >= 500;
@@ -212,12 +249,28 @@ async function evaluateQuery(baseUrl, query, dataMode) {
     const meta = result.meta && typeof result.meta === "object" ? result.meta : {};
     const people = Array.isArray(result.people) ? result.people : [];
     record.demoFallback = result.dataMode === "mock";
-    record.paths = Array.isArray(result.paths) ? result.paths.length : 0;
+    const paths = Array.isArray(result.paths) ? result.paths : [];
+    record.paths = paths.length;
     record.people = people.length;
+    record.peopleTypeDistribution = countValues(
+      people.map((person) => String(person?.sampleType || "unknown"))
+    );
+    record.pathTypeDistribution = countValues(
+      paths.map((path) => String(path?.contentRole || path?.role || path?.stance || "unknown"))
+    );
     record.evidenceSamples = Array.isArray(meta.evidenceSamples) ? meta.evidenceSamples.length : 0;
     record.experienceSummaries = people.filter((person) =>
       typeof person?.experienceSummary === "string" && person.experienceSummary.trim()
     ).length;
+    const debug = result.debug && typeof result.debug === "object" ? result.debug : {};
+    if (debug.refillTriggered === true) {
+      record.supplementalTriggered = true;
+      record.supplementalQueries = Array.isArray(debug.refillQueries)
+        ? debug.refillQueries
+        : record.supplementalQueries;
+      record.supplementalQueryCount = record.supplementalQueries.length;
+      record.supplementalCandidateCount = Number(debug.refillCandidateCount || record.supplementalCandidateCount || 0);
+    }
     Object.assign(record, inspectResultQuality(query, result));
   }
 
@@ -237,7 +290,6 @@ function resolveEvalDataMode() {
 
 function printZhihuRiskNotice(dataMode, queryCount) {
   const allowReal = dataMode === "real" || isTruthy(process.env.ALLOW_REAL_ZH_API);
-  const estimatedSearchRounds = queryCount * 4;
   if (!allowReal) {
     console.log(
       `Zhihu API guard: dataMode=${dataMode}; replay/cache-first eval should consume 0 real Zhihu API calls.`
@@ -247,7 +299,7 @@ function printZhihuRiskNotice(dataMode, queryCount) {
 
   console.warn("WARNING: real Zhihu API agent eval is enabled.");
   console.warn(
-    `Estimated upper bound: ${queryCount} agent queries * 4 search rounds = ${estimatedSearchRounds} real search attempts before fixture/cache hits.`
+    `Estimated upper bound: ${queryCount} agent queries * up to 7 search rounds = ${queryCount * 7} real search attempts before fixture/cache hits.`
   );
   console.warn(
     `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`
@@ -329,8 +381,12 @@ function summarize(results) {
     weakCandidateCount: sumBy(results, "weakCandidateCount"),
     opinionAsExperienceCount: sumBy(results, "opinionAsExperienceCount"),
     marketingSuspectCount: sumBy(results, "marketingSuspectCount"),
+    peopleIssueCount: sumBy(results, "peopleIssueCount"),
     unsupportedPathCount: sumBy(results, "unsupportedPathCount"),
-    templatePathCount: sumBy(results, "templatePathCount")
+    templatePathCount: sumBy(results, "templatePathCount"),
+    supplementalTriggered: results.filter((item) => item.supplementalTriggered).length,
+    supplementalQueryCount: sumBy(results, "supplementalQueryCount"),
+    supplementalCandidateCount: sumBy(results, "supplementalCandidateCount")
   };
 }
 
@@ -386,7 +442,9 @@ function inspectResultQuality(query, result) {
     const sourceSupportsCandidate = queryContext.sourceTerms.some((term) => sourceText.includes(term));
     const matchScore = Number(person?.match?.score ?? 0);
     const guideLike = GUIDE_MARKERS.some((marker) => sourceText.includes(marker));
-    const marketingLike = MARKETING_MARKERS.some((marker) => sourceText.includes(marker));
+    const marketingLike =
+      MARKETING_MARKERS.some((marker) => sourceText.includes(marker)) ||
+      /带过[几数百千\d]+人|培训辅导|付费咨询|预约咨询/.test(sourceText);
     const firstPersonLike = /我|本人|我的|我们|当时|后来|决定|选择|结果|后悔/.test(sourceText);
 
     if (!sourceSupportsCandidate || matchScore < 0.48) {
@@ -410,6 +468,7 @@ function inspectResultQuality(query, result) {
     weakCandidateCount,
     opinionAsExperienceCount,
     marketingSuspectCount,
+    peopleIssueCount: weakCandidateCount + opinionAsExperienceCount + marketingSuspectCount,
     unsupportedPathCount,
     templatePathCount,
     qualityIssues
@@ -482,6 +541,24 @@ function buildSourceTextByRef(result) {
     sourceTextByRef.set(sourceRef.id, [sourceRef.title, sourceRef.author].filter(Boolean).join("\n"));
   }
 
+  const debugCandidates = Array.isArray(result?.debug?.search?.candidates)
+    ? result.debug.search.candidates
+    : [];
+  for (const sourceRef of sourceRefs) {
+    const matchedCandidate = debugCandidates.find((candidate) =>
+      candidate?.title && sourceRef.title && candidate.title === sourceRef.title
+    );
+    if (!matchedCandidate) {
+      continue;
+    }
+
+    sourceTextByRef.set(sourceRef.id, [
+      sourceTextByRef.get(sourceRef.id) || "",
+      matchedCandidate.snippet,
+      matchedCandidate.text
+    ].filter(Boolean).join("\n"));
+  }
+
   const people = Array.isArray(result?.people) ? result.people : [];
   for (const person of people) {
     const articles = Array.isArray(person?.articles) ? person.articles : [];
@@ -511,6 +588,21 @@ function sumBy(items, key) {
   return items.reduce((total, item) => total + Number(item[key] || 0), 0);
 }
 
+function countValues(values) {
+  return values.reduce((counts, value) => {
+    counts[value] = (counts[value] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function formatDistribution(distribution) {
+  const entries = Object.entries(distribution || {});
+  if (!entries.length) {
+    return "-";
+  }
+  return entries.map(([key, value]) => `${key}:${value}`).join(", ");
+}
+
 function buildMarkdownReport(report, outputPath, reviewPath) {
   const provider = report.providerModel;
   const lines = [];
@@ -528,15 +620,39 @@ function buildMarkdownReport(report, outputPath, reviewPath) {
     `summary: partialDisplayable=${report.summary.partialDisplayable}/${report.summary.total}, candidateSelectFailed=${report.summary.candidateSelectFailed}, evidenceSucceeded=${report.summary.evidenceSucceeded}/${report.summary.total}, summarySucceeded=${report.summary.summarySucceeded}/${report.summary.total}, timedOut=${report.summary.timedOut}, degraded=${report.summary.degraded}, demoFallback=${report.summary.demoFallback}, http500=${report.summary.http500}`
   );
   lines.push(
-    `quality: pathMismatch=${report.summary.pathMismatchCount}, weakCandidate=${report.summary.weakCandidateCount}, opinionAsExperience=${report.summary.opinionAsExperienceCount}, marketingSuspect=${report.summary.marketingSuspectCount}, unsupportedPath=${report.summary.unsupportedPathCount}, templatePath=${report.summary.templatePathCount}`
+    `quality: pathMismatch=${report.summary.pathMismatchCount}, weakCandidate=${report.summary.weakCandidateCount}, opinionAsExperience=${report.summary.opinionAsExperienceCount}, marketingSuspect=${report.summary.marketingSuspectCount}, peopleIssue=${report.summary.peopleIssueCount}, unsupportedPath=${report.summary.unsupportedPathCount}, templatePath=${report.summary.templatePathCount}`
+  );
+  lines.push(
+    `supplementalSearch: triggered=${report.summary.supplementalTriggered}/${report.summary.total}, queries=${report.summary.supplementalQueryCount}, candidates=${report.summary.supplementalCandidateCount}`
   );
   lines.push("");
-  lines.push("| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | paths | people | mismatch | weak | opinionAsExp | marketing | unsupported | template |");
-  lines.push("|---|---:|---:|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  lines.push("| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | paths | people |补搜| mismatch | weak | opinionAsExp | marketing | unsupported | template |");
+  lines.push("|---|---:|---:|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const item of report.results) {
     lines.push(
-      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.paths} | ${item.people} | ${item.pathMismatchCount} | ${item.weakCandidateCount} | ${item.opinionAsExperienceCount} | ${item.marketingSuspectCount} | ${item.unsupportedPathCount} | ${item.templatePathCount} |`
+      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.paths} | ${item.people} | ${item.supplementalTriggered ? `${item.supplementalQueryCount}/${item.supplementalCandidateCount}` : "-"} | ${item.pathMismatchCount} | ${item.weakCandidateCount} | ${item.opinionAsExperienceCount} | ${item.marketingSuspectCount} | ${item.unsupportedPathCount} | ${item.templatePathCount} |`
     );
+  }
+  lines.push("");
+  lines.push("## People/Card Type Distribution");
+  for (const item of report.results) {
+    lines.push(`- ${item.query}: ${formatDistribution(item.peopleTypeDistribution)}`);
+  }
+  lines.push("");
+  lines.push("## Path Type Distribution");
+  for (const item of report.results) {
+    lines.push(`- ${item.query}: ${formatDistribution(item.pathTypeDistribution)}`);
+  }
+  lines.push("");
+  lines.push("## Supplemental Queries");
+  for (const item of report.results) {
+    if (!item.supplementalQueries.length) {
+      continue;
+    }
+    lines.push(`- ${item.query}`);
+    for (const queryPlan of item.supplementalQueries.slice(0, 3)) {
+      lines.push(`  - ${queryPlan.query}: ${queryPlan.purpose || ""}`);
+    }
   }
   lines.push("");
   lines.push("## Quality Issues");
@@ -575,6 +691,7 @@ function formatCompactRow(item) {
     `marketing=${item.marketingSuspectCount}`,
     `unsupported=${item.unsupportedPathCount}`,
     `template=${item.templatePathCount}`,
+    `supplemental=${item.supplementalTriggered ? `${item.supplementalQueryCount}/${item.supplementalCandidateCount}` : "0/0"}`,
     `degraded=${item.degraded}`,
     `500=${item.http500}`,
     `fallback=${item.demoFallback}`

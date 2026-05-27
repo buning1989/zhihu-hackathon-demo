@@ -25,7 +25,11 @@ import {
   getAgentLlmTaskTimeoutMs,
   getLlmTaskTimeoutMs
 } from "../llm/llmTimeout.js";
-import { buildFallbackSearchQueryPlan } from "../llm/searchQueryPlan.js";
+import {
+  buildFallbackSearchQueryPlan,
+  buildTargetedSupplementalSearchQueries
+} from "../llm/searchQueryPlan.js";
+import { getProfileSignals } from "../services/userContext.service.js";
 import { agentTaskStore } from "./taskStoreFactory.js";
 import type { AgentTaskStore } from "./taskStore.js";
 import {
@@ -41,6 +45,12 @@ interface SearchRecallResult {
   searchQueries: DemoSearchQueryPlan[];
   failedQueries: string[];
   emptyQueries: string[];
+  supplementalSearchTriggered?: boolean;
+  supplementalTriggerReason?: string;
+  supplementalQueries?: DemoSearchQueryPlan[];
+  supplementalCandidateCount?: number;
+  supplementalFailedQueries?: string[];
+  supplementalEmptyQueries?: string[];
 }
 
 const STAGE_PROGRESS: Record<AgentStageName, number> = {
@@ -367,23 +377,90 @@ export class AgentTaskRunner {
       }
     });
 
-    const selected = selectQualitySearchItems(
+    let workingRecalled = recalled;
+    let selected = selectQualitySearchItems(
       snapshot.task.query,
-      recalled.items,
+      workingRecalled.items,
       Math.min(Math.max(snapshot.task.input.count, 3), 10),
       {
         userCoreQuestion: intent.userCoreQuestion,
         focusTags: intent.focusTags,
         topicSignals: intent.topicSignals,
-        searchQueries: recalled.searchQueries
+        searchQueries: workingRecalled.searchQueries
       }
     );
+    const initialProbe = probeSelectedAdmission(snapshot, selected);
+    const supplementalTriggerReason = buildSupplementalTriggerReason(initialProbe, selected);
+
+    if (supplementalTriggerReason) {
+      const supplementalQueries = buildTargetedSupplementalSearchQueries({
+        originalQuery: snapshot.task.query,
+        intent,
+        metadata: snapshot.task.input.metadata,
+        profileSignals: getProfileSignals(snapshot.task.input.userContext),
+        executedQueries: workingRecalled.searchQueries,
+        maxQueries: 3
+      });
+
+      if (supplementalQueries.length > 0) {
+        const supplemental = await this.searchSupplementalQueries(
+          taskId,
+          supplementalQueries,
+          workingRecalled.searchQueries.length
+        );
+        const mergedItems = dedupeSearchItems([...workingRecalled.items, ...supplemental.items]);
+        workingRecalled = {
+          items: mergedItems,
+          searchQueries: [...workingRecalled.searchQueries, ...supplementalQueries],
+          failedQueries: [...workingRecalled.failedQueries, ...supplemental.failedQueries],
+          emptyQueries: [...workingRecalled.emptyQueries, ...supplemental.emptyQueries],
+          supplementalSearchTriggered: true,
+          supplementalTriggerReason,
+          supplementalQueries,
+          supplementalCandidateCount: supplemental.items.length,
+          supplementalFailedQueries: supplemental.failedQueries,
+          supplementalEmptyQueries: supplemental.emptyQueries
+        };
+        selected = selectQualitySearchItems(
+          snapshot.task.query,
+          workingRecalled.items,
+          Math.min(Math.max(snapshot.task.input.count, 3), 10),
+          {
+            userCoreQuestion: intent.userCoreQuestion,
+            focusTags: intent.focusTags,
+            topicSignals: intent.topicSignals,
+            searchQueries: workingRecalled.searchQueries
+          }
+        );
+      } else {
+        workingRecalled = {
+          ...workingRecalled,
+          supplementalSearchTriggered: false,
+          supplementalTriggerReason,
+          supplementalQueries: []
+        };
+      }
+    }
+
+    const finalProbe = probeSelectedAdmission(snapshot, selected);
 
     const status = selected.items.length > 0 ? "succeeded" : "failed";
     this.finishStage(taskId, "candidate_select", status, {
       outputSummary: {
         selectedCount: selected.items.length,
-        assessedCount: selected.assessments.length
+        assessedCount: selected.assessments.length,
+        initialExperiencePeopleCount: initialProbe.experiencePeopleCount,
+        finalExperiencePeopleCount: finalProbe.experiencePeopleCount,
+        initialExperiencePathCount: initialProbe.experiencePathCount,
+        finalExperiencePathCount: finalProbe.experiencePathCount,
+        supplementalSearchTriggered: workingRecalled.supplementalSearchTriggered === true,
+        supplementalTriggerReason: workingRecalled.supplementalTriggerReason,
+        supplementalQueryCount: workingRecalled.supplementalQueries?.length ?? 0,
+        supplementalQueries: (workingRecalled.supplementalQueries ?? []).map((item) => ({
+          query: item.query,
+          purpose: item.purpose
+        })),
+        supplementalCandidateCount: workingRecalled.supplementalCandidateCount ?? 0
       },
       retryable: selected.items.length === 0,
       ...(selected.items.length === 0
@@ -397,8 +474,49 @@ export class AgentTaskRunner {
     return {
       items: selected.items,
       candidateQuality: selected.candidateQuality,
-      recalled,
+      recalled: workingRecalled,
       intent
+    };
+  }
+
+  private async searchSupplementalQueries(
+    taskId: string,
+    queries: DemoSearchQueryPlan[],
+    roundOffset: number
+  ): Promise<{
+    items: SearchItem[];
+    failedQueries: string[];
+    emptyQueries: string[];
+  }> {
+    const snapshot = this.requireTask(taskId);
+    const searchCount = Math.min(Math.max(snapshot.task.input.count, 5), 10);
+    const dataMode = snapshot.task.dataMode;
+    const items: SearchItem[] = [];
+    const failedQueries: string[] = [];
+    const emptyQueries: string[] = [];
+
+    for (const [index, plan] of queries.entries()) {
+      try {
+        const result = await searchService.search(plan.query, searchCount, { dataMode });
+        if (result.items.length === 0) {
+          emptyQueries.push(plan.query);
+          continue;
+        }
+
+        items.push(
+          ...result.items.map((item) =>
+            attachSearchPlanMetadata(item, plan, roundOffset + index)
+          )
+        );
+      } catch (error) {
+        failedQueries.push(`${plan.query}: ${toErrorMessage(error)}`);
+      }
+    }
+
+    return {
+      items: dedupeSearchItems(items),
+      failedQueries,
+      emptyQueries
     };
   }
 
@@ -445,6 +563,10 @@ export class AgentTaskRunner {
     result.debug = {
       ...result.debug,
       searchQueries: selected.recalled.searchQueries,
+      refillTriggered: selected.recalled.supplementalSearchTriggered === true,
+      refillReason: selected.recalled.supplementalTriggerReason ?? "",
+      refillQueries: selected.recalled.supplementalQueries ?? [],
+      refillCandidateCount: selected.recalled.supplementalCandidateCount ?? 0,
       search: {
         dataMode: snapshot.task.dataMode,
         queriesUsed: selected.recalled.searchQueries.map((item) => item.query),
@@ -454,7 +576,7 @@ export class AgentTaskRunner {
           success: !selected.recalled.failedQueries.some((failed) =>
             failed.startsWith(`${item.query}:`)
           ),
-          rawResultCount: selected.items.filter((candidate) =>
+          rawResultCount: selected.recalled.items.filter((candidate) =>
             candidate.matchedQuery === item.query
           ).length,
           isEmptyResult: selected.recalled.emptyQueries.includes(item.query)
@@ -964,6 +1086,83 @@ function splitSignals(value: string): string[] {
 
 function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
+}
+
+interface AdmissionProbe {
+  peopleCount: number;
+  experiencePeopleCount: number;
+  pathCount: number;
+  experiencePathCount: number;
+}
+
+const MIN_TARGET_EXPERIENCE_PEOPLE = 5;
+const MIN_TARGET_EXPERIENCE_PATHS = 2;
+
+function probeSelectedAdmission(
+  snapshot: AgentTaskSnapshot,
+  selected: ReturnType<typeof selectQualitySearchItems>
+): AdmissionProbe {
+  try {
+    const response = composeRealDemoSearchResponse({
+      query: snapshot.task.query,
+      count: snapshot.task.input.count,
+      dataMode: snapshot.task.dataMode,
+      items: selected.items,
+      startedAt: Date.parse(snapshot.task.createdAt),
+      userContext: snapshot.task.input.userContext,
+      candidateQuality: selected.candidateQuality
+    });
+
+    return {
+      peopleCount: response.people.length,
+      experiencePeopleCount: response.people.filter((person) => person.sampleType === "experience_sample").length,
+      pathCount: response.paths.length,
+      experiencePathCount: response.paths.filter((path) =>
+        path.stance !== "viewpoint" && path.contentRole !== "viewpoint"
+      ).length
+    };
+  } catch {
+    const experienceItems = selected.items.filter((item) =>
+      ["real_experience", "life_path", "failure_review", "decision_conflict", "alternative_solution"].includes(
+        String(item.contentRole || "")
+      )
+    ).length;
+
+    return {
+      peopleCount: selected.items.length,
+      experiencePeopleCount: experienceItems,
+      pathCount: 0,
+      experiencePathCount: 0
+    };
+  }
+}
+
+function buildSupplementalTriggerReason(
+  probe: AdmissionProbe,
+  selected: ReturnType<typeof selectQualitySearchItems>
+): string {
+  if (selected.items.length === 0) {
+    return "";
+  }
+
+  const hasRelevantContent = selected.assessments.some((assessment) =>
+    assessment.roughTier !== "drop" ||
+    assessment.relevanceScore >= 0.45 ||
+    assessment.topicHitScore >= 10
+  );
+  if (!hasRelevantContent) {
+    return "";
+  }
+
+  const reasons: string[] = [];
+  if (probe.experiencePeopleCount < MIN_TARGET_EXPERIENCE_PEOPLE) {
+    reasons.push(`experiencePeople=${probe.experiencePeopleCount}<${MIN_TARGET_EXPERIENCE_PEOPLE}`);
+  }
+  if (probe.experiencePathCount < MIN_TARGET_EXPERIENCE_PATHS) {
+    reasons.push(`experiencePaths=${probe.experiencePathCount}<${MIN_TARGET_EXPERIENCE_PATHS}`);
+  }
+
+  return reasons.length > 0 ? `filtered admission still short: ${reasons.join(", ")}` : "";
 }
 
 function createEmptyAgentResult(input: {

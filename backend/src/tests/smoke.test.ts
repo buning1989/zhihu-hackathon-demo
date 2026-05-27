@@ -5,6 +5,7 @@ import { createAuthSession, type UserContext } from "../auth/session.js";
 import { llmRouter, type LlmTaskType } from "../llm/llmRouter.js";
 import { createOpenAICompatibleJsonCompletion } from "../llm/clients/openaiCompatible.js";
 import { composeMultiLlmDemoSearchResponse } from "../llm/demoSearchOrchestrator.js";
+import { buildTargetedSupplementalSearchQueries } from "../llm/searchQueryPlan.js";
 import {
   createDeterministicSimilarityClarificationPlan,
   readClarificationAnswerResolution
@@ -90,6 +91,7 @@ try {
   );
   await assertSimilarityClarificationRegressionCases(baseUrl);
   await assertClarifiedQueryExpansionUsesLegacyAnswers();
+  assertTargetedSupplementalQueryExpansion();
   assertEqual(
     demoSearch.body.data.clarificationStage.needClarification,
     true,
@@ -1435,6 +1437,45 @@ async function assertObjectiveQueryExpansionCases(): Promise<void> {
       throw new Error(`${testCase.query}: expected at least 2 objective queriesUsed, got ${queriesUsed.join(" | ")}`);
     }
   }
+}
+
+function assertTargetedSupplementalQueryExpansion(): void {
+  const queries = buildTargetedSupplementalSearchQueries({
+    originalQuery: "转行做产品经理现实吗",
+    metadata: {
+      clarificationAnswers: {
+        age: "around_30",
+        companyType: "big_tech",
+        skill_gap: "project_experience"
+      }
+    },
+    profileSignals: ["程序员"],
+    executedQueries: [
+      {
+        query: "转行做产品经理现实吗",
+        type: "original",
+        purpose: "保留用户原始表达",
+        priority: 1
+      }
+    ],
+    intent: {
+      userCoreQuestion: "用户在看转行做产品经理是否现实",
+      focusTags: ["转行做产品经理"],
+      topicSignals: ["产品经理", "项目经验"],
+      searchQueries: []
+    }
+  });
+
+  assertEqual(queries.length > 0 && queries.length <= 3, true, "supplemental query count");
+  const queryText = queries.map((item) => item.query).join(" | ");
+  assertIncludes(queryText, "产品经理", "supplemental query keeps core scenario");
+  if (/真实经历|亲身经历|人生复盘|真实记录|选择后|我后来/.test(queryText)) {
+    throw new Error(`supplemental query should not use generic experience terms: ${queryText}`);
+  }
+  const purposeText = queries.map((item) => item.purpose).join("\n");
+  assertIncludes(purposeText, "原问题核心", "supplemental purpose explains original query source");
+  assertIncludes(purposeText, "澄清卡", "supplemental purpose explains clarification source");
+  assertIncludes(purposeText, "用户资料", "supplemental purpose explains profile source");
 }
 
 function assertPrimaryQueryQuality(queries: string[], label: string): void {

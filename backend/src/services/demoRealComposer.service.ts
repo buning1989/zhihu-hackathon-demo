@@ -1060,13 +1060,13 @@ function isGuideMarketingOrOpinionOnly(item: SearchItem, quality?: DemoCandidate
   ].join("\n"));
 
   if (
-    /指南|方法|路径|工具准备|最快入门|零基础|教程|攻略|干货|清单|万能|保姆级|手册|自救|礼物推荐|推荐/.test(titleAndAuthorSignals)
+    /指南|方法|路径|工具准备|最快入门|零基础|教程|攻略|干货|清单|万能|保姆级|抄作业|手册|自救|礼物推荐|推荐/.test(titleAndAuthorSignals)
   ) {
     return true;
   }
 
   if (
-    /课程|训练营|加微信|私信|咨询|报名|推广|副业项目|私域|卖课|变现|官方|品牌|汽车|学院|教育机构|研究院|思维/.test(text)
+    /课程|训练营|加微信|私信|咨询|报名|推广|副业项目|私域|卖课|变现|官方|品牌|汽车|学院|教育机构|研究院|思维|转行辅导|简历辅导|面试辅导|就业班|机构培训|培训毕业|报班|学员|带过[几数百千\d]+人/.test(text)
   ) {
     return true;
   }
@@ -1129,7 +1129,7 @@ function classifySampleType(
     (total, keyword) => total + countIncludes(text, keyword),
     0
   );
-  const guideOrMarketing = /指南|方法|路径|工具准备|最快入门|零基础|教程|攻略|课程|训练营|加微信|私信|咨询|报名|推广/.test(text);
+  const guideOrMarketing = /指南|方法|路径|工具准备|最快入门|零基础|教程|攻略|抄作业|课程|训练营|加微信|私信|咨询|报名|推广|转行辅导|简历辅导|面试辅导|就业班|机构培训|培训毕业|报班|学员|带过[几数百千\d]+人/.test(text);
 
   if (
     guideOrMarketing ||
