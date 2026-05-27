@@ -14,7 +14,9 @@
   --shell-pad: 24px;
   --left-col: 220px;
   --main-col: 800px;
+  --feed-card-col: 720px;
   --right-col: 300px;
+  --right-rail-shift: 20px;
   --grid-gap: 18px;
   --top-main-col: 760px;
   --top-gap: 24px;
@@ -1091,6 +1093,8 @@ img {
 .layout-results .main-feed {
   grid-column: 2;
   grid-row: 1;
+  justify-self: end;
+  width: min(100%, var(--feed-card-col));
 }
 
 .feed-card-list {
@@ -1098,12 +1102,15 @@ img {
   grid-row: 2;
   display: grid;
   gap: 12px;
+  justify-self: end;
   min-width: 0;
+  width: min(100%, var(--feed-card-col));
 }
 
 .layout-results .right-rail {
   grid-column: 3;
   grid-row: 2;
+  transform: translateX(var(--right-rail-shift));
 }
 
 .feed-summary {
@@ -2137,7 +2144,15 @@ img {
 @media (max-width: 1379px) and (min-width: 861px) {
   :root {
     --left-col: clamp(180px, 15vw, 220px);
+    --feed-card-col: 680px;
     --right-col: 240px;
+    --right-rail-shift: 16px;
+  }
+}
+
+@media (max-width: 1100px) and (min-width: 861px) {
+  :root {
+    --feed-card-col: 520px;
   }
 }
 
@@ -2201,12 +2216,19 @@ img {
     grid-row: auto;
   }
 
+  .layout-results .main-feed,
+  .layout-results .feed-card-list {
+    justify-self: stretch;
+    width: 100%;
+  }
+
   .left-rail {
     display: none;
   }
 
   .right-rail {
     position: static;
+    transform: none;
   }
 
   .person-head {
