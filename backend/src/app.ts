@@ -1,6 +1,7 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { authRoutes } from "./auth/routes.js";
+import { config } from "./config/env.js";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware.js";
 import { agentRoutes } from "./routes/agent.routes.js";
 import { demoRoutes } from "./routes/demo.routes.js";
@@ -17,7 +18,8 @@ const allowedCorsOrigins = new Set([
   "http://127.0.0.1:3001",
   "http://localhost:3001",
   "http://127.0.0.1:5173",
-  "http://localhost:5173"
+  "http://localhost:5173",
+  config.frontendUrl
 ]);
 
 app.use((req, res, next) => {
