@@ -6,17 +6,28 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const QUERIES = [
-  "不工作了能去哪儿",
-  "35岁从互联网大厂裸辞，要不要创业？",
-  "30岁女生从体制内辞职去做自媒体靠谱吗？",
-  "产品经理被裁后，要不要转自由职业？",
-  "在北京工作十年，想回老家开店现实吗？",
-  "施工单位正式工辞职后，不知道能做什么？",
   "长期异地恋真的值得吗",
+  "不工作了能去哪儿",
   "为了工作能追求自己想做的事，长期异地恋真的值得吗",
+  "毕业后该去大城市还是回老家",
   "裸辞之后的人后来怎么样了",
+  "转行做产品经理现实吗",
+  "三十岁还适合重新开始吗",
   "要不要为了稳定放弃喜欢的事"
 ];
+
+const REVIEW_OUTPUT_PATH = "/private/tmp/agent-result-review.md";
+const TEMPLATE_PATH_FRAGMENTS = [
+  "不上班后的真实日常",
+  "过渡型路径：先解决现金流",
+  "辞职后复盘",
+  "待业中的拉扯",
+  "有人先拉开距离",
+  "有人把边界说清",
+  "有人选择断联"
+];
+const GUIDE_MARKERS = ["指南", "方法", "路径", "工具准备", "最快入门", "零基础", "教程", "攻略", "课程", "训练营"];
+const MARKETING_MARKERS = ["加微信", "私信", "报名", "咨询", "课程", "训练营", "推广", "带货", "官方", "学院", "教育"];
 
 await main().catch((error) => {
   console.error(`FAIL ${error instanceof Error ? error.stack || error.message : String(error)}`);
@@ -87,20 +98,30 @@ async function main() {
   const outputPath = process.env.AGENT_TASK_REAL_EVAL_OUTPUT || join(tempDir, "agent-task-real-eval.json");
   writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
 
-  printMarkdownReport(report, outputPath);
+  const reviewPath = process.env.AGENT_RESULT_REVIEW_OUTPUT || REVIEW_OUTPUT_PATH;
+  const markdownReport = buildMarkdownReport(report, outputPath, reviewPath);
+  writeFileSync(reviewPath, markdownReport);
+  printMarkdownReport(markdownReport);
 
   const strictLlmThresholds = dataMode === "real" || isTruthy(process.env.AGENT_TASK_EVAL_STRICT_LLM);
+  const qualityFailed =
+    summary.pathMismatchCount > 1 ||
+    summary.templatePathCount > 0 ||
+    summary.opinionAsExperienceCount > 0 ||
+    summary.marketingSuspectCount > 0;
   const failed = strictLlmThresholds
     ? summary.partialDisplayable < 7 ||
       summary.evidenceSucceeded < 7 ||
       summary.summarySucceeded < 6 ||
       summary.candidateSelectFailed > 0 ||
       summary.demoFallback > 0 ||
-      summary.http500 > 0
+      summary.http500 > 0 ||
+      qualityFailed
     : summary.partialDisplayable < summary.total ||
       summary.candidateSelectFailed > 0 ||
       summary.demoFallback > 0 ||
-      summary.http500 > 0;
+      summary.http500 > 0 ||
+      qualityFailed;
 
   if (failed) {
     process.exitCode = 1;
@@ -128,6 +149,13 @@ async function evaluateQuery(baseUrl, query, dataMode) {
     experienceSummaries: 0,
     paths: 0,
     people: 0,
+    pathMismatchCount: 0,
+    weakCandidateCount: 0,
+    opinionAsExperienceCount: 0,
+    marketingSuspectCount: 0,
+    unsupportedPathCount: 0,
+    templatePathCount: 0,
+    qualityIssues: [],
     failedStages: [],
     degradedReason: ""
   };
@@ -190,6 +218,7 @@ async function evaluateQuery(baseUrl, query, dataMode) {
     record.experienceSummaries = people.filter((person) =>
       typeof person?.experienceSummary === "string" && person.experienceSummary.trim()
     ).length;
+    Object.assign(record, inspectResultQuality(query, result));
   }
 
   return record;
@@ -295,30 +324,238 @@ function summarize(results) {
     ).length,
     degraded: results.filter((item) => item.degraded).length,
     demoFallback: results.filter((item) => item.demoFallback).length,
-    http500: results.filter((item) => item.http500).length
+    http500: results.filter((item) => item.http500).length,
+    pathMismatchCount: sumBy(results, "pathMismatchCount"),
+    weakCandidateCount: sumBy(results, "weakCandidateCount"),
+    opinionAsExperienceCount: sumBy(results, "opinionAsExperienceCount"),
+    marketingSuspectCount: sumBy(results, "marketingSuspectCount"),
+    unsupportedPathCount: sumBy(results, "unsupportedPathCount"),
+    templatePathCount: sumBy(results, "templatePathCount")
   };
 }
 
-function printMarkdownReport(report, outputPath) {
+function inspectResultQuality(query, result) {
+  const queryContext = buildQueryContext(query);
+  const sourceTextByRef = buildSourceTextByRef(result);
+  const qualityIssues = [];
+  let pathMismatchCount = 0;
+  let unsupportedPathCount = 0;
+  let templatePathCount = 0;
+
+  const paths = Array.isArray(result.paths) ? result.paths : [];
+  for (const path of paths) {
+    const titleText = [path?.title, path?.displayLabel].filter(Boolean).join(" ");
+    const fullPathText = [path?.title, path?.summary, path?.displayLabel].filter(Boolean).join(" ");
+    const sourceText = Array.isArray(path?.sourceRefs)
+      ? path.sourceRefs.map((sourceRef) => sourceTextByRef.get(sourceRef) || "").join("\n")
+      : "";
+    const titleMatchesQuery = queryContext.titleTerms.some((term) => titleText.includes(term));
+    const sourceSupportsPath = queryContext.sourceTerms.some((term) => sourceText.includes(term));
+
+    if (!titleMatchesQuery) {
+      pathMismatchCount += 1;
+      qualityIssues.push(`pathMismatch: ${path?.title || path?.id || "unknown path"}`);
+    }
+
+    if (!sourceSupportsPath || !Array.isArray(path?.sourceRefs) || path.sourceRefs.length === 0) {
+      unsupportedPathCount += 1;
+      qualityIssues.push(`unsupportedPath: ${path?.title || path?.id || "unknown path"}`);
+    }
+
+    if (TEMPLATE_PATH_FRAGMENTS.some((fragment) => fullPathText.includes(fragment))) {
+      templatePathCount += 1;
+      qualityIssues.push(`templatePath: ${path?.title || path?.id || "unknown path"}`);
+    }
+  }
+
+  const people = Array.isArray(result.people) ? result.people : [];
+  let weakCandidateCount = 0;
+  let opinionAsExperienceCount = 0;
+  let marketingSuspectCount = 0;
+  for (const person of people) {
+    const article = Array.isArray(person?.articles) ? person.articles[0] : undefined;
+    const sourceRefs = Array.isArray(person?.sourceRefs) ? person.sourceRefs : [];
+    const sourceText = [
+      person?.name,
+      person?.oneLine,
+      article?.title,
+      article?.summary,
+      article?.text,
+      sourceRefs.map((sourceRef) => sourceTextByRef.get(sourceRef) || "").join("\n")
+    ].filter(Boolean).join("\n");
+    const sourceSupportsCandidate = queryContext.sourceTerms.some((term) => sourceText.includes(term));
+    const matchScore = Number(person?.match?.score ?? 0);
+    const guideLike = GUIDE_MARKERS.some((marker) => sourceText.includes(marker));
+    const marketingLike = MARKETING_MARKERS.some((marker) => sourceText.includes(marker));
+    const firstPersonLike = /我|本人|我的|我们|当时|后来|决定|选择|结果|后悔/.test(sourceText);
+
+    if (!sourceSupportsCandidate || matchScore < 0.48) {
+      weakCandidateCount += 1;
+      qualityIssues.push(`weakCandidate: ${article?.title || person?.id || "unknown person"}`);
+    }
+
+    if (person?.sampleType === "experience_sample" && guideLike && !firstPersonLike) {
+      opinionAsExperienceCount += 1;
+      qualityIssues.push(`opinionAsExperience: ${article?.title || person?.id || "unknown person"}`);
+    }
+
+    if (marketingLike) {
+      marketingSuspectCount += 1;
+      qualityIssues.push(`marketingSuspect: ${article?.title || person?.id || "unknown person"}`);
+    }
+  }
+
+  return {
+    pathMismatchCount,
+    weakCandidateCount,
+    opinionAsExperienceCount,
+    marketingSuspectCount,
+    unsupportedPathCount,
+    templatePathCount,
+    qualityIssues
+  };
+}
+
+function buildQueryContext(query) {
+  const normalized = String(query || "").replace(/\s+/g, " ").trim();
+  if (/异地恋|长期异地|远距离恋爱/.test(normalized) && /工作|职业|事业|想做的事|追求/.test(normalized)) {
+    return {
+      titleTerms: ["工作与长期异地恋", "长期异地恋", "异地恋"],
+      sourceTerms: ["异地恋", "长期异地", "工作", "职业", "事业", "见面", "团聚", "城市", "距离", "恋爱"]
+    };
+  }
+  if (/异地恋|长期异地|远距离恋爱/.test(normalized)) {
+    return {
+      titleTerms: ["长期异地恋", "异地恋"],
+      sourceTerms: ["异地恋", "长期异地", "恋爱", "伴侣", "见面", "距离", "团聚", "城市"]
+    };
+  }
+  if (/转行|转岗|换行业|转产品/.test(normalized) && /产品经理|产品岗|pm/i.test(normalized)) {
+    return {
+      titleTerms: ["转行做产品经理", "产品经理", "转行"],
+      sourceTerms: ["转行", "转岗", "产品经理", "产品岗", "PM", "pm", "门槛", "能力", "项目", "岗位"]
+    };
+  }
+  if (/大城市|一线城市|城市/.test(normalized) && /回老家|老家|家乡|回家/.test(normalized)) {
+    return {
+      titleTerms: ["大城市还是回老家", "大城市", "回老家", "老家"],
+      sourceTerms: ["毕业", "大城市", "一线城市", "城市", "回老家", "老家", "家乡", "机会", "成本"]
+    };
+  }
+  if (/裸辞/.test(normalized)) {
+    return {
+      titleTerms: ["裸辞之后", "裸辞"],
+      sourceTerms: ["裸辞", "辞职", "离职", "后来", "后悔", "现金流", "节奏", "空窗"]
+    };
+  }
+  if (/不工作|不上班|待业|失业/.test(normalized)) {
+    return {
+      titleTerms: ["不工作", "不上班"],
+      sourceTerms: ["不工作", "不上班", "待业", "失业", "工作", "生活", "现金流", "预算", "副业"]
+    };
+  }
+  if (/三十岁|30岁/.test(normalized)) {
+    return {
+      titleTerms: ["三十岁重新开始", "三十岁", "30岁"],
+      sourceTerms: ["三十岁", "30岁", "重新开始", "年龄", "试错", "学习", "收入"]
+    };
+  }
+  if (/稳定|安稳|体制内|铁饭碗/.test(normalized) && /喜欢|热爱|兴趣|梦想|想做的事|追求/.test(normalized)) {
+    return {
+      titleTerms: ["稳定和喜欢的事", "稳定", "喜欢的事"],
+      sourceTerms: ["稳定", "稳定工作", "喜欢的事", "热爱", "兴趣", "梦想", "放弃", "取舍"]
+    };
+  }
+
+  const terms = normalized.split(/[，。！？、,.!?\s/|:：；;（）()《》"“”]+/).filter((item) => item.length >= 2);
+  return {
+    titleTerms: terms.slice(0, 3),
+    sourceTerms: terms.slice(0, 8)
+  };
+}
+
+function buildSourceTextByRef(result) {
+  const sourceTextByRef = new Map();
+  const meta = result?.meta && typeof result.meta === "object" ? result.meta : {};
+  const sourceRefs = Array.isArray(meta.sourceRefs) ? meta.sourceRefs : [];
+  for (const sourceRef of sourceRefs) {
+    sourceTextByRef.set(sourceRef.id, [sourceRef.title, sourceRef.author].filter(Boolean).join("\n"));
+  }
+
+  const people = Array.isArray(result?.people) ? result.people : [];
+  for (const person of people) {
+    const articles = Array.isArray(person?.articles) ? person.articles : [];
+    for (const article of articles) {
+      const text = [
+        article?.title,
+        article?.summary,
+        article?.text,
+        article?.evidenceText,
+        Array.isArray(article?.evidence) ? article.evidence.map((item) => item.text).join("\n") : ""
+      ].filter(Boolean).join("\n");
+      const refs = Array.isArray(article?.sourceRefs) && article.sourceRefs.length
+        ? article.sourceRefs
+        : Array.isArray(person?.sourceRefs)
+          ? person.sourceRefs
+          : [];
+      for (const ref of refs) {
+        sourceTextByRef.set(ref, [sourceTextByRef.get(ref) || "", text].filter(Boolean).join("\n"));
+      }
+    }
+  }
+
+  return sourceTextByRef;
+}
+
+function sumBy(items, key) {
+  return items.reduce((total, item) => total + Number(item[key] || 0), 0);
+}
+
+function buildMarkdownReport(report, outputPath, reviewPath) {
   const provider = report.providerModel;
-  console.log("\n# Agent Task Real Eval");
-  console.log(`\noutput: ${outputPath}`);
-  console.log(
+  const lines = [];
+  lines.push("# Agent Task Real Eval");
+  lines.push("");
+  lines.push(`output: ${outputPath}`);
+  lines.push(`review: ${reviewPath}`);
+  lines.push(
     `provider/model: evidence=${provider.evidence_extract.provider}/${provider.evidence_extract.model}, summary=${provider.experience_summary.provider}/${provider.experience_summary.model}`
   );
-  console.log(
+  lines.push(
     `timeouts: evidence=${report.timeoutMs.evidence_extract}ms, summary=${report.timeoutMs.experience_summary}ms`
   );
-  console.log(
+  lines.push(
     `summary: partialDisplayable=${report.summary.partialDisplayable}/${report.summary.total}, candidateSelectFailed=${report.summary.candidateSelectFailed}, evidenceSucceeded=${report.summary.evidenceSucceeded}/${report.summary.total}, summarySucceeded=${report.summary.summarySucceeded}/${report.summary.total}, timedOut=${report.summary.timedOut}, degraded=${report.summary.degraded}, demoFallback=${report.summary.demoFallback}, http500=${report.summary.http500}`
   );
-  console.log("\n| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | evidenceSamples | experienceSummary | degraded | 500 | demo fallback |");
-  console.log("|---|---:|---:|---|---|---:|---|---:|---:|---:|---|---|---|");
+  lines.push(
+    `quality: pathMismatch=${report.summary.pathMismatchCount}, weakCandidate=${report.summary.weakCandidateCount}, opinionAsExperience=${report.summary.opinionAsExperienceCount}, marketingSuspect=${report.summary.marketingSuspectCount}, unsupportedPath=${report.summary.unsupportedPathCount}, templatePath=${report.summary.templatePathCount}`
+  );
+  lines.push("");
+  lines.push("| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | paths | people | mismatch | weak | opinionAsExp | marketing | unsupported | template |");
+  lines.push("|---|---:|---:|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const item of report.results) {
-    console.log(
-      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.evidenceSamples} | ${item.experienceSummaries} | ${item.degraded} | ${item.http500} | ${item.demoFallback} |`
+    lines.push(
+      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.paths} | ${item.people} | ${item.pathMismatchCount} | ${item.weakCandidateCount} | ${item.opinionAsExperienceCount} | ${item.marketingSuspectCount} | ${item.unsupportedPathCount} | ${item.templatePathCount} |`
     );
   }
+  lines.push("");
+  lines.push("## Quality Issues");
+  for (const item of report.results) {
+    if (!item.qualityIssues.length) {
+      continue;
+    }
+    lines.push(`- ${item.query}`);
+    for (const issue of item.qualityIssues.slice(0, 8)) {
+      lines.push(`  - ${issue}`);
+    }
+  }
+  lines.push("");
+
+  return `${lines.join("\n")}\n`;
+}
+
+function printMarkdownReport(markdownReport) {
+  console.log(`\n${markdownReport.trim()}`);
 }
 
 function formatCompactRow(item) {
@@ -332,6 +569,12 @@ function formatCompactRow(item) {
     `summary=${item.summaryStatus}/${formatMs(item.summaryDurationMs)}`,
     `samples=${item.evidenceSamples}`,
     `summaries=${item.experienceSummaries}`,
+    `mismatch=${item.pathMismatchCount}`,
+    `weak=${item.weakCandidateCount}`,
+    `opinionAsExp=${item.opinionAsExperienceCount}`,
+    `marketing=${item.marketingSuspectCount}`,
+    `unsupported=${item.unsupportedPathCount}`,
+    `template=${item.templatePathCount}`,
     `degraded=${item.degraded}`,
     `500=${item.http500}`,
     `fallback=${item.demoFallback}`

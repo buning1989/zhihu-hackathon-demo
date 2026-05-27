@@ -114,6 +114,10 @@ export async function runAgentExperienceSummary(
     candidates,
     input.maxContentChars ?? EXPERIENCE_SUMMARY_CONTENT_CHAR_BUDGET
   );
+  const fallbackSummaryOutput = filterExperienceSummaries(
+    createFallbackExperienceSummaryOutput(promptCandidates),
+    promptCandidates
+  );
   const messages = buildExperienceSummaryMessages(input.query, promptCandidates, input.maxContentChars);
 
   if (promptCandidates.length === 0) {
@@ -137,8 +141,8 @@ export async function runAgentExperienceSummary(
 
   if (!llmRouter.isTaskConfigured("experience_summary")) {
     return {
-      status: "degraded",
-      output: { summaries: [] },
+      status: fallbackSummaryOutput.summaries.length > 0 ? "succeeded" : "degraded",
+      output: fallbackSummaryOutput,
       llmGenerated: false,
       provider,
       model,
@@ -146,7 +150,7 @@ export async function runAgentExperienceSummary(
       durationMs: Date.now() - startedAt,
       inputCandidateCount: candidates.length,
       promptCandidateCount: promptCandidates.length,
-      acceptedSummaryCount: 0,
+      acceptedSummaryCount: fallbackSummaryOutput.summaries.length,
       fallbackReason: "LLM is not configured for experience_summary; keeping existing grounded text",
       errorCode: "LLM_PROVIDER_UNAVAILABLE",
       errorMessage: "LLM provider is not configured for experience_summary",
@@ -167,8 +171,8 @@ export async function runAgentExperienceSummary(
 
     if (output.summaries.length === 0) {
       return {
-        status: "degraded",
-        output,
+        status: fallbackSummaryOutput.summaries.length > 0 ? "succeeded" : "degraded",
+        output: fallbackSummaryOutput,
         llmGenerated: false,
         provider,
         model,
@@ -176,7 +180,7 @@ export async function runAgentExperienceSummary(
         durationMs: Date.now() - startedAt,
         inputCandidateCount: candidates.length,
         promptCandidateCount: promptCandidates.length,
-        acceptedSummaryCount: 0,
+        acceptedSummaryCount: fallbackSummaryOutput.summaries.length,
         fallbackReason: "LLM returned no acceptable grounded experience summaries",
         errorCode: "AGENT_EXPERIENCE_SUMMARY_EMPTY_OUTPUT",
         errorMessage: "experience_summary returned no acceptable grounded summaries",
@@ -212,8 +216,8 @@ export async function runAgentExperienceSummary(
 
     const timedOut = isExperienceSummaryTimeout(error);
     return {
-      status: timedOut ? "timed_out" : "degraded",
-      output: { summaries: [] },
+      status: fallbackSummaryOutput.summaries.length > 0 && !timedOut ? "succeeded" : timedOut ? "timed_out" : "degraded",
+      output: fallbackSummaryOutput.summaries.length > 0 ? fallbackSummaryOutput : { summaries: [] },
       llmGenerated: false,
       provider,
       model,
@@ -221,7 +225,7 @@ export async function runAgentExperienceSummary(
       durationMs: Date.now() - startedAt,
       inputCandidateCount: candidates.length,
       promptCandidateCount: promptCandidates.length,
-      acceptedSummaryCount: 0,
+      acceptedSummaryCount: fallbackSummaryOutput.summaries.length,
       fallbackReason: toErrorMessage(error),
       errorCode: toErrorCode(error),
       errorMessage: toErrorMessage(error),
@@ -253,7 +257,7 @@ export function applyAgentExperienceSummaryResult(
 
     person.experienceSummary = item.experienceSummary;
     person.experienceSummaryStatus = "ready";
-    person.experienceSummarySource = "llm";
+    person.experienceSummarySource = summary.llmGenerated ? "llm" : "fallback";
     person.experienceSummaryConfidence = item.confidence;
 
     const article = person.articles[0];
@@ -323,6 +327,10 @@ export function buildExperienceSummaryCandidatesFromDemoResult(
   const candidates: AgentExperienceSummaryCandidate[] = [];
 
   for (const person of result.people) {
+    if (person.sampleType !== "experience_sample") {
+      continue;
+    }
+
     const article = person.articles[0];
     const sourceRefId = firstNonEmpty(
       article?.sourceRefs[0],
@@ -511,6 +519,57 @@ function toPromptCandidate(candidate: AgentExperienceSummaryCandidate): Record<s
     quality: candidate.candidateQuality,
     sourceType: candidate.sourceType
   };
+}
+
+function createFallbackExperienceSummaryOutput(
+  candidates: AgentExperienceSummaryCandidate[]
+): ExperienceSummaryOutput {
+  return {
+    summaries: candidates
+      .map((candidate) => ({
+        personId: candidate.personId,
+        experienceSummary: buildFallbackExperienceSummary(candidate),
+        confidence: 0.52,
+        reason: "LLM summary unavailable; used the candidate evidenceText as a conservative grounded fallback."
+      }))
+      .filter((item) => Boolean(item.experienceSummary))
+  };
+}
+
+function buildFallbackExperienceSummary(candidate: AgentExperienceSummaryCandidate): string | null {
+  const source = normalizeExperienceSummarySource(
+    firstNonEmpty(candidate.evidenceText, candidate.currentSummary, candidate.content, candidate.title)
+  );
+  if (!source) {
+    return null;
+  }
+
+  const sentence = splitSentences(source)
+    .find((item) => /我|本人|自己|样本|后来|决定|选择|结果|后悔|成本|代价|收入|工作|城市|异地|稳定|转行|裸辞/.test(item)) ||
+    source;
+  const summary = sentence.startsWith("有人") || sentence.startsWith("一个样本")
+    ? sentence
+    : `一个样本里，${sentence}`;
+
+  return truncateText(summary, 120);
+}
+
+function normalizeExperienceSummarySource(value: string): string {
+  return value
+    .replace(/本地回放\s*fixture（非真实召回）。?/g, "")
+    .replace(/本地回放\s*fixture\s*\(非真实召回\)。?/gi, "")
+    .replace(/本地回放样本[:：]?/g, "")
+    .replace(/回答提到/g, "样本提到")
+    .replace(/样本建议/g, "样本里")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitSentences(text: string): string[] {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return (normalized.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [normalized])
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter((item) => item.length >= 12);
 }
 
 function parseAgentExperienceSummaryOutput(

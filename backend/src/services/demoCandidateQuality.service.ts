@@ -65,6 +65,11 @@ const NARRATIVE_MARKERS = [
   "后来",
   "一开始",
   "最后",
+  "样本记录",
+  "样本复盘",
+  "样本提到",
+  "样本提醒",
+  "样本建议",
   "经历过",
   "尝试过",
   "踩过坑",
@@ -102,13 +107,54 @@ const STAGE_MARKERS = ["一开始", "后来", "之后", "前期", "中期", "阶
 const VAGUE_WORDS = ["人生", "选择", "成长", "努力", "心态", "热爱", "坚持", "焦虑", "迷茫", "未来"];
 const ADVICE_MARKERS = ["建议", "应该", "最好", "可以", "不要", "方法", "策略", "技巧", "心态"];
 const CLICKBAIT_MARKERS = ["震惊", "必看", "后悔死", "稳赚", "躺赚", "秘籍", "速成", "真相"];
-const AD_MARKERS = ["课程", "私信", "加微信", "报名", "咨询", "训练营", "返利", "带货", "推广"];
+const AD_MARKERS = [
+  "课程",
+  "私信",
+  "加微信",
+  "报名",
+  "付费咨询",
+  "预约咨询",
+  "咨询服务",
+  "课程咨询",
+  "训练营",
+  "返利",
+  "带货",
+  "推广"
+];
+const GUIDE_TITLE_MARKERS = [
+  "指南",
+  "方法",
+  "路径",
+  "工具准备",
+  "最快入门",
+  "零基础",
+  "教程",
+  "攻略",
+  "干货",
+  "清单",
+  "万能",
+  "保姆级"
+];
+const MARKETING_AUTHOR_MARKERS = [
+  "教育",
+  "学院",
+  "训练营",
+  "咨询",
+  "顾问",
+  "职场",
+  "课程",
+  "老师",
+  "官方",
+  "研究院",
+  "品牌"
+];
 const RELATIONSHIP_WORK_CONTEXT_MARKERS = [
   "异地恋",
   "长期异地",
   "恋爱",
   "伴侣",
   "距离",
+  "对方城市",
   "城市",
   "工作",
   "职业",
@@ -131,6 +177,18 @@ const RELATIONSHIP_EVIDENCE_MARKERS = [
   "坚持",
   "未来",
   "时间表"
+];
+const RELATIONSHIP_DRIFT_WORK_PAUSE_MARKERS = [
+  "不工作",
+  "不上班",
+  "待业",
+  "裸辞",
+  "辞职",
+  "离职",
+  "现金流",
+  "自由职业",
+  "创业",
+  "回流"
 ];
 const CAREER_TRADEOFF_MARKERS = [
   "为了工作",
@@ -228,6 +286,78 @@ const ROMANCE_DRIFT_MARKERS = [
   "前任",
   "分手"
 ];
+const PRODUCT_MANAGER_CONTEXT_MARKERS = [
+  "转行",
+  "转岗",
+  "换行业",
+  "转产品",
+  "产品经理",
+  "产品岗",
+  "pm"
+];
+const PRODUCT_MANAGER_EVIDENCE_MARKERS = [
+  "产品经理",
+  "产品岗",
+  "转产品",
+  "pm",
+  "需求分析",
+  "原型",
+  "用户研究",
+  "项目经验",
+  "作品集",
+  "产品能力",
+  "岗位门槛",
+  "产品转行"
+];
+const GENERIC_TRANSITION_DRIFT_MARKERS = [
+  "转it",
+  "转 IT",
+  "转互联网",
+  "演员",
+  "灯光师",
+  "道具师",
+  "ai剧",
+  "AI剧",
+  "程序员",
+  "开发工程师"
+];
+const CITY_HOME_CONTEXT_MARKERS = [
+  "毕业",
+  "大城市",
+  "一线城市",
+  "二线城市",
+  "省会",
+  "县城",
+  "北京",
+  "上海",
+  "深圳",
+  "广州",
+  "杭州",
+  "成都",
+  "回老家",
+  "老家",
+  "家乡",
+  "回家",
+  "城市"
+];
+const CITY_HOME_EVIDENCE_MARKERS = [
+  "毕业",
+  "大城市",
+  "一线城市",
+  "北京",
+  "上海",
+  "深圳",
+  "广州",
+  "回老家",
+  "老家",
+  "家乡",
+  "城市机会",
+  "房租",
+  "生活成本",
+  "家庭",
+  "就业机会"
+];
+const HOLIDAY_TRAVEL_DRIFT_MARKERS = ["过年", "春运", "车票", "返乡", "路途", "抢票", "堵车", "高铁"];
 const STOP_TOPIC_SIGNALS = new Set([
   "用户",
   "问题",
@@ -304,10 +434,28 @@ export function scoreSearchCandidate(
   ].join("\n");
   const scenarioText = [title, body].join("\n");
   const relationshipWork = scoreRelationshipWorkScenario(contextText, scenarioText);
+  const relationshipOnly = scoreRelationshipScenario(contextText, scenarioText);
+  const productManagerTransition = scoreProductManagerTransitionScenario(contextText, scenarioText);
+  const cityHomeChoice = scoreCityHomeScenario(contextText, scenarioText);
   const stabilityPassion = scoreStabilityPassionScenario(contextText, scenarioText);
-  const scenarioBoostScore = relationshipWork.boostScore + stabilityPassion.boostScore;
-  const scenarioPenaltyScore = relationshipWork.penaltyScore + stabilityPassion.penaltyScore;
-  const scenarioForceDrop = relationshipWork.forceDrop || stabilityPassion.forceDrop;
+  const scenarioBoostScore =
+    relationshipWork.boostScore +
+    relationshipOnly.boostScore +
+    productManagerTransition.boostScore +
+    cityHomeChoice.boostScore +
+    stabilityPassion.boostScore;
+  const scenarioPenaltyScore =
+    relationshipWork.penaltyScore +
+    relationshipOnly.penaltyScore +
+    productManagerTransition.penaltyScore +
+    cityHomeChoice.penaltyScore +
+    stabilityPassion.penaltyScore;
+  const scenarioForceDrop =
+    relationshipWork.forceDrop ||
+    relationshipOnly.forceDrop ||
+    productManagerTransition.forceDrop ||
+    cityHomeChoice.forceDrop ||
+    stabilityPassion.forceDrop;
   const topicAssessment = scoreTopicHit(textForScoring, topicSignals);
   const narrative = scoreNarrative(body);
   const specificity = scoreSpecificity(body);
@@ -315,6 +463,7 @@ export function scoreSearchCandidate(
   const penalty = scorePenalty({
     title,
     body,
+    author,
     topicHitScore: topicAssessment.score,
     contentLength,
     matchedQueryCount: matchedQueries.length
@@ -323,11 +472,17 @@ export function scoreSearchCandidate(
   const relevanceSignals = unique([
     ...topicAssessment.signals,
     ...relationshipWork.relevanceSignals,
+    ...relationshipOnly.relevanceSignals,
+    ...productManagerTransition.relevanceSignals,
+    ...cityHomeChoice.relevanceSignals,
     ...stabilityPassion.relevanceSignals
   ]);
   const penaltySignals = unique([
     ...penalty.signals,
     ...relationshipWork.penaltySignals,
+    ...relationshipOnly.penaltySignals,
+    ...productManagerTransition.penaltySignals,
+    ...cityHomeChoice.penaltySignals,
     ...stabilityPassion.penaltySignals
   ]);
   const roughScore = clampPercent(
@@ -370,7 +525,14 @@ export function scoreSearchCandidate(
     penaltyScore,
     penaltySignals
   });
-  const contentRole = inferContentRole(matchedQueries[0]?.type ?? item.queryType, narrative.score);
+  const contentRole = inferContentRole(
+    matchedQueries[0]?.type ?? item.queryType,
+    narrative.score,
+    title,
+    body,
+    author,
+    penaltySignals
+  );
 
   return {
     item,
@@ -430,7 +592,10 @@ export function selectRerankCandidateAssessments(
   const backupPool = assessments
     .filter((assessment) => assessment.roughTier === "backup")
     .sort(compareAssessments);
-  const result = [...usablePool, ...backupPool].slice(0, MAX_RERANK_CANDIDATES);
+  const rescuedPool = assessments
+    .filter((assessment) => assessment.roughTier === "drop" && isRescuableNarrativeCandidate(assessment))
+    .sort(compareAssessments);
+  const result = [...usablePool, ...backupPool, ...rescuedPool].slice(0, MAX_RERANK_CANDIDATES);
 
   if (result.length >= MIN_RERANK_CANDIDATES) {
     return result;
@@ -444,7 +609,11 @@ export function selectRuleFallbackAssessments(
   targetCount = TARGET_EFFECTIVE_CANDIDATES
 ): CandidateAssessment[] {
   const pool = assessments
-    .filter((assessment) => !assessment.hardFiltered && assessment.roughTier !== "drop")
+    .filter(
+      (assessment) =>
+        !assessment.hardFiltered &&
+        (assessment.roughTier !== "drop" || isRescuableNarrativeCandidate(assessment))
+    )
     .sort(compareAssessments);
   const diverse = selectDiverseByQueryType(pool, targetCount);
 
@@ -457,6 +626,43 @@ export function selectRuleFallbackAssessments(
     ...diverse,
     ...pool.filter((assessment) => !selectedIds.has(assessment.candidateId))
   ].slice(0, targetCount);
+}
+
+function isRescuableNarrativeCandidate(assessment: CandidateAssessment): boolean {
+  if (assessment.hardFiltered) {
+    return false;
+  }
+
+  const blockedPenalty = assessment.penaltySignals.some((signal) =>
+    [
+      "relationship_work_missing_relationship_or_career_signal",
+      "relationship_work_generic_work_penalty",
+      "relationship_missing_relationship_signal",
+      "relationship_work_pause_template_drift",
+      "product_manager_missing_pm_signal",
+      "product_manager_generic_transition_drift",
+      "product_manager_guide_or_training_title",
+      "city_home_holiday_travel_drift",
+      "stability_passion_romance_drift_penalty",
+      "指南/教程型标题",
+      "广告营销",
+      "疑似机构/营销作者"
+    ].includes(signal)
+  );
+  if (blockedPenalty) {
+    return false;
+  }
+
+  const narrativeText = `${assessment.title}\n${assessment.summary}`;
+  const hasNarrativeCue = /我|本人|当时|后来|决定|选择|结果|后悔|相似经历|公开经历|样本复盘/.test(narrativeText);
+  return (
+    assessment.roughScore >= 25 &&
+    assessment.topicHitScore >= 6 &&
+    assessment.narrativeScore >= 8 &&
+    assessment.specificityScore >= 10 &&
+    assessment.basicQualityScore >= 12 &&
+    hasNarrativeCue
+  );
 }
 
 export function buildRoughTierDistribution(
@@ -659,6 +865,7 @@ function scoreBasicQuality(item: SearchItem, body: string): { score: number; sig
 function scorePenalty(input: {
   title: string;
   body: string;
+  author: string;
   topicHitScore: number;
   contentLength: number;
   matchedQueryCount: number;
@@ -679,6 +886,20 @@ function scorePenalty(input: {
   if (AD_MARKERS.some((marker) => includesLoose(input.body, marker))) {
     score += 14;
     signals.push("广告营销");
+  }
+
+  const marketingText = `${input.title}\n${input.author}`;
+  if (
+    AD_MARKERS.some((marker) => includesLoose(marketingText, marker)) ||
+    MARKETING_AUTHOR_MARKERS.some((marker) => includesLoose(input.author, marker))
+  ) {
+    score += 18;
+    signals.push("疑似机构/营销作者");
+  }
+
+  if (GUIDE_TITLE_MARKERS.some((marker) => includesLoose(input.title, marker))) {
+    score += 12;
+    signals.push("指南/教程型标题");
   }
 
   const vagueHits = VAGUE_WORDS.filter((word) => includesLoose(input.body, word)).length;
@@ -716,7 +937,7 @@ function scoreRelationshipWorkScenario(contextText: string, candidateText: strin
     includesLoose(normalizedContext, marker)
   );
   const relationshipContextHit = contextHits.some((marker) =>
-    ["异地恋", "长期异地", "恋爱", "伴侣", "距离", "城市"].includes(marker)
+    ["异地恋", "长期异地", "恋爱", "伴侣", "距离", "对方城市"].includes(marker)
   );
   const workContextHit = contextHits.some((marker) =>
     ["工作", "职业", "事业", "追求自己", "想做的事"].includes(marker)
@@ -744,7 +965,9 @@ function scoreRelationshipWorkScenario(contextText: string, candidateText: strin
   const genericWorkHits = GENERIC_WORK_REVIEW_MARKERS.filter((marker) =>
     includesLoose(normalizedCandidate, marker)
   );
-  const hasScenarioEvidence = strongRelationshipHits.length > 0 || careerTradeoffHits.length > 0;
+  const hasScenarioEvidence =
+    strongRelationshipHits.length > 0 &&
+    (careerTradeoffHits.length > 0 || relationshipHits.length >= 2);
   const genericWorkOnly = genericWorkHits.length > 0 && !hasScenarioEvidence;
   const relevanceSignals = [
     ...(relationshipHits.length ? ["relationship_work_topic_boost"] : []),
@@ -770,6 +993,171 @@ function scoreRelationshipWorkScenario(contextText: string, candidateText: strin
     relevanceSignals,
     penaltySignals,
     forceDrop: !hasScenarioEvidence
+  };
+}
+
+function scoreRelationshipScenario(contextText: string, candidateText: string): {
+  boostScore: number;
+  penaltyScore: number;
+  relevanceSignals: string[];
+  penaltySignals: string[];
+  forceDrop: boolean;
+} {
+  const normalizedContext = normalizeText(contextText);
+  const normalizedCandidate = normalizeText(candidateText);
+  const hasRelationshipContext = /异地恋|长期异地|远距离恋爱|恋爱|伴侣|对象/.test(normalizedContext);
+  const hasWorkContext = /工作|职业|事业|追求自己|想做的事/.test(normalizedContext);
+  if (!hasRelationshipContext || hasWorkContext) {
+    return {
+      boostScore: 0,
+      penaltyScore: 0,
+      relevanceSignals: [],
+      penaltySignals: [],
+      forceDrop: false
+    };
+  }
+
+  const relationshipHits = RELATIONSHIP_EVIDENCE_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const strongRelationshipHits = relationshipHits.filter(
+    (marker) => !["长期", "坚持", "未来", "时间表"].includes(marker)
+  );
+  const workPauseDriftHits = RELATIONSHIP_DRIFT_WORK_PAUSE_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const hasScenarioEvidence = strongRelationshipHits.length > 0;
+  const driftedToWorkPause = workPauseDriftHits.length > 0 && !hasScenarioEvidence;
+
+  return {
+    boostScore: Math.min(24, strongRelationshipHits.length * 7 + relationshipHits.length * 2),
+    penaltyScore: (hasScenarioEvidence ? 0 : 24) + (driftedToWorkPause ? 24 : 0),
+    relevanceSignals: [
+      ...(hasScenarioEvidence ? ["relationship_topic_boost"] : []),
+      ...relationshipHits.slice(0, 5)
+    ],
+    penaltySignals: [
+      ...(!hasScenarioEvidence ? ["relationship_missing_relationship_signal"] : []),
+      ...(driftedToWorkPause ? ["relationship_work_pause_template_drift"] : []),
+      ...workPauseDriftHits.slice(0, 4)
+    ],
+    forceDrop: !hasScenarioEvidence || driftedToWorkPause
+  };
+}
+
+function scoreProductManagerTransitionScenario(contextText: string, candidateText: string): {
+  boostScore: number;
+  penaltyScore: number;
+  relevanceSignals: string[];
+  penaltySignals: string[];
+  forceDrop: boolean;
+} {
+  const normalizedContext = normalizeText(contextText).toLowerCase();
+  const normalizedCandidate = normalizeText(candidateText).toLowerCase();
+  const contextHits = PRODUCT_MANAGER_CONTEXT_MARKERS.filter((marker) =>
+    includesLoose(normalizedContext, marker.toLowerCase())
+  );
+  const transitionContextHit = /转行|转岗|换行业|转产品/.test(normalizedContext);
+  const pmContextHit = /产品经理|产品岗|pm/.test(normalizedContext);
+  if (!transitionContextHit || !pmContextHit) {
+    return {
+      boostScore: 0,
+      penaltyScore: 0,
+      relevanceSignals: [],
+      penaltySignals: [],
+      forceDrop: false
+    };
+  }
+
+  const pmHits = PRODUCT_MANAGER_EVIDENCE_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker.toLowerCase())
+  );
+  const transitionHits = ["转行", "转岗", "转产品", "入行", "门槛", "零基础", "现实"].filter((marker) =>
+    includesLoose(normalizedCandidate, marker.toLowerCase())
+  );
+  const genericTransitionHits = GENERIC_TRANSITION_DRIFT_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker.toLowerCase())
+  );
+  const guideHits = GUIDE_TITLE_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker.toLowerCase())
+  );
+  const hasDirectPmEvidence = pmHits.length > 0;
+  const genericTransitionDrift = genericTransitionHits.length > 0 && !hasDirectPmEvidence;
+
+  return {
+    boostScore: Math.min(28, pmHits.length * 7 + transitionHits.length * 4 + contextHits.length),
+    penaltyScore:
+      (hasDirectPmEvidence ? 0 : 28) +
+      (genericTransitionDrift ? 26 : 0) +
+      (guideHits.length > 0 ? 10 : 0),
+    relevanceSignals: [
+      ...(hasDirectPmEvidence ? ["product_manager_transition_topic_boost"] : []),
+      ...pmHits.slice(0, 5),
+      ...transitionHits.slice(0, 4)
+    ],
+    penaltySignals: [
+      ...(!hasDirectPmEvidence ? ["product_manager_missing_pm_signal"] : []),
+      ...(genericTransitionDrift ? ["product_manager_generic_transition_drift"] : []),
+      ...(guideHits.length > 0 ? ["product_manager_guide_or_training_title"] : []),
+      ...genericTransitionHits.slice(0, 3)
+    ],
+    forceDrop: !hasDirectPmEvidence || genericTransitionDrift
+  };
+}
+
+function scoreCityHomeScenario(contextText: string, candidateText: string): {
+  boostScore: number;
+  penaltyScore: number;
+  relevanceSignals: string[];
+  penaltySignals: string[];
+  forceDrop: boolean;
+} {
+  const normalizedContext = normalizeText(contextText);
+  const normalizedCandidate = normalizeText(candidateText);
+  const contextHits = CITY_HOME_CONTEXT_MARKERS.filter((marker) =>
+    includesLoose(normalizedContext, marker)
+  );
+  const hasCityHomeContext =
+    contextHits.some((marker) =>
+      ["大城市", "一线城市", "二线城市", "省会", "县城", "城市", "北京", "上海", "深圳", "广州", "杭州", "成都"].includes(marker)
+    ) &&
+    contextHits.some((marker) => ["回老家", "老家", "家乡", "回家"].includes(marker));
+  if (!hasCityHomeContext) {
+    return {
+      boostScore: 0,
+      penaltyScore: 0,
+      relevanceSignals: [],
+      penaltySignals: [],
+      forceDrop: false
+    };
+  }
+
+  const cityHomeHits = CITY_HOME_EVIDENCE_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const choiceHits = ["选择", "留在", "回去", "机会", "成本", "工作", "就业", "生活", "家庭", "开店"].filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const holidayDriftHits = HOLIDAY_TRAVEL_DRIFT_MARKERS.filter((marker) =>
+    includesLoose(normalizedCandidate, marker)
+  );
+  const hasScenarioEvidence = cityHomeHits.length >= 2 || (cityHomeHits.length > 0 && choiceHits.length > 0);
+  const holidayTravelDrift = holidayDriftHits.length > 0 && choiceHits.length === 0;
+
+  return {
+    boostScore: Math.min(24, cityHomeHits.length * 5 + choiceHits.length * 3),
+    penaltyScore: (hasScenarioEvidence ? 0 : 20) + (holidayTravelDrift ? 22 : 0),
+    relevanceSignals: [
+      ...(hasScenarioEvidence ? ["city_home_topic_boost"] : []),
+      ...cityHomeHits.slice(0, 5),
+      ...choiceHits.slice(0, 3)
+    ],
+    penaltySignals: [
+      ...(!hasScenarioEvidence ? ["city_home_missing_choice_signal"] : []),
+      ...(holidayTravelDrift ? ["city_home_holiday_travel_drift"] : []),
+      ...holidayDriftHits.slice(0, 3)
+    ],
+    forceDrop: !hasScenarioEvidence || holidayTravelDrift
   };
 }
 
@@ -866,6 +1254,30 @@ function buildFilterReason(input: {
 
   if (input.penaltySignals.includes("relationship_work_generic_work_penalty")) {
     return "downranked: generic work-review content is weak for relationship-work query";
+  }
+
+  if (input.penaltySignals.includes("relationship_missing_relationship_signal")) {
+    return "downranked: relationship query but candidate lacks long-distance relationship signals";
+  }
+
+  if (input.penaltySignals.includes("relationship_work_pause_template_drift")) {
+    return "downranked: work-pause template drift is weak for relationship query";
+  }
+
+  if (input.penaltySignals.includes("product_manager_missing_pm_signal")) {
+    return "downranked: product-manager transition query but candidate lacks product-manager evidence";
+  }
+
+  if (input.penaltySignals.includes("product_manager_generic_transition_drift")) {
+    return "downranked: generic transition content is weak for product-manager transition query";
+  }
+
+  if (input.penaltySignals.includes("city_home_missing_choice_signal")) {
+    return "downranked: city-vs-hometown query but candidate lacks city/home choice signals";
+  }
+
+  if (input.penaltySignals.includes("city_home_holiday_travel_drift")) {
+    return "downranked: holiday travel content is weak for city-vs-hometown choice query";
   }
 
   if (input.penaltySignals.includes("stability_passion_romance_drift_penalty")) {
@@ -968,6 +1380,28 @@ function compareAssessments(left: CandidateAssessment, right: CandidateAssessmen
 function extractScenarioTopicSignals(text: string): string[] {
   const normalized = normalizeText(text);
   const signals: string[] = [];
+
+  if (/异地恋|长期异地|远距离恋爱/.test(normalized)) {
+    signals.push("异地恋", "长期异地", "恋爱", "伴侣", "见面", "距离", "团聚", "城市", "值得");
+    if (/工作|职业|事业|追求自己|想做的事/.test(normalized)) {
+      signals.push("工作", "职业", "事业", "工作机会", "职业发展", "未来规划", "取舍");
+    }
+  }
+
+  if (/转行|转岗|换行业|转产品/.test(normalized) && /产品经理|产品岗|pm/i.test(normalized)) {
+    signals.push("转行", "产品经理", "产品岗", "门槛", "能力", "项目", "岗位", "作品集", "现实");
+  }
+
+  if (
+    /大城市|一线城市|城市/.test(normalized) &&
+    /回老家|老家|家乡|回家/.test(normalized)
+  ) {
+    signals.push("大城市", "一线城市", "回老家", "老家", "家乡", "机会", "成本", "选择", "毕业");
+  }
+
+  if (/三十岁|30岁/.test(normalized) && /重新开始|开始|还适合|来得及/.test(normalized)) {
+    signals.push("三十岁", "30岁", "重新开始", "年龄", "试错", "收入", "学习", "现实");
+  }
 
   if (
     /稳定|安稳|体制内|铁饭碗|稳定工作|稳定收入/.test(normalized) &&
@@ -1091,13 +1525,57 @@ function toMatchedQueryDebug(entry: SearchMatchedQuery): DemoMatchedQueryDebug {
   };
 }
 
-function inferContentRole(value: unknown, narrativeScore: number): DemoContentRole {
+function inferContentRole(
+  value: unknown,
+  narrativeScore: number,
+  title: string,
+  body: string,
+  author: string,
+  penaltySignals: string[]
+): DemoContentRole {
+  if (isGuideOrMarketingLike(title, body, author, penaltySignals)) {
+    return "viewpoint";
+  }
+
   const queryType = readSearchQueryType(value);
   if (queryType && queryType !== "original") {
     return queryType;
   }
 
+  if (isExperienceLikeOriginal(title, body, narrativeScore)) {
+    return "real_experience";
+  }
+
   return narrativeScore >= 10 ? "real_experience" : "viewpoint";
+}
+
+function isExperienceLikeOriginal(
+  title: string,
+  body: string,
+  narrativeScore: number
+): boolean {
+  const text = `${title}\n${body}`;
+  return Boolean(
+    narrativeScore >= 6 ||
+      /亲身经历|真实经历|样本记录|样本复盘|样本提到|样本提醒|样本建议|后来|最后|结果|决定|选择|后悔|代价|成本/.test(text)
+  );
+}
+
+function isGuideOrMarketingLike(
+  title: string,
+  body: string,
+  author: string,
+  penaltySignals: string[]
+): boolean {
+  const text = `${title}\n${body}\n${author}`;
+  return Boolean(
+    penaltySignals.some((signal) =>
+      /指南|教程|营销|机构|广告|泛泛观点/.test(signal)
+    ) ||
+      GUIDE_TITLE_MARKERS.some((marker) => includesLoose(title, marker)) ||
+      AD_MARKERS.some((marker) => includesLoose(text, marker)) ||
+      MARKETING_AUTHOR_MARKERS.some((marker) => includesLoose(author, marker))
+  );
 }
 
 function toRoughTier(score: number): DemoRoughTier {

@@ -185,6 +185,22 @@ function selectFallbackCategoryPlans(query: string): DemoSearchQueryPlan[] {
     return relationshipWorkFallbackPlans();
   }
 
+  if (isRelationshipQuery(query)) {
+    return relationshipFallbackPlans();
+  }
+
+  if (isProductManagerTransitionQuery(query)) {
+    return productManagerTransitionFallbackPlans();
+  }
+
+  if (isCityHomeChoiceQuery(query)) {
+    return cityHomeChoiceFallbackPlans();
+  }
+
+  if (isThirtyRestartQuery(query)) {
+    return thirtyRestartFallbackPlans();
+  }
+
   if (isStabilityPassionQuery(query)) {
     return stabilityPassionFallbackPlans();
   }
@@ -211,6 +227,54 @@ function relationshipWorkFallbackPlans(): DemoSearchQueryPlan[] {
     plan("为了工作 异地恋 值得吗", "decision_conflict", "召回是否值得的讨论", 5),
     plan("异地恋 未来规划 沟通", "life_path", "召回未来时间表和沟通路径", 6),
     plan("异地恋 工作调动 代价", "alternative_solution", "召回工作调动与关系代价", 6)
+  ];
+}
+
+function relationshipFallbackPlans(): DemoSearchQueryPlan[] {
+  return [
+    plan("长期异地恋真的值得吗", "original", "保留异地恋原始场景", 1),
+    plan("长期异地恋 真实经历", "real_experience", "召回长期异地恋真实经历", 2),
+    plan("异地恋 值得吗 后悔吗", "failure_review", "召回异地恋是否值得的复盘", 3),
+    plan("长期异地恋 见面 未来规划", "life_path", "召回见面频率和未来规划", 3),
+    plan("异地恋 坚持下来 后来", "real_experience", "召回坚持异地后的结果", 4),
+    plan("异地恋 分手 复盘", "failure_review", "召回异地失败复盘", 4),
+    plan("异地恋 沟通 安全感", "decision_conflict", "召回沟通和安全感冲突", 5),
+    plan("异地恋 团聚 城市选择", "alternative_solution", "召回团聚和城市替代方案", 5)
+  ];
+}
+
+function productManagerTransitionFallbackPlans(): DemoSearchQueryPlan[] {
+  return [
+    plan("转行做产品经理 真实经历", "real_experience", "召回转行做产品经理亲历", 2),
+    plan("转行 产品经理 门槛", "life_path", "召回产品经理转行门槛", 2),
+    plan("产品经理 转行 后悔吗", "failure_review", "召回产品经理转行后复盘", 3),
+    plan("零基础 转产品经理 现实吗", "decision_conflict", "召回零基础转产品经理现实讨论", 4),
+    plan("转产品经理 项目经验 作品集", "life_path", "召回项目经验和作品集路径", 4),
+    plan("转行做产品经理 失败复盘", "failure_review", "召回转产品失败和代价", 5),
+    plan("产品经理 入行 能力", "alternative_solution", "召回产品经理能力准备", 5)
+  ];
+}
+
+function cityHomeChoiceFallbackPlans(): DemoSearchQueryPlan[] {
+  return [
+    plan("毕业后 大城市 回老家", "real_experience", "召回毕业后城市去留经历", 2),
+    plan("毕业 去大城市 还是回老家", "decision_conflict", "召回毕业后城市选择冲突", 2),
+    plan("留在大城市 回老家 后悔吗", "failure_review", "召回城市去留后悔复盘", 3),
+    plan("大城市 机会 老家 成本", "life_path", "召回机会和生活成本对照", 3),
+    plan("毕业回老家 真实经历", "real_experience", "召回毕业回老家经历", 4),
+    plan("毕业去一线城市 真实经历", "real_experience", "召回毕业去一线城市经历", 4),
+    plan("大城市 老家 怎么选", "decision_conflict", "召回城市去留判断", 5)
+  ];
+}
+
+function thirtyRestartFallbackPlans(): DemoSearchQueryPlan[] {
+  return [
+    plan("三十岁 重新开始 真实经历", "real_experience", "召回三十岁重新开始经历", 2),
+    plan("30岁 重新开始 来得及吗", "decision_conflict", "召回30岁重新开始讨论", 2),
+    plan("三十岁 转行 后悔吗", "failure_review", "召回三十岁转行复盘", 3),
+    plan("30岁 学新技能 现实吗", "life_path", "召回学习和现实路径", 3),
+    plan("三十岁 重新开始 失败复盘", "failure_review", "召回重新开始失败复盘", 4),
+    plan("30岁 重新开始 收入 压力", "alternative_solution", "召回收入和压力替代方案", 5)
   ];
 }
 
@@ -566,6 +630,29 @@ function isStabilityPassionQuery(query: string): boolean {
     /稳定|安稳|体制内|铁饭碗|稳定工作|稳定收入/.test(normalized) &&
     /喜欢|热爱|兴趣|梦想|理想|想做的事|追求/.test(normalized)
   );
+}
+
+function isRelationshipQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  return /异地恋|长期异地|远距离恋爱/.test(normalized);
+}
+
+function isProductManagerTransitionQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  return /转行|转岗|换行业|转产品/.test(normalized) && /产品经理|产品岗|pm/i.test(normalized);
+}
+
+function isCityHomeChoiceQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  return (
+    /大城市|一线城市|城市/.test(normalized) &&
+    /回老家|老家|家乡|回家/.test(normalized)
+  );
+}
+
+function isThirtyRestartQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  return /三十岁|30岁/.test(normalized) && /重新开始|开始|还适合|来得及/.test(normalized);
 }
 
 function sanitizeSlotValue(value: string): string | null {

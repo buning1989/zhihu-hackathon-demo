@@ -74,6 +74,7 @@ import {
   sortSearchQueryPlans
 } from "./searchQueryPlan.js";
 import { enforceDemoPathDiversity } from "../services/demoPathDiversity.service.js";
+import { applyGroundedPathCopyToResponse } from "../services/demoPathGrounding.service.js";
 
 interface ComposeMultiLlmDemoSearchInput {
   query: string;
@@ -374,7 +375,7 @@ export async function composeMultiLlmDemoSearchResponse(
   timings.push(createStageTiming(composeStage));
 
   const applyStats = applyDemoResponseComposeOutput(response, composeStage.output, guardWarnings);
-  applyRoleBasedPathDisplayCopy(response, input.query);
+  guardWarnings.push(...applyGroundedPathCopyToResponse(response, input.query));
   response.debug.pathDiversityCheck = enforceDemoPathDiversity(response.paths, {
     mergeCount: response.debug.pathDiversityCheck?.mergeCount,
     notes: [
@@ -1547,6 +1548,15 @@ async function runCandidatePipeline(
     selectedAssessments = [...selectedAssessments, ...backup].slice(0, TARGET_EFFECTIVE_CANDIDATES);
   }
 
+  if (selectedAssessments.length === 0) {
+    selectedAssessments = selectTraceableNarrativeRecoveryAssessments(
+      assessments,
+      query,
+      intent,
+      Math.max(1, Math.min(count, TARGET_EFFECTIVE_CANDIDATES))
+    );
+  }
+
   selectedAssessments = enforceSelectedDiversity(selectedAssessments, assessments).slice(
     0,
     TARGET_EFFECTIVE_CANDIDATES
@@ -1901,6 +1911,147 @@ function enforceSelectedDiversity(
   return [...selectedAssessments.slice(0, -1), alternative];
 }
 
+function selectTraceableNarrativeRecoveryAssessments(
+  assessments: CandidateAssessment[],
+  query: string,
+  intent: IntentExpandOutput,
+  targetCount: number
+): CandidateAssessment[] {
+  const terms = buildRecoveryTerms([
+    query,
+    intent.userCoreQuestion,
+    ...(intent.focusTags ?? []),
+    ...(intent.topicSignals ?? []),
+    ...(intent.searchQueries ?? []).flatMap((plan) => [plan.query, plan.purpose])
+  ]);
+
+  const strict = assessments
+    .filter((assessment) => isTraceableNarrativeRecoveryCandidate(assessment, terms))
+    .sort(
+      (left, right) =>
+        right.topicHitScore - left.topicHitScore ||
+        right.narrativeScore - left.narrativeScore ||
+        right.specificityScore - left.specificityScore ||
+        right.roughScore - left.roughScore
+    )
+    .slice(0, targetCount);
+
+  if (strict.length > 0) {
+    return strict;
+  }
+
+  return assessments
+    .filter(isRelaxedTraceableNarrativeRecoveryCandidate)
+    .sort(
+      (left, right) =>
+        right.narrativeScore - left.narrativeScore ||
+        right.specificityScore - left.specificityScore ||
+        right.topicHitScore - left.topicHitScore ||
+        right.roughScore - left.roughScore
+    )
+    .slice(0, targetCount);
+}
+
+function isTraceableNarrativeRecoveryCandidate(
+  assessment: CandidateAssessment,
+  terms: string[]
+): boolean {
+  if (assessment.hardFiltered) {
+    return false;
+  }
+
+  const text = normalizeText([
+    assessment.title,
+    assessment.summary,
+    assessment.author,
+    assessment.item.text,
+    assessment.item.evidence.text
+  ].join("\n"));
+  const hasSource = Boolean(assessment.item.url || assessment.item.source.url || assessment.item.id);
+  const hasNarrative = /我|本人|当时|后来|决定|选择|结果|后悔|相似经历|公开经历|样本复盘/.test(text);
+  const hasTopicTerm = terms.some((term) => text.includes(term));
+  const blockedBySignal = assessment.penaltySignals.some((signal) =>
+    [
+      "relationship_work_missing_relationship_or_career_signal",
+      "relationship_work_generic_work_penalty",
+      "relationship_missing_relationship_signal",
+      "relationship_work_pause_template_drift",
+      "product_manager_missing_pm_signal",
+      "product_manager_generic_transition_drift",
+      "product_manager_guide_or_training_title",
+      "city_home_holiday_travel_drift",
+      "stability_passion_romance_drift_penalty",
+      "指南/教程型标题",
+      "广告营销",
+      "疑似机构/营销作者"
+    ].includes(signal)
+  );
+  const blockedByText = /指南|教程|攻略|训练营|加微信|报名|推广|返利|带货|工具准备|最快入门|零基础/.test(text);
+
+  return hasSource && hasNarrative && hasTopicTerm && !blockedBySignal && !blockedByText;
+}
+
+function isRelaxedTraceableNarrativeRecoveryCandidate(assessment: CandidateAssessment): boolean {
+  const text = normalizeText([
+    assessment.title,
+    assessment.summary,
+    assessment.author,
+    assessment.item.text,
+    assessment.item.evidence.text
+  ].join("\n"));
+  const hasSource = Boolean(assessment.item.url || assessment.item.source.url || assessment.item.id);
+  const hasNarrative = /我|本人|当时|后来|决定|选择|结果|后悔|相似经历|公开经历|样本复盘/.test(text);
+  const blockedBySignal = assessment.penaltySignals.some((signal) =>
+    [
+      "relationship_work_missing_relationship_or_career_signal",
+      "relationship_work_generic_work_penalty",
+      "relationship_missing_relationship_signal",
+      "relationship_work_pause_template_drift",
+      "product_manager_missing_pm_signal",
+      "product_manager_generic_transition_drift",
+      "product_manager_guide_or_training_title",
+      "city_home_holiday_travel_drift",
+      "stability_passion_romance_drift_penalty",
+      "指南/教程型标题",
+      "广告营销",
+      "疑似机构/营销作者"
+    ].includes(signal)
+  );
+  const blockedByText = /指南|教程|攻略|训练营|加微信|报名|推广|返利|带货|工具准备|最快入门|零基础/.test(text);
+
+  return hasSource && hasNarrative && !blockedBySignal && !blockedByText;
+}
+
+function buildRecoveryTerms(values: Array<string | undefined>): string[] {
+  const stopTerms = new Set([
+    "用户",
+    "问题",
+    "相关",
+    "公开经验",
+    "公开内容",
+    "可行路径",
+    "选择路径",
+    "风险边界",
+    "现实可行性",
+    "代价边界",
+    "下一步",
+    "真实经历",
+    "后来怎么样",
+    "有哪些路径",
+    "怎么开始",
+    "后悔吗",
+    "值得吗",
+    "现实吗"
+  ]);
+  const terms = values
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => normalizeText(value).split(/[，。！？、,.!?\s/|:：；;（）()《》"“”]+/))
+    .map((value) => normalizeText(value))
+    .filter((value) => value.length >= 2 && value.length <= 18 && !stopTerms.has(value));
+
+  return unique(terms).slice(0, 18);
+}
+
 function applyRuleKeepMetadata(candidate: CandidateAssessment, intent: IntentExpandOutput): void {
   const topic = candidate.relevanceSignals?.[0] ?? intent.topicSignals[0] ?? candidate.matchedQuery ?? "当前问题";
   candidate.relationToUserIntent =
@@ -2141,6 +2292,10 @@ function buildExperienceSummaryCandidates(
   const result: ExperienceSummaryCandidate[] = [];
 
   for (const person of response.people.slice(0, MAX_EXPERIENCE_SUMMARY_PEOPLE)) {
+    if (person.sampleType !== "experience_sample") {
+      continue;
+    }
+
     const article = person.articles[0];
     const sourceRefId = article?.sourceRefs[0] || person.sourceRefs[0] || "";
     const quality = qualityBySourceRefId.get(sourceRefId);

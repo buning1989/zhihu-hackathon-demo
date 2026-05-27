@@ -23,6 +23,10 @@ import {
   type DemoPathPlan
 } from "./demoPathBuilder.service.js";
 import { scoreSearchCandidate, type CandidateAssessment } from "./demoCandidateQuality.service.js";
+import {
+  buildSourceTextByRefFromItems,
+  groundDemoPaths
+} from "./demoPathGrounding.service.js";
 import { createDemoSearchIdentity } from "./demoQueryIdentity.service.js";
 import { enforceDemoPathDiversity } from "./demoPathDiversity.service.js";
 import { buildContextFitReason, createDemoContextUsed } from "./userContext.service.js";
@@ -108,14 +112,34 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
   const qualityByItemId = new Map(candidateQuality.map((candidate) => [candidate.candidateId, candidate]));
   const pathCandidates = limitedItems.map((item) => toPathCandidate(item, qualityByItemId.get(item.id)));
   const buckets = groupItemsByPath(input.query, limitedItems, pathCandidates, candidateQuality);
-  const paths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
+  const rawPaths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
+  const sourceTextByRef = buildSourceTextByRefFromItems(
+    limitedItems.map((item) => ({
+      sourceRef: sourceByItemId.get(item.id)!,
+      title: item.title,
+      text: item.text || item.evidence.text,
+      evidenceText: item.evidence.text,
+      summary: qualityByItemId.get(item.id)?.relationToUserIntent
+    })).filter((item) => Boolean(item.sourceRef))
+  );
+  const pathGrounding = groundDemoPaths({
+    query: input.query,
+    paths: rawPaths,
+    sourceTextByRef,
+    minPathCount: 1
+  });
+  const paths = pathGrounding.paths;
   const pathDiversityCheck = enforceDemoPathDiversity(paths, {
     mergeCount: buckets.reduce((total, bucket) => total + Math.max(0, bucket.matchedItems.length - 1), 0),
     notes: ["real composer clustered final candidates by contentRole, diversityKey, and summaryAngle"]
   });
   const pathByItemId = new Map<string, string>();
 
+  const returnedPathIds = new Set(paths.map((path) => path.id));
   for (const bucket of buckets) {
+    if (!returnedPathIds.has(bucket.id)) {
+      continue;
+    }
     for (const item of bucket.matchedItems) {
       if (!pathByItemId.has(item.id)) {
         pathByItemId.set(item.id, bucket.id);
@@ -236,6 +260,7 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
       candidateQuality,
       notes: [
         "real Zhihu items grouped by rule composer",
+        ...pathGrounding.warnings,
         "LLM provider reserved but not used in this run"
       ]
     }
@@ -428,16 +453,15 @@ function toPath(
   const whyRelevant = bucket.whyRelevant || buildContextFitReason(query, userContext, bucket.title);
   const tradeoff = bucket.tradeoff || buildFallbackTradeoff(bucket.variables);
   const role = bucket.contentRole ?? stanceToContentRole(bucket.stance);
-  const displayCopy = PATH_DISPLAY_COPY[role];
 
   return {
     id: bucket.id,
-    title: bucket.contentRole ? displayCopy.title : bucket.title,
-    summary: bucket.contentRole ? displayCopy.summary : bucket.summary,
+    title: bucket.title,
+    summary: bucket.summary,
     whyRelevant,
-    tradeoff: bucket.contentRole ? displayCopy.tradeoff : tradeoff,
-    displayLabel: bucket.displayLabel ?? (bucket.contentRole ? displayCopy.title : bucket.title),
-    displayTradeoff: bucket.displayTradeoff ?? (bucket.contentRole ? displayCopy.tradeoff : tradeoff),
+    tradeoff,
+    displayLabel: bucket.displayLabel ?? bucket.title,
+    displayTradeoff: bucket.displayTradeoff ?? tradeoff,
     fitReason: buildContextFitReason(query, userContext, bucket.title),
     diversityKey: bucket.diversityKey,
     contentRole: role,
@@ -507,7 +531,7 @@ function toPerson(
   } satisfies DemoPerson["match"];
   const displayTier = toDisplayTier(match);
   const evidenceStatus: DemoEvidenceStatus = "raw_snippet_only";
-  const basePersonaEnabled = shouldEnablePersona(item, quality);
+  const basePersonaEnabled = sampleType === "experience_sample" && shouldEnablePersona(item, quality);
   const canChat = canPersonChat(basePersonaEnabled, match, quality);
 
   return {
@@ -885,7 +909,7 @@ function buildTimelineEvent(path: DemoPath, item: SearchItem, summary: string): 
 function classifySampleType(
   item: SearchItem,
   quality?: Pick<DemoCandidateQuality, "experienceSignalScore"> &
-    Partial<Pick<CandidateAssessment, "adviceSignalScore">>
+    Partial<Pick<CandidateAssessment, "adviceSignalScore" | "contentRole" | "queryType" | "penaltySignals" | "filterReason">>
 ): "experience_sample" | "viewpoint_author" | "content_sample" {
   const text = `${item.title}\n${item.text}`;
   const firstPersonScore = ["我", "本人", "我的", "我们", "我从", "我在", "我当"].reduce(
@@ -896,12 +920,48 @@ function classifySampleType(
     (total, keyword) => total + countIncludes(text, keyword),
     0
   );
+  const guideOrMarketing = /指南|方法|路径|工具准备|最快入门|零基础|教程|攻略|课程|训练营|加微信|私信|咨询|报名|推广/.test(text);
+
+  if (
+    guideOrMarketing ||
+    quality?.contentRole === "viewpoint" ||
+    /广告营销|疑似机构|指南\/教程型标题|泛泛观点/.test(
+      [...(quality?.penaltySignals ?? []), quality?.filterReason ?? ""].join(" ")
+    )
+  ) {
+    return "viewpoint_author";
+  }
+
+  if (
+    quality &&
+    quality.experienceSignalScore >= 0.18 &&
+    quality.contentRole === "real_experience"
+  ) {
+    return "experience_sample";
+  }
 
   if (quality && quality.experienceSignalScore >= 0.42) {
     return "experience_sample";
   }
 
-  if (firstPersonScore >= 2) {
+  if (
+    quality &&
+    quality.contentRole !== undefined &&
+    /(本地回放样本|样本记录|样本提到|样本提醒|样本建议|样本复盘)/.test(text)
+  ) {
+    return "experience_sample";
+  }
+
+  if (
+    quality &&
+    quality.contentRole !== undefined &&
+    quality.experienceSignalScore >= 0.12 &&
+    /(样本|记录|复盘|后来|后悔|决定|选择|结果|成本|代价|经历)/.test(text)
+  ) {
+    return "experience_sample";
+  }
+
+  if (firstPersonScore >= 2 && /(当时|后来|最后|结果|决定|选择|经历|后悔|代价)/.test(text)) {
     return "experience_sample";
   }
 
