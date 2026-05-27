@@ -111,7 +111,11 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
   );
   const qualityByItemId = new Map(candidateQuality.map((candidate) => [candidate.candidateId, candidate]));
   const pathCandidates = limitedItems.map((item) => toPathCandidate(item, qualityByItemId.get(item.id)));
-  const buckets = groupItemsByPath(input.query, limitedItems, pathCandidates, candidateQuality);
+  const buckets = enforceExperienceFeedPathBuckets(
+    groupItemsByPath(input.query, limitedItems, pathCandidates, candidateQuality),
+    input.query,
+    qualityByItemId
+  );
   const rawPaths = buckets.map((bucket) => toPath(bucket, sourceByItemId, input.query, input.userContext));
   const sourceTextByRef = buildSourceTextByRefFromItems(
     limitedItems.map((item) => ({
@@ -147,21 +151,38 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     }
   }
 
-  const people = limitedItems.map((item, index) =>
-    toPerson(
-      item,
-      index,
-      pathByItemId.get(item.id) ?? paths[0].id,
-      paths.find((path) => path.id === (pathByItemId.get(item.id) ?? paths[0].id)) ?? paths[0],
-      sourceByItemId.get(item.id)!,
-      input.query,
-      input.userContext,
-      candidateQuality.find((candidate) => candidate.candidateId === item.id)
-    )
+  const experienceFeedItems = limitedItems.filter((item) =>
+    pathByItemId.has(item.id) &&
+      isExperienceFeedItem(input.query, item, qualityByItemId.get(item.id))
   );
+  const people = experienceFeedItems.flatMap((item, index) => {
+    const pathId = pathByItemId.get(item.id);
+    const path = paths.find((candidatePath) => candidatePath.id === pathId);
+    const sourceRef = sourceByItemId.get(item.id);
+    if (!pathId || !path || !sourceRef || path.contentRole === "viewpoint" || path.stance === "viewpoint") {
+      return [];
+    }
+
+    return [
+      toPerson(
+        item,
+        index,
+        pathId,
+        path,
+        sourceRef,
+        input.query,
+        input.userContext,
+        qualityByItemId.get(item.id)
+      )
+    ];
+  });
   const personas = people.map(toPersona);
-  const sourceRefsForReturnedPeople = people
-    .map((person) => sourceRefs.find((sourceRef) => sourceRef.id === person.sourceRefs[0]))
+  const returnedSourceRefIds = unique([
+    ...paths.flatMap((path) => path.sourceRefs),
+    ...people.flatMap((person) => person.sourceRefs)
+  ]);
+  const sourceRefsForReturnedResult = returnedSourceRefIds
+    .map((sourceRefId) => sourceRefs.find((sourceRef) => sourceRef.id === sourceRefId))
     .filter((sourceRef): sourceRef is DemoSourceRef => Boolean(sourceRef));
 
   return {
@@ -190,8 +211,8 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
           id: "step_fetch_real_zhihu",
           label: "召回真实知乎公开内容",
           status: "done",
-          evidenceIds: sourceRefsForReturnedPeople.flatMap((sourceRef) => sourceRef.evidenceIds),
-          sourceRefs: sourceRefsForReturnedPeople.map((sourceRef) => sourceRef.id)
+          evidenceIds: sourceRefsForReturnedResult.flatMap((sourceRef) => sourceRef.evidenceIds),
+          sourceRefs: sourceRefsForReturnedResult.map((sourceRef) => sourceRef.id)
         },
         {
           id: "step_rule_group_paths",
@@ -207,8 +228,8 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     personas,
     sections: buildDisplaySections(paths, people, personas),
     meta: {
-      sourceRefs: sourceRefsForReturnedPeople,
-      evidenceCount: sourceRefsForReturnedPeople.reduce(
+      sourceRefs: sourceRefsForReturnedResult,
+      evidenceCount: sourceRefsForReturnedResult.reduce(
         (total, sourceRef) => total + sourceRef.evidenceIds.length,
         0
       ),
@@ -329,6 +350,81 @@ function groupItemsByPath(
     }, []);
 
   return ensureMinimumPathBuckets(combined, buckets, items).slice(0, 5);
+}
+
+function enforceExperienceFeedPathBuckets(
+  buckets: PathBucket[],
+  query: string,
+  qualityByItemId: Map<string, DemoCandidateQuality>
+): PathBucket[] {
+  const result: PathBucket[] = [];
+
+  for (const [index, bucket] of buckets.entries()) {
+    const role = bucket.contentRole ?? stanceToContentRole(bucket.stance);
+    if (role === "viewpoint") {
+      result.push(toViewpointBucket(bucket, bucket.matchedItems, index));
+      continue;
+    }
+
+    const experienceItems = bucket.matchedItems.filter((item) =>
+      isExperienceFeedItem(query, item, qualityByItemId.get(item.id))
+    );
+    const referenceItems = bucket.matchedItems.filter((item) => !experienceItems.includes(item));
+
+    if (experienceItems.length > 0) {
+      result.push({
+        ...bucket,
+        matchedItems: experienceItems,
+        stance: role === "decision_conflict" ? "mixed" : "experience"
+      });
+    }
+
+    if (referenceItems.length > 0) {
+      result.push(toViewpointBucket(bucket, referenceItems, index));
+    }
+  }
+
+  return mergeCompatibleBuckets(result).slice(0, 5);
+}
+
+function toViewpointBucket(bucket: PathBucket, matchedItems: SearchItem[], index: number): PathBucket {
+  const viewpointCopy = PATH_DISPLAY_COPY.viewpoint;
+  return {
+    ...bucket,
+    id: bucket.contentRole === "viewpoint" || bucket.stance === "viewpoint"
+      ? bucket.id
+      : `${bucket.id}_viewpoint_${index}`,
+    title: viewpointCopy.title,
+    summary: viewpointCopy.summary,
+    tradeoff: viewpointCopy.tradeoff,
+    displayLabel: viewpointCopy.title,
+    displayTradeoff: viewpointCopy.tradeoff,
+    contentRole: "viewpoint",
+    stance: "viewpoint",
+    matchedItems
+  };
+}
+
+function mergeCompatibleBuckets(buckets: PathBucket[]): PathBucket[] {
+  return buckets.reduce<PathBucket[]>((result, bucket) => {
+    const key = normalizeBucketKey(
+      `${bucket.contentRole ?? stanceToContentRole(bucket.stance)}:${bucket.diversityKey}`
+    );
+    const existing = result.find(
+      (item) =>
+        normalizeBucketKey(`${item.contentRole ?? stanceToContentRole(item.stance)}:${item.diversityKey}`) === key
+    );
+    if (existing) {
+      existing.matchedItems.push(...bucket.matchedItems);
+      existing.keywords = unique([...existing.keywords, ...bucket.keywords]);
+      existing.variables = unique([...existing.variables, ...bucket.variables]).slice(0, 6);
+      existing.summaryAngle = existing.summaryAngle ?? bucket.summaryAngle;
+      return result;
+    }
+
+    result.push(bucket);
+    return result;
+  }, []).filter((bucket) => bucket.matchedItems.length > 0);
 }
 
 function buildMetadataPathBuckets(
@@ -453,6 +549,8 @@ function toPath(
   const whyRelevant = bucket.whyRelevant || buildContextFitReason(query, userContext, bucket.title);
   const tradeoff = bucket.tradeoff || buildFallbackTradeoff(bucket.variables);
   const role = bucket.contentRole ?? stanceToContentRole(bucket.stance);
+  const stance: DemoPath["stance"] =
+    role === "viewpoint" ? "viewpoint" : role === "decision_conflict" ? "mixed" : "experience";
 
   return {
     id: bucket.id,
@@ -465,10 +563,8 @@ function toPath(
     fitReason: buildContextFitReason(query, userContext, bucket.title),
     diversityKey: bucket.diversityKey,
     contentRole: role,
-    stance: sourceItems.some((item) => classifySampleType(item) === "experience_sample")
-      ? "mixed"
-      : bucket.stance,
-    personRefs,
+    stance,
+    personRefs: role === "viewpoint" ? [] : personRefs,
     evidenceIds,
     sourceRefs
   };
@@ -899,6 +995,119 @@ function buildPersonRelevanceReason(
   );
 }
 
+function isExperienceFeedItem(
+  query: string,
+  item: SearchItem,
+  quality?: DemoCandidateQuality
+): boolean {
+  if (classifySampleType(item, quality) !== "experience_sample") {
+    return false;
+  }
+
+  if (isGuideMarketingOrOpinionOnly(item, quality)) {
+    return false;
+  }
+
+  const text = normalizeText([
+    item.title,
+    item.text,
+    item.evidence.text,
+    quality?.relationToUserIntent ?? "",
+    quality?.summaryAngle ?? "",
+    quality?.keepReason ?? ""
+  ].join("\n"));
+  const body = normalizeText([item.text, item.evidence.text].join("\n"));
+  const snippet = selectSourceSnippet({
+    query,
+    title: item.title,
+    text: item.text || item.evidence.text || item.title,
+    quality,
+    maxLength: 260
+  });
+  const gateText = selectExperienceEvidenceText(body) ?? snippet;
+  const firstPersonOrActor = /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说/.test(gateText);
+  const hasConcreteScenario =
+    hasQueryScenarioOverlap(query, text) ||
+    /异地恋|长期异地|裸辞|辞职|离职|转行|产品经理|毕业|大城市|回老家|老家|三十岁|30岁|稳定工作|喜欢的事|不上班|不工作|待业|失业/.test(text);
+  const evidenceDimensions = countExperienceEvidenceDimensions(gateText);
+  const happened = /当时|后来|后面|之后|以后|期间|一开始|最后|结果|现在|过程|经历|试过|做过|去了|来了|辞了|转了|成为|分手|结婚|入职|毕业|工作/.test(gateText);
+
+  return firstPersonOrActor && hasConcreteScenario && happened && evidenceDimensions >= 2;
+}
+
+function selectExperienceEvidenceText(text: string): string | undefined {
+  return splitSentences(text).find((sentence) =>
+    /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说/.test(sentence) &&
+    /当时|后来|后面|之后|以后|期间|一开始|最后|结果|现在|过程|经历|试过|做过|去了|来了|辞了|转了|成为|分手|结婚|入职|毕业|工作/.test(sentence) &&
+    countExperienceEvidenceDimensions(sentence) >= 2 &&
+    !/我劝你|建议你|你应该|本文旨在|行动框架|课程|私信|咨询|报名/.test(sentence)
+  );
+}
+
+function isGuideMarketingOrOpinionOnly(item: SearchItem, quality?: DemoCandidateQuality): boolean {
+  const titleAndAuthorSignals = normalizeText([
+    item.title,
+    item.author.name,
+    ...(quality?.penaltySignals ?? []),
+    quality?.filterReason ?? "",
+    quality?.relationToUserIntent ?? "",
+    quality?.summaryAngle ?? ""
+  ].join("\n"));
+  const text = normalizeText([
+    titleAndAuthorSignals,
+    item.text,
+    item.evidence.text
+  ].join("\n"));
+
+  if (
+    /指南|方法|路径|工具准备|最快入门|零基础|教程|攻略|干货|清单|万能|保姆级|手册|自救|礼物推荐|推荐/.test(titleAndAuthorSignals)
+  ) {
+    return true;
+  }
+
+  if (
+    /课程|训练营|加微信|私信|咨询|报名|推广|副业项目|私域|卖课|变现|官方|品牌|汽车|学院|教育机构|研究院|思维/.test(text)
+  ) {
+    return true;
+  }
+
+  if (/本文旨在|行动框架|我劝你|先算清|真正聪明|如何入门|怎么入门|自我牺牲|调查报告|数据显示|分手率|调研显示|核心矛盾|单选题|算账题|观点型参考|不能当作完整亲历|泛泛观点|广告营销|疑似机构/.test(text)) {
+    return true;
+  }
+
+  if (quality?.contentRole === "viewpoint") {
+    return true;
+  }
+
+  const body = normalizeText([item.text, item.evidence.text].join("\n"));
+  const adviceScore = countIncludes(body, "建议") +
+    countIncludes(body, "应该") +
+    countIncludes(body, "可以") +
+    countIncludes(body, "不要") +
+    countIncludes(body, "方法") +
+    countIncludes(body, "策略");
+  const narrativeScore = countExperienceEvidenceDimensions(body);
+
+  return adviceScore >= 3 && narrativeScore < 2;
+}
+
+function hasQueryScenarioOverlap(query: string, text: string): boolean {
+  const querySignals = splitSignalText(query).filter((signal) => signal.length >= 2);
+  return querySignals.some((signal) => text.includes(signal));
+}
+
+function countExperienceEvidenceDimensions(text: string): number {
+  const normalized = normalizeText(text);
+  const groups = [
+    /选择|决定|放弃|留下|离开|辞职|裸辞|转行|回老家|去大城市|坚持|分手|结婚|换了|重新开始/,
+    /开始|尝试|申请|准备|沟通|见面|调整|搬|去了|做了|找|投|学习|面试|上班|工作|租房|存钱|辞掉/,
+    /当时|一开始|后来|后面|之后|以后|期间|几年|个月|阶段|慢慢|过程|中间|毕业后|三十岁|30岁/,
+    /结果|最后|现在|发现|后悔|不后悔|成功|失败|终于|成为|入职|上岸|回到|变成|影响|值得|不值得/
+  ];
+
+  return groups.reduce((total, pattern) => total + (pattern.test(normalized) ? 1 : 0), 0);
+}
+
 function buildTimelineEvent(path: DemoPath, item: SearchItem, summary: string): string {
   return truncateText(
     `${summary} 原文入口是「${item.title || "知乎公开内容"}」，当前只把它用作「${path.title}」的证据片段。`,
@@ -958,6 +1167,10 @@ function classifySampleType(
     quality.experienceSignalScore >= 0.12 &&
     /(样本|记录|复盘|后来|后悔|决定|选择|结果|成本|代价|经历)/.test(text)
   ) {
+    return "experience_sample";
+  }
+
+  if (firstPersonScore >= 1 && countExperienceEvidenceDimensions(text) >= 2) {
     return "experience_sample";
   }
 
@@ -1263,11 +1476,11 @@ function buildSnippetKeywords(
 
 function scoreSnippetSentence(sentence: string, keywords: string[]): number {
   const keywordScore = keywords.reduce((total, keyword) => total + countIncludes(sentence, keyword) * 5, 0);
-  const firstPersonScore = /我|本人|自己|我们/.test(sentence) ? 5 : 0;
-  const processScore = /选择|决定|放弃|开始|后来|最后|结果|后悔|代价|现实|稳定|热爱|兴趣|梦想/.test(sentence)
-    ? 4
+  const firstPersonScore = /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说/.test(sentence)
+    ? 12
     : 0;
-  const advicePenalty = /建议|应该|最好|方法|技巧|私信|课程|报名|咨询/.test(sentence) ? 3 : 0;
+  const processScore = countExperienceEvidenceDimensions(sentence) * 5;
+  const advicePenalty = /建议|应该|最好|方法|技巧|私信|课程|报名|咨询/.test(sentence) ? 8 : 0;
   const lengthScore = sentence.length >= 28 && sentence.length <= 180 ? 2 : 0;
 
   return keywordScore + firstPersonScore + processScore + lengthScore - advicePenalty;

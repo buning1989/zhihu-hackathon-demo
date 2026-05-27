@@ -67,7 +67,7 @@ export function groundDemoPaths(options: DemoPathGroundingOptions): DemoPathGrou
   }
 
   const minPathCount = options.minPathCount ?? 1;
-  if (grounded.length === 0 && minPathCount > 0 && options.paths[0]) {
+  if (grounded.length === 0 && minPathCount > 0 && options.paths[0]?.sourceRefs.length > 0) {
     const fallback = forceGroundSinglePath(
       options.paths[0],
       context,
@@ -90,6 +90,7 @@ export function applyGroundedPathCopyToResponse(
   response: DemoSearchResponse,
   query: string
 ): string[] {
+  const experienceWarnings = enforceExperienceSourcesForNonViewpointPaths(response);
   const sourceTextByRef = buildSourceTextByRef(response);
   const result = groundDemoPaths({
     query,
@@ -126,7 +127,46 @@ export function applyGroundedPathCopyToResponse(
     }
   }
 
-  return result.warnings;
+  return [...experienceWarnings, ...result.warnings];
+}
+
+function enforceExperienceSourcesForNonViewpointPaths(response: DemoSearchResponse): string[] {
+  const warnings: string[] = [];
+  const experiencePeople = response.people.filter((person) => person.sampleType === "experience_sample");
+  const experienceSourceRefs = new Set(experiencePeople.flatMap((person) => person.sourceRefs));
+  const experiencePersonIds = new Set(experiencePeople.map((person) => person.id));
+  const evidenceIdsBySourceRef = new Map(response.meta.sourceRefs.map((sourceRef) => [
+    sourceRef.id,
+    sourceRef.evidenceIds
+  ]));
+
+  for (const path of response.paths) {
+    const role = readContentRole(path.contentRole ?? stanceToContentRole(path.stance));
+    if (role === "viewpoint") {
+      path.stance = "viewpoint";
+      path.personRefs = [];
+      continue;
+    }
+
+    path.stance = role === "decision_conflict" ? "mixed" : "experience";
+    const before = path.sourceRefs.length;
+    path.sourceRefs = path.sourceRefs.filter((sourceRef) => experienceSourceRefs.has(sourceRef));
+    path.personRefs = (path.personRefs ?? []).filter((personRef) => experiencePersonIds.has(personRef));
+
+    const allowedEvidenceIds = new Set(
+      path.sourceRefs.flatMap((sourceRef) => evidenceIdsBySourceRef.get(sourceRef) ?? [])
+    );
+    path.evidenceIds = path.evidenceIds.filter((evidenceId) => allowedEvidenceIds.has(evidenceId));
+    if (path.evidenceIds.length === 0) {
+      path.evidenceIds = Array.from(allowedEvidenceIds);
+    }
+
+    if (path.sourceRefs.length < before) {
+      warnings.push(`path_grounding_removed_non_experience_sources:${path.id}`);
+    }
+  }
+
+  return warnings;
 }
 
 export function buildSourceTextByRefFromItems(
@@ -146,9 +186,9 @@ export function buildSourceTextByRefFromItems(
         item.sourceRef.title,
         item.sourceRef.author,
         item.title,
-        item.summary,
         item.evidenceText,
-        item.text
+        item.text,
+        item.summary
       ].filter(Boolean).join("\n"))
     );
   }
@@ -246,10 +286,15 @@ function buildGroundedCopy(
   const signalPhrase = secondSignal ? `${signal}、${secondSignal}` : signal;
   const roleLabel = roleToDisplayLabel(role);
   const title = truncateText(`「${context.focus}」的${roleLabel}：${signalPhrase}`, 46);
-  const summary = truncateText(
-    `这些来源把「${context.focus}」落在${signalPhrase}上；可追溯片段集中在「${evidencePhrase}」，所以这里只生成当前场景下的参考路径。`,
-    150
-  );
+  const summary = role === "viewpoint"
+    ? truncateText(
+        `这些来源把「${context.focus}」落在${signalPhrase}上；可追溯片段集中在「${evidencePhrase}」，所以这里只作为观点参考。`,
+        150
+      )
+    : truncateText(
+        `可追溯经历片段直接写到「${evidencePhrase}」。这条路径只保留这些来源里能看到具体过程的${context.focus}样本。`,
+        150
+      );
   const whyRelevant = truncateText(
     `它回应「${truncateText(query, 30)}」里关于${context.focus}的具体卡点，支撑线索来自${signalPhrase}。`,
     120
@@ -400,7 +445,9 @@ function selectEvidencePhrase(sourceText: string, keywords: string[]): string {
       sentence,
       index,
       score: keywords.reduce((total, keyword) => total + (sentence.includes(keyword) ? 4 : 0), 0) +
-        (/我|本人|自己|后来|结果|决定|选择|后悔|成本|代价|现实|收入|见面|城市|岗位/.test(sentence) ? 3 : 0)
+        (/我|本人|自己|有人|后来|后面|结果|决定|选择|后悔|成本|代价|现实|收入|见面|城市|岗位|回了|三年|辛苦|压力|崩溃/.test(sentence) ? 8 : 0) -
+        (/它和「|来源里出现|可追溯线索|知乎用户| - 知乎/.test(sentence) ? 10 : 0) -
+        (/[?？]$/.test(sentence) && sentence.length <= 32 ? 8 : 0)
     }))
     .sort((left, right) => right.score - left.score || left.index - right.index);
   const selected = scored.find((item) => item.score > 0)?.sentence ?? sentences[0] ?? normalized;
