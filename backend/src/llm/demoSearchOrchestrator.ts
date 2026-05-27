@@ -1171,7 +1171,7 @@ async function searchByExpandedQueries(
 ): Promise<SearchByExpandedQueriesResult> {
   const plannedQueries = sortSearchQueryPlans(intent.searchQueries).slice(0, MAX_SEARCH_PLAN_QUERIES);
   const searchRoundQueries = selectExecutableSearchQueries(plannedQueries);
-  const perQueryCount = Math.min(Math.max(count, 3), 5);
+  const perQueryCount = Math.min(Math.max(count, 3), 10);
   const items: SearchItem[] = [];
   const searchQueryResults: DemoSearchQueryResultDebug[] = [];
   const searchRounds: DemoSearchDebug["searchRounds"] = [];

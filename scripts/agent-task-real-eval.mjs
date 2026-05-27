@@ -164,7 +164,7 @@ async function evaluateQuery(baseUrl, query, dataMode) {
     method: "POST",
     body: {
       query,
-      count: 5,
+      count: 10,
       dataMode,
       metadata: { source: "agent-task-real-eval" }
     }

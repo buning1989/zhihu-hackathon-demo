@@ -509,7 +509,7 @@ function taskFromRow(row: TaskRow): AgentTaskRecord {
     readToken: row.read_token,
     input: parseJson<AgentTaskRecord["input"]>(row.input_json, {
       query: row.query,
-      count: 5,
+      count: 10,
       dataMode: row.data_mode,
       requestedDataMode: row.requested_data_mode,
       metadata: {}

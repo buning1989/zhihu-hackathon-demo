@@ -156,7 +156,7 @@
     return "后端处理失败，请稍后再试。";
   }
 
-  function createTask({ query, count = 5, dataMode = resolveDemoDataMode(), metadata = {}, signal } = {}) {
+  function createTask({ query, count = 10, dataMode = resolveDemoDataMode(), metadata = {}, signal } = {}) {
     return requestJson("/api/agent/tasks", {
       method: "POST",
       signal,
@@ -228,7 +228,7 @@
     });
   }
 
-  async function demoSearch({ query, answers = {}, count = 5, signal } = {}) {
+  async function demoSearch({ query, answers = {}, count = 10, signal } = {}) {
     const body = {
       query,
       count,

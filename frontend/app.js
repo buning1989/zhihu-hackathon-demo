@@ -1031,7 +1031,7 @@
     try {
       const started = await App.Api.createAgentTask({
         query,
-        count: options.count || 5,
+        count: options.count || 10,
         metadata: buildTaskMetadata(options.metadata || {})
       });
 

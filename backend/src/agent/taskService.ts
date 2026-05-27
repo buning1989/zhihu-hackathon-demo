@@ -244,12 +244,12 @@ function toFrontendStatus(task: AgentTaskRecord, stages: AgentStageRecord[]): st
 
 function parseCount(value: unknown): number {
   if (typeof value !== "number" && typeof value !== "string") {
-    return 5;
+    return 10;
   }
 
   const parsed = Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed)) {
-    return 5;
+    return 10;
   }
 
   return Math.min(Math.max(parsed, 1), 20);
