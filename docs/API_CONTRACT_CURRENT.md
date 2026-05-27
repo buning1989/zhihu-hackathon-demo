@@ -99,7 +99,29 @@ Content-Type: application/json
 | `articleBody` | boolean | 当前为 `false`。 | 稳定 |
 | `sourceEvidenceRequired` | boolean | 当前固定为 `true`。 | 稳定 |
 
+`feedItems[]`：
+
+主结果结构。每个 item 对应一张真实经历样本卡，前端优先读取这里渲染 Feed。
+
+| 字段 | 类型 | 说明 | 稳定性 |
+| --- | --- | --- | --- |
+| `id` | string | Feed item id。 | 稳定 |
+| `personId` | string | 关联 `people[].id`。 | 稳定 |
+| `authorName` | string | 作者/样本展示名。 | 半稳定 |
+| `authorAvatar` | string | 头像，可为空。 | 半稳定 |
+| `sourceTitle` | string | 原文标题。 | 稳定 |
+| `sourcePlatform` | string | 来源平台，当前主要为知乎。 | 稳定 |
+| `sourceUrl` | string | 查看原文链接。 | 稳定 |
+| `directionLabel` | string | 卡片弱标签，不作为导航分类。 | 半稳定 |
+| `snippet` | string | 原文片段摘要。 | 稳定 |
+| `summaryPayload` | object | 内容总结三段所需数据和 markdown。 | 稳定 |
+| `sampleType` | `experience_sample` | 主 Feed 只接收真实经历样本。 | 稳定 |
+| `evidenceIds/sourceRefs` | string[] | 关联证据和来源。 | 稳定 |
+| `saveSampleId` | string | 收藏样本所需 id。 | 稳定 |
+
 `paths[]`：
+
+兼容字段。当前公开主响应返回空数组，不再渲染路径 tab、路径卡、分类计数或导航；服务端内部仍可能用 pathId 做排序/聚类兼容。
 
 | 字段 | 类型 | 说明 | 稳定性 |
 | --- | --- | --- | --- |
@@ -119,7 +141,12 @@ Content-Type: application/json
 | `id` | string | 人物/样本 id。 | 易变 |
 | `name` | string | 展示名。mock 为样本名，real 可来自知乎作者名。 | 半稳定 |
 | `sampleType` | string | real 模式可能返回：`experience_sample`、`viewpoint_author`、`content_sample`。mock 当前可能不返回。 | 半稳定 |
-| `pathId` | string | 关联 `paths[].id`。 | 稳定 |
+| `pathId` | string | 内部兼容 id；前端卡片展示请用 `directionLabel`。 | 半稳定 |
+| `directionLabel` | string | Feed 卡片弱标签，不作为导航分类。 | 半稳定 |
+| `sourceTitle/sourcePlatform/sourceUrl` | string | Feed 卡片来源信息和原文链接。 | 稳定 |
+| `snippet` | string | 原文片段摘要。 | 稳定 |
+| `summaryPayload` | object | 内容总结三段数据。 | 稳定 |
+| `saveSampleId` | string | 收藏样本所需 id。 | 稳定 |
 | `role` | string | 样本角色说明。 | 半稳定 |
 | `badge` | string | 短标签。 | 半稳定 |
 | `avatar` | string | 作者头像或空字符串。 | 半稳定 |
@@ -222,7 +249,7 @@ Content-Type: application/json
 - `resolvedDataMode`
 - `cacheHit`
 - `cacheKeyPreview`
-- `itemCount/sourceItemCount/pathCount/peopleCount/personaCount`
+- `itemCount/sourceItemCount/peopleCount/personaCount`；`pathCount` 仅内部调试兼容，不在公开主响应 debug 暴露
 - `llmUsed/llmComposerUsed/llmRepairUsed/llmRepairFailed`
 - `llmStageResults`
 - `timings`

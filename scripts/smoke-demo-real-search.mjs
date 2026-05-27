@@ -85,6 +85,7 @@ async function runDemoSearch(baseUrl, query, count, dataMode, label) {
   assertSuccess(response, `POST /api/demo/search ${label}`);
   const data = readRecord(response.body.data, `${label} data`);
   assertDerivedTopLevelFieldsOmitted(data, `${label} data`);
+  assertPublicFeedResult(data, `${label} data`);
   assertPeoplePersonaEntries(
     assertNonEmptyArray(data.people, `${label} data.people`),
     `${label} data.people`
@@ -248,12 +249,32 @@ function assertCandidateQuality(debug, query, label) {
 }
 
 function assertDerivedTopLevelFieldsOmitted(data, label) {
+  if (!Array.isArray(data.paths) || data.paths.length !== 0) {
+    throw new Error(`${label}.paths should be hidden for the feed result.`);
+  }
+
   if ("personas" in data) {
     throw new Error(`${label}.personas should be omitted; derive from people[].aiPersona.`);
   }
 
   if ("sections" in data) {
     throw new Error(`${label}.sections should be omitted; derive layout on the client.`);
+  }
+}
+
+function assertPublicFeedResult(data, label) {
+  const feedItems = assertNonEmptyArray(data.feedItems, `${label}.feedItems`);
+  for (const [index, value] of feedItems.entries()) {
+    const item = readRecord(value, `${label}.feedItems[${index}]`);
+    assertNonEmptyString(item.id, `${label}.feedItems[${index}].id`);
+    assertNonEmptyString(item.authorName, `${label}.feedItems[${index}].authorName`);
+    assertNonEmptyString(item.sourceTitle, `${label}.feedItems[${index}].sourceTitle`);
+    assertNonEmptyString(item.sourceUrl, `${label}.feedItems[${index}].sourceUrl`);
+    assertNonEmptyString(item.directionLabel, `${label}.feedItems[${index}].directionLabel`);
+    assertNonEmptyString(item.snippet, `${label}.feedItems[${index}].snippet`);
+    if (item.sampleType !== "experience_sample") {
+      throw new Error(`${label}.feedItems[${index}].sampleType expected experience_sample.`);
+    }
   }
 }
 

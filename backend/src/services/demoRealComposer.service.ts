@@ -132,16 +132,13 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     sourceTextByRef,
     minPathCount: 1
   });
-  const paths = pathGrounding.paths;
-  const pathDiversityCheck = enforceDemoPathDiversity(paths, {
-    mergeCount: buckets.reduce((total, bucket) => total + Math.max(0, bucket.matchedItems.length - 1), 0),
-    notes: ["real composer clustered final candidates by contentRole, diversityKey, and summaryAngle"]
-  });
+  let paths = pathGrounding.paths;
   const pathByItemId = new Map<string, string>();
 
-  const returnedPathIds = new Set(paths.map((path) => path.id));
+  const returnedPathById = new Map(paths.map((path) => [path.id, path]));
   for (const bucket of buckets) {
-    if (!returnedPathIds.has(bucket.id)) {
+    const returnedPath = returnedPathById.get(bucket.id);
+    if (!returnedPath || returnedPath.contentRole === "viewpoint" || returnedPath.stance === "viewpoint") {
       continue;
     }
     for (const item of bucket.matchedItems) {
@@ -151,10 +148,39 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
     }
   }
 
-  const experienceFeedItems = limitedItems.filter((item) =>
+  let experienceFeedItems = limitedItems.filter((item) =>
     pathByItemId.has(item.id) &&
-      isExperienceFeedItem(input.query, item, qualityByItemId.get(item.id))
+      isExperienceFeedCandidate(input.query, item, qualityByItemId.get(item.id))
   );
+  if (experienceFeedItems.length === 0) {
+    const fallbackFeedItems = limitedItems
+      .filter((item) => {
+        const quality = qualityByItemId.get(item.id);
+        return isExperienceFeedCandidate(input.query, item, quality) ||
+          isSourceBackedRealExperienceCandidate(item, quality);
+      })
+      .slice(0, Math.min(Math.max(input.count, 3), 6));
+    const fallbackPath = buildFallbackExperienceFeedPath({
+      query: input.query,
+      items: fallbackFeedItems,
+      sourceByItemId,
+      qualityByItemId,
+      userContext: input.userContext
+    });
+
+    if (fallbackPath) {
+      paths = [fallbackPath, ...paths];
+      for (const item of fallbackFeedItems) {
+        pathByItemId.set(item.id, fallbackPath.id);
+      }
+      experienceFeedItems = fallbackFeedItems;
+    }
+  }
+
+  const pathDiversityCheck = enforceDemoPathDiversity(paths, {
+    mergeCount: buckets.reduce((total, bucket) => total + Math.max(0, bucket.matchedItems.length - 1), 0),
+    notes: ["real composer clustered final candidates by contentRole, diversityKey, and summaryAngle"]
+  });
   const people = experienceFeedItems.flatMap((item, index) => {
     const pathId = pathByItemId.get(item.id);
     const path = paths.find((candidatePath) => candidatePath.id === pathId);
@@ -565,6 +591,62 @@ function toPath(
     contentRole: role,
     stance,
     personRefs: role === "viewpoint" ? [] : personRefs,
+    evidenceIds,
+    sourceRefs
+  };
+}
+
+function buildFallbackExperienceFeedPath(input: {
+  query: string;
+  items: SearchItem[];
+  sourceByItemId: Map<string, DemoSourceRef>;
+  qualityByItemId: Map<string, DemoCandidateQuality>;
+  userContext?: UserContext;
+}): DemoPath | null {
+  const itemsWithSource = input.items.filter((item) => input.sourceByItemId.has(item.id));
+  if (itemsWithSource.length === 0) {
+    return null;
+  }
+
+  const sourceRefs = unique(
+    itemsWithSource
+      .map((item) => input.sourceByItemId.get(item.id)?.id)
+      .filter((sourceRef): sourceRef is string => Boolean(sourceRef))
+  );
+  const evidenceIds = unique(
+    itemsWithSource.flatMap((item) => input.sourceByItemId.get(item.id)?.evidenceIds ?? [])
+  );
+  const firstQuality = input.qualityByItemId.get(itemsWithSource[0].id);
+  const directionLabel = truncateText(
+    firstNonEmpty(firstQuality?.diversityKey, firstQuality?.summaryAngle, "真实经历"),
+    18
+  );
+  const title = directionLabel && !/观点|营销|教程|指南|方法/.test(directionLabel)
+    ? directionLabel
+    : "真实经历";
+  const summary = truncateText(
+    firstNonEmpty(
+      firstQuality?.relationToUserIntent,
+      firstQuality?.summaryAngle,
+      `这些样本保留了与「${truncateText(input.query, 24)}」相关的原文片段。`
+    ),
+    120
+  );
+  const tradeoff = "只展示原文能支撑的经历片段，不把观点或营销内容包装成亲历样本。";
+
+  return {
+    id: `path_feed_${hashId(`${input.query}:${sourceRefs.join(",")}`)}`,
+    title,
+    summary,
+    whyRelevant: summary,
+    tradeoff,
+    displayLabel: title,
+    displayTradeoff: tradeoff,
+    fitReason: buildContextFitReason(input.query, input.userContext, title),
+    diversityKey: title,
+    contentRole: "real_experience",
+    stance: "experience",
+    personRefs: itemsWithSource.map((item, index) => toPersonId(item, `feed_${index}`)),
     evidenceIds,
     sourceRefs
   };
@@ -1025,20 +1107,100 @@ function isExperienceFeedItem(
     maxLength: 260
   });
   const gateText = selectExperienceEvidenceText(body) ?? snippet;
-  const firstPersonOrActor = /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说/.test(gateText);
+  const firstPersonOrActor = /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说|一位|答主|作者|受访者|样本记录|样本提到|回答提到/.test(gateText);
   const hasConcreteScenario =
     hasQueryScenarioOverlap(query, text) ||
     /异地恋|长期异地|裸辞|辞职|离职|转行|产品经理|毕业|大城市|回老家|老家|三十岁|30岁|稳定工作|喜欢的事|不上班|不工作|待业|失业/.test(text);
   const evidenceDimensions = countExperienceEvidenceDimensions(gateText);
-  const happened = /当时|后来|后面|之后|以后|期间|一开始|最后|结果|现在|过程|经历|试过|做过|去了|来了|辞了|转了|成为|分手|结婚|入职|毕业|工作/.test(gateText);
+  const happened = /当时|后来|后面|之后|以后|期间|一开始|最后|结果|现在|过程|经历|试过|做过|去了|来了|辞了|转了|决定|选择|成为|分手|结婚|入职|毕业|工作/.test(gateText);
+  const fixtureExperienceMarker = /本地回放样本|样本记录|样本提到|样本把|回答提到/.test(text);
+  const qualityGroundedExperience = Boolean(
+    quality?.contentRole === "real_experience" &&
+      (quality.experienceSignalScore >= 0.18 || fixtureExperienceMarker) &&
+      hasConcreteScenario &&
+      (happened || fixtureExperienceMarker) &&
+      (evidenceDimensions >= 2 || (fixtureExperienceMarker && evidenceDimensions >= 1))
+  );
 
-  return firstPersonOrActor && hasConcreteScenario && happened && evidenceDimensions >= 2;
+  return (firstPersonOrActor || qualityGroundedExperience) && hasConcreteScenario && happened && evidenceDimensions >= 2;
+}
+
+function isExperienceFeedCandidate(
+  query: string,
+  item: SearchItem,
+  quality?: DemoCandidateQuality
+): boolean {
+  if (isExperienceFeedItem(query, item, quality)) {
+    return true;
+  }
+
+  if (classifySampleType(item, quality) !== "experience_sample") {
+    return false;
+  }
+
+  if (isGuideMarketingOrOpinionOnly(item, quality) || quality?.contentRole !== "real_experience") {
+    return false;
+  }
+
+  const text = normalizeText([
+    item.title,
+    item.text,
+    item.evidence.text,
+    quality?.relationToUserIntent ?? "",
+    quality?.summaryAngle ?? "",
+    quality?.keepReason ?? ""
+  ].join("\n"));
+  const sourceBacked = Boolean(
+    quality?.usedAsEvidence ||
+      quality?.sourceRefId ||
+      /本地回放样本|样本记录|样本提到|样本把|回答提到/.test(text)
+  );
+  const scenarioBacked = hasQueryScenarioOverlap(query, text) ||
+    (quality?.relevanceSignals ?? []).some((signal) => text.includes(signal));
+  const hasEvidenceSignal =
+    countExperienceEvidenceDimensions(text) >= 1 ||
+    (quality?.narrativeSignals?.length ?? 0) > 0 ||
+    (quality?.specificitySignals?.length ?? 0) > 0;
+
+  return sourceBacked && scenarioBacked && hasEvidenceSignal;
+}
+
+function isSourceBackedRealExperienceCandidate(
+  item: SearchItem,
+  quality?: DemoCandidateQuality
+): boolean {
+  if (quality?.contentRole !== "real_experience" || !quality.usedAsEvidence) {
+    return false;
+  }
+
+  const penaltyText = normalizeText([
+    item.title,
+    item.author.name,
+    ...(quality.penaltySignals ?? []),
+    quality.filterReason
+  ].join("\n"));
+  if (/广告营销|疑似机构|指南\/教程型标题|课程|训练营|加微信|私信|咨询|报名|推广|机构培训|转行辅导|简历辅导|面试辅导/.test(penaltyText)) {
+    return false;
+  }
+
+  const text = normalizeText([
+    item.title,
+    item.text,
+    item.evidence.text,
+    quality.keepReason ?? ""
+  ].join("\n"));
+  const hasEvidenceSignal =
+    countExperienceEvidenceDimensions(text) >= 1 ||
+    (quality.narrativeSignals?.length ?? 0) > 0 ||
+    (quality.specificitySignals?.length ?? 0) > 0;
+
+  return quality.relevanceScore >= 0.35 && hasEvidenceSignal;
 }
 
 function selectExperienceEvidenceText(text: string): string | undefined {
   return splitSentences(text).find((sentence) =>
-    /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说/.test(sentence) &&
-    /当时|后来|后面|之后|以后|期间|一开始|最后|结果|现在|过程|经历|试过|做过|去了|来了|辞了|转了|成为|分手|结婚|入职|毕业|工作/.test(sentence) &&
+    /(^|[^自])我|本人|我的|我们|朋友|同学|同事|家人|父母|伴侣|男友|女友|对象|她说|他说|一位|答主|作者|受访者|样本记录|样本提到|回答提到/.test(sentence) &&
+    /当时|后来|后面|之后|以后|期间|一开始|最后|结果|现在|过程|经历|试过|做过|去了|来了|辞了|转了|决定|选择|成为|分手|结婚|入职|毕业|工作/.test(sentence) &&
     countExperienceEvidenceDimensions(sentence) >= 2 &&
     !/我劝你|建议你|你应该|本文旨在|行动框架|课程|私信|咨询|报名/.test(sentence)
   );
@@ -1049,9 +1211,7 @@ function isGuideMarketingOrOpinionOnly(item: SearchItem, quality?: DemoCandidate
     item.title,
     item.author.name,
     ...(quality?.penaltySignals ?? []),
-    quality?.filterReason ?? "",
-    quality?.relationToUserIntent ?? "",
-    quality?.summaryAngle ?? ""
+    quality?.filterReason ?? ""
   ].join("\n"));
   const text = normalizeText([
     titleAndAuthorSignals,
@@ -1100,7 +1260,7 @@ function countExperienceEvidenceDimensions(text: string): number {
   const normalized = normalizeText(text);
   const groups = [
     /选择|决定|放弃|留下|离开|辞职|裸辞|转行|回老家|去大城市|坚持|分手|结婚|换了|重新开始/,
-    /开始|尝试|申请|准备|沟通|见面|调整|搬|去了|做了|找|投|学习|面试|上班|工作|租房|存钱|辞掉/,
+    /开始|尝试|申请|准备|沟通|见面|调整|搬|去了|做了|找|投|学习|面试|上班|工作|租房|存钱|辞掉|验证/,
     /当时|一开始|后来|后面|之后|以后|期间|几年|个月|阶段|慢慢|过程|中间|毕业后|三十岁|30岁/,
     /结果|最后|现在|发现|后悔|不后悔|成功|失败|终于|成为|入职|上岸|回到|变成|影响|值得|不值得/
   ];
@@ -1606,6 +1766,16 @@ function truncateText(text: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function firstNonEmpty(...values: Array<string | undefined | null>): string {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
 }
 
 function normalizeBucketKey(text: string): string {

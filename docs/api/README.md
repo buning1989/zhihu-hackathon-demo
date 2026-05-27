@@ -99,8 +99,9 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 | `dataMode` | 本次数据来源策略：`mock`、`cache_first`、`replay` 或 `real`。 |
 | `features` | 能力开关，例如 AI 分身、聊天模式、服务端保存和正文可用性。 |
 | `analysis` | 问题理解、焦点标签、处理步骤，可用于顶部理解区或 loading 过程。 |
-| `paths[]` | 路径图数据，按 `id` 被 `people[].pathId` 关联；real 模式可能返回 `personRefs` 表示该路径聚合了哪些人物样本。 |
-| `people[]` | 人物样本主数据，人物卡、LLM 经历总结、文章、匹配理由和 AI 分身入口都从这里读；real 模式会用 `sampleType` 区分 `experience_sample`、`viewpoint_author`、`content_sample`。 |
+| `feedItems[]` | 真实经历 Feed 主列表。头像/昵称、来源标题、来源平台、归属弱标签、片段、内容总结、原文链接和收藏 id 都从这里读。 |
+| `paths[]` | 兼容字段。主响应公开返回空数组，前端不要用它渲染分类导航。 |
+| `people[]` | 人物样本主数据，人物卡详情、LLM 经历总结、文章、匹配理由和 AI 分身入口都从这里读；主 Feed 只保留 `experience_sample`。 |
 | `personas[]` | 可选 AI 分身快捷索引，主响应默认省略；从 `people[].aiPersona` 派生。 |
 | `sections[]` | 可选弱绑定布局辅助，主响应默认省略；缺失时按默认顺序渲染。 |
 | `meta.sourceRefs[]` | 来源索引，配合 `sourceRefs` 和 `evidenceIds` 做溯源。 |
@@ -108,8 +109,8 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 
 ## 渲染关系
 
-- `paths[]`：渲染路径图或路径 tab。每个 path 的 `evidenceIds` / `sourceRefs` 可用于显示“来自几条公开内容”。
-- `people[]`：渲染人物样本卡。按 `person.pathId` 找到对应 path；`oneLine` 只做卡片一句话；`experienceSummaryStatus=ready` 且 `experienceSummarySource=llm` 时展示 `experienceSummary`；`lesson` 仅用于风险/提醒位；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
+- `feedItems[]`：直接渲染真实经历 Feed。`directionLabel` 只是卡片弱标签，不是导航分类；`summaryPayload.markdown` 用于“内容总结”三段展示。
+- `people[]`：渲染人物样本详情。`oneLine` 只做卡片一句话；`experienceSummaryStatus=ready` 且 `experienceSummarySource=llm` 时展示 `experienceSummary`；`lesson` 仅用于风险/提醒位；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
 - `people[].aiPersona`：渲染单个人物卡上的 AI 分身入口。展示前检查 `enabled`、`personaId`、`boundary` 和 `grounding.articleIds[]`。
 - `personas[]`：兼容“可追问的经验回声”快捷入口。当前默认从 `people[].aiPersona` 派生；点击后用 `personId` 回查 `people[]`，不要从 `personas[]` 补全人物信息。
 

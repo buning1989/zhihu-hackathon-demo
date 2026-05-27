@@ -30,7 +30,7 @@
         clarifyAnswers: answers
       },
       analysis: {
-        title: "已整理出 3 个可比较的样本方向"
+        title: "已整理出可对照的真实经历样本"
       },
       paths: clone(data.paths),
       people: clone(data.people),

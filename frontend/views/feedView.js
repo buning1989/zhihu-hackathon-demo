@@ -9,7 +9,7 @@
       { label: "理解处境", message: "正在理解你的处境" },
       { label: "寻找样本", message: "正在寻找真实内容样本" },
       { label: "整理片段", message: "正在整理公开内容片段" },
-      { label: "整理样本", message: "正在整理样本方向" },
+      { label: "整理样本", message: "正在整理真实样本" },
       { label: "组织片段", message: "正在整理可展示内容样本" }
     ];
     const currentStageIndex = Math.min(
@@ -63,38 +63,41 @@
     `;
   }
 
-  function renderSideNav(state, result) {
-    const { escapeHtml, escapeAttribute, publicUiLabel } = App.utils;
-    const allActive = state.activePathId === "all";
-    const buttons = result.paths.map((path) => {
-      const peopleCount = App.store.getPeopleForPath(path.id).length;
-      return `
-        <button class="path-nav-item ${state.activePathId === path.id ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="${escapeAttribute(path.id)}">
-          <span class="path-nav-copy">
-            ${escapeHtml(publicUiLabel(path.shortTitle || path.title, "公开片段"))}
-            <span class="path-nav-count">${peopleCount} 条</span>
-          </span>
-        </button>
-      `;
-    }).join("");
+  function isMainFeedPerson(person) {
+    const sampleType = String(person.sampleType || "").trim();
+    if (sampleType === "viewpoint_author" || sampleType === "content_sample") {
+      return false;
+    }
 
-    return `
-      <nav class="left-rail">
-        <p class="rail-label">样本方向</p>
-        <button class="path-nav-item ${allActive ? "is-active" : ""}" type="button" data-action="set-path" data-path-id="all">
-          <span class="path-nav-copy">全部</span>
-        </button>
-        ${buttons}
-      </nav>
-    `;
+    const article = person.article || {};
+    const evidenceText = Array.isArray(article.evidence)
+      ? article.evidence.map((item) => item?.text || item?.evidenceText || item?.excerpt || "").join("\n")
+      : "";
+    const marketingText = [
+      person.name,
+      person.oneLine,
+      person.source?.title,
+      person.source?.evidence,
+      article.title,
+      article.summary,
+      article.lead,
+      evidenceText
+    ].filter(Boolean).join("\n");
+
+    return !/(加微信|私信|课程|训练营|报名|推广|付费咨询|预约咨询|转行辅导|简历辅导|面试辅导|就业班|机构培训|培训机构|带过[几数百千\d]+人)/.test(marketingText);
+  }
+
+  function mainFeedPeople(result) {
+    return (Array.isArray(result.people) ? result.people : []).filter(isMainFeedPerson);
   }
 
   function renderFeedSummary(state, result) {
     const { escapeHtml } = App.utils;
     const notices = [];
+    const people = mainFeedPeople(result);
     const summaryText = result.meta?.evidenceOnly
-      ? `先看 ${result.people.length} 条贴近的公开内容片段。`
-      : `先从 ${result.paths.length} 个样本方向里，看几条相关样本。`;
+      ? `先看 ${people.length} 条贴近的公开内容片段。`
+      : `先看 ${people.length} 条真实经历样本。`;
     if (result.meta?.cacheHit || result.meta?.reused) {
       notices.push("已使用近期相似结果");
     }
@@ -172,7 +175,7 @@
     const { escapeHtml } = App.utils;
     return `
       <section class="empty-panel result-empty">
-        <h2>暂时没找到足够贴近的公开内容样本</h2>
+        <h2>暂时没找到足够贴近的真实经历样本</h2>
         <p>${escapeHtml("可以补充一点处境，再重新看看。")}</p>
       </section>
     `;
@@ -180,23 +183,17 @@
 
   function renderLoaded(state) {
     const result = state.result;
-    const paths = state.activePathId === "all"
-      ? result.paths
-      : result.paths.filter((path) => path.id === state.activePathId);
-    const modules = paths.map((path) => {
-      const people = result.people.filter((person) => person.pathId === path.id);
-      return App.components.renderPathModule(path, people, state);
-    }).join("");
-    const isEmpty = result.paths.length === 0 || result.people.length === 0;
+    const people = mainFeedPeople(result);
+    const cards = people.map((person) => App.components.renderPersonCard(person, state)).join("");
+    const isEmpty = people.length === 0;
 
     return `
       <main class="layout layout-results ${state.transitionPhase === "feedEntering" ? "feed-enter" : ""}">
-          ${renderSideNav(state, result)}
           <section class="main-feed">
             ${renderFeedSummary(state, result)}
           </section>
           <section class="feed-card-list">
-            ${isEmpty ? renderEmptyResult(result) : modules}
+            ${isEmpty ? renderEmptyResult(result) : cards}
           </section>
           ${App.components.renderRightRail(state)}
       </main>

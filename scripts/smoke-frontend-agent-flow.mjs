@@ -134,6 +134,11 @@ async function main() {
       "taskId"
     );
     const resultSummary = await readResultSummary(page);
+    if (resultSummary.pathNavCount > 0 || resultSummary.pathModuleCount > 0) {
+      throw new Error(
+        `Path navigation/module UI should not render; found nav=${resultSummary.pathNavCount} modules=${resultSummary.pathModuleCount}.`
+      );
+    }
     const retrySummary = await assertEvidenceRetryUi(page, requests);
 
     console.log("PASS frontend agent task smoke");
@@ -145,7 +150,7 @@ async function main() {
       `requests agentCreate=${countRequests(requests, "agentCreate")} agentStatus=${countRequests(requests, "agentStatus")} agentView=${countRequests(requests, "agentView")} agentResult=${countRequests(requests, "agentResult")} demoSearch=${countRequests(requests, "demoSearch")}`
     );
     console.log(
-      `display paths=${resultSummary.pathCount} people=${resultSummary.peopleCount} cards=${resultSummary.cardCount} snippets=${resultSummary.snippetCount}`
+      `display feed=${resultSummary.feedItemCount} paths=${resultSummary.pathCount} people=${resultSummary.peopleCount} cards=${resultSummary.cardCount} snippets=${resultSummary.snippetCount} pathNav=${resultSummary.pathNavCount}`
     );
     console.log(
       `evidence degraded=${retrySummary.hasIssue} retryable=${retrySummary.retryable} retryClicked=${retrySummary.retryClicked} retryRequests=${countRequests(requests, "agentStageRetry")}`
@@ -343,7 +348,6 @@ async function waitForDisplayableResult(page, timeoutMs) {
   try {
     await page.waitForFunction(
       () => {
-        const pathModules = document.querySelectorAll(".path-module, .path-count-btn").length;
         const cards = document.querySelectorAll(".person-card").length;
         const snippets = document.querySelectorAll(".original-snippet, .person-meta").length;
         const state = window.LifeSampleApp?.store?.getState?.();
@@ -356,7 +360,7 @@ async function waitForDisplayableResult(page, timeoutMs) {
             || result.meta?.emptyResult
           )
         );
-        return pathModules > 0 || cards > 0 || snippets > 0 || storeHasResult;
+        return cards > 0 || snippets > 0 || storeHasResult;
       },
       null,
       { timeout: timeoutMs }
@@ -375,9 +379,12 @@ async function readResultSummary(page) {
     const result = state?.result || {};
     return {
       pathCount: Array.isArray(result.paths) ? result.paths.length : 0,
+      feedItemCount: Array.isArray(result.feedItems) ? result.feedItems.length : 0,
       peopleCount: Array.isArray(result.people) ? result.people.length : 0,
       cardCount: document.querySelectorAll(".person-card").length,
-      snippetCount: document.querySelectorAll(".original-snippet, .person-meta").length
+      snippetCount: document.querySelectorAll(".original-snippet, .person-meta").length,
+      pathNavCount: document.querySelectorAll(".path-nav-item, .path-count-btn").length,
+      pathModuleCount: document.querySelectorAll(".path-module").length
     };
   });
 }

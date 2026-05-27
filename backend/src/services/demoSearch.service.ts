@@ -9,6 +9,7 @@ import {
   createDemoSearchIdentity,
   type DemoSearchIdentity
 } from "./demoQueryIdentity.service.js";
+import { projectDemoFeedResponse } from "./demoFeed.service.js";
 import { demoSessionCacheService } from "./demoSessionCache.service.js";
 import { createDemoContextUsed } from "./userContext.service.js";
 import type { UserContext } from "../auth/session.js";
@@ -2504,6 +2505,7 @@ function writeCachedDemoResponse(
 }
 
 function omitDerivedTopLevelFields(response: DemoSearchResponse): DemoSearchResponse {
+  projectDemoFeedResponse(response, { hidePaths: true });
   response.debug.personaCount =
     response.debug.personaCount ??
     response.people.filter((person) => person.aiPersona.personaId).length;

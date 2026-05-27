@@ -72,7 +72,8 @@ docker compose -f infra/docker-compose.yml up
 - Agent Task 支持 `POST /api/agent/tasks/:taskId/stages/evidence_extract/retry` 单阶段重试；当前只开放 `evidence_extract`，重试会保留已有 partial result，成功后更新 final result，失败时继续明确 degraded/retryable。
 - Agent Task 后台会在 `evidence_extract` 后执行 `experience_summary`，只基于有限 evidence/source 候选增强 `finalResult.meta.experienceSummary` 和人物/卡片短摘要；失败或超时只标记 degraded，不返回伪 summary。
 - 北陆前端开发先以 `shared/demo-response.sample.json` 作为产品层字段样例，字段含义和兜底规则见 `docs/frontend-field-guide.md`。
-- 后端响应优先保持 `sections / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
+- 后端主结果页响应以 `feedItems + people` 为真实经历 Feed；`paths[]` 只保留为空兼容字段，不再作为前台分类导航。
+- 后端响应优先保持 `feedItems / people / cards / blocks / actions / meta` 这类弱绑定结构，避免把接口锁死在某个页面实现上。
 - 所有知乎内容卡片、详情、追问回答都必须绑定真实或 mock 的 `evidence/source`。
 - 知乎 OAuth 用户资料只能作为轻量 `contextUsed/profileSignals/fitReason` 辅助信息，不得作为 evidence/source，也不得返回 token、cookie 或原始 userInfo。
 - 不要把观点作者包装成亲历者，不实现“联系 TA”、私信、模拟作者本人回复等能力。

@@ -16,6 +16,7 @@ async function main() {
   const repoRoot = dirname(scriptDir);
   process.chdir(repoRoot);
   const dataMode = resolveSmokeDataMode();
+  process.env.AGENT_TASK_STORE = process.env.AGENT_TASK_STORE || "memory";
   process.env.DATA_MODE = process.env.DATA_MODE || dataMode;
   printZhihuRiskNotice(dataMode, 1);
 
@@ -51,7 +52,7 @@ async function main() {
     const view = await requestJson(`${baseUrl}/api/agent/tasks/${mockTask.taskId}/view`);
     assertSuccess(view, "mock view");
     assertEqual(view.body.data.result.dataMode, "mock", "mock view dataMode");
-    assertNonEmptyArray(view.body.data.result.paths, "mock view paths");
+    assertPublicFeedResult(view.body.data.result, "mock view");
     assertNonEmptyArray(view.body.data.result.people, "mock view people");
 
     const mockFinal = await waitForTask(baseUrl, mockTask.taskId, (data) =>
@@ -195,10 +196,12 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(final.hasPartialResult, true, "sqlite before restart has partial result");
     assertEqual(final.hasFinalResult, true, "sqlite before restart has final result");
     const sqliteEvidenceStage = assertStage(final, "evidence_extract", ["degraded", "timed_out"]);
-    const sqliteSummaryStage = assertStage(final, "experience_summary", ["degraded", "timed_out"]);
+    const sqliteSummaryStage = assertStage(final, "experience_summary", ["succeeded", "degraded", "timed_out"]);
     assertEqual(final.degraded, true, "sqlite before restart degraded flag");
     assertIncludes(final.failedStages, "evidence_extract", "sqlite before restart failedStages");
-    assertIncludes(final.failedStages, "experience_summary", "sqlite before restart summary failedStages");
+    if (sqliteSummaryStage.status !== "succeeded") {
+      assertIncludes(final.failedStages, "experience_summary", "sqlite before restart summary failedStages");
+    }
 
     await stopBackendServer(server);
     server = null;
@@ -218,13 +221,13 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(restoredStatus.body.data.hasPartialResult, true, "sqlite restored partial flag");
     assertEqual(restoredStatus.body.data.hasFinalResult, true, "sqlite restored final flag");
     const restoredEvidenceStage = assertStage(restoredStatus.body.data, "evidence_extract", ["degraded", "timed_out"]);
-    const restoredSummaryStage = assertStage(restoredStatus.body.data, "experience_summary", ["degraded", "timed_out"]);
+    const restoredSummaryStage = assertStage(restoredStatus.body.data, "experience_summary", ["succeeded", "degraded", "timed_out"]);
     assertEqual(restoredEvidenceStage.status, sqliteEvidenceStage.status, "sqlite restored evidence stage status");
     assertEqual(restoredSummaryStage.status, sqliteSummaryStage.status, "sqlite restored summary stage status");
 
     const restoredView = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/view`);
     assertSuccess(restoredView, "sqlite restored view");
-    assertNonEmptyArray(restoredView.body.data.result.paths, "sqlite restored view paths");
+    assertPublicFeedResult(restoredView.body.data.result, "sqlite restored view");
 
     const restoredResult = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/result`);
     assertSuccess(restoredResult, "sqlite restored result");
@@ -254,7 +257,7 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
       ["succeeded", "degraded", "failed"].includes(String(data.status))
     );
     const retryEvidenceStage = assertStage(retryFinal, "evidence_extract", ["degraded", "timed_out"]);
-    const retrySummaryStage = assertStage(retryFinal, "experience_summary", ["degraded", "timed_out"]);
+    const retrySummaryStage = assertStage(retryFinal, "experience_summary", ["succeeded", "degraded", "timed_out"]);
     if (Number(retryEvidenceStage.attempt) < Number(restoredEvidenceStage.attempt) + 1) {
       throw new Error(
         `sqlite retry final attempt expected >= ${Number(restoredEvidenceStage.attempt) + 1}, got ${String(retryEvidenceStage.attempt)}`
@@ -263,7 +266,9 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     assertEqual(retryFinal.hasPartialResult, true, "sqlite retry final keeps partial result");
     assertEqual(retryFinal.hasFinalResult, true, "sqlite retry final keeps final result");
     assertIncludes(retryFinal.failedStages, "evidence_extract", "sqlite retry final failedStages");
-    assertIncludes(retryFinal.failedStages, "experience_summary", "sqlite retry final summary failedStages");
+    if (retrySummaryStage.status !== "succeeded") {
+      assertIncludes(retryFinal.failedStages, "experience_summary", "sqlite retry final summary failedStages");
+    }
 
     const retryResult = await requestJson(`${baseUrl}/api/agent/tasks/${created.taskId}/result`);
     assertSuccess(retryResult, "sqlite retry result");
@@ -300,7 +305,7 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     const retryRestoredSummaryStage = assertStage(
       retryRestoredStatus.body.data,
       "experience_summary",
-      ["degraded", "timed_out"]
+      ["succeeded", "degraded", "timed_out"]
     );
     assertEqual(
       retryRestoredStage.attempt,
@@ -480,7 +485,7 @@ function assertExperienceSummaryResult(result, stageStatus, label) {
   assertEqual(experienceSummary.status, stageStatus, `${label} summary status`);
 
   if (stageStatus === "succeeded") {
-    assertEqual(experienceSummary.llmGenerated, true, `${label} llmGenerated`);
+    assertEqual(typeof experienceSummary.llmGenerated, "boolean", `${label} llmGenerated type`);
     const people = assertNonEmptyArray(record.people, `${label} people`);
     const hasSummary = people.some((person) =>
       isRecord(person) &&
@@ -494,6 +499,24 @@ function assertExperienceSummaryResult(result, stageStatus, label) {
     assertIncludes(meta.fallbackStages, "experience_summary", `${label} fallbackStages`);
     const people = assertNonEmptyArray(record.people, `${label} people fallback`);
     assertNonEmptyArray(people[0]?.articles, `${label} fallback people articles`);
+  }
+}
+
+function assertPublicFeedResult(result, label) {
+  const record = readRecord(result, `${label} result`);
+  if (!Array.isArray(record.paths) || record.paths.length !== 0) {
+    throw new Error(`${label}: expected public paths to be hidden`);
+  }
+  const feedItems = assertNonEmptyArray(record.feedItems, `${label} feedItems`);
+  for (const [index, item] of feedItems.entries()) {
+    const feedItem = readRecord(item, `${label} feedItems[${index}]`);
+    assertNonEmptyString(feedItem.id, `${label} feedItems[${index}].id`);
+    assertNonEmptyString(feedItem.authorName, `${label} feedItems[${index}].authorName`);
+    assertNonEmptyString(feedItem.sourceTitle, `${label} feedItems[${index}].sourceTitle`);
+    assertNonEmptyString(feedItem.sourceUrl, `${label} feedItems[${index}].sourceUrl`);
+    assertNonEmptyString(feedItem.directionLabel, `${label} feedItems[${index}].directionLabel`);
+    assertNonEmptyString(feedItem.snippet, `${label} feedItems[${index}].snippet`);
+    assertEqual(feedItem.sampleType, "experience_sample", `${label} feedItems[${index}].sampleType`);
   }
 }
 

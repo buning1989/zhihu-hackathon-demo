@@ -7,7 +7,7 @@
     "dev": "npm run build && node dist/server.js",
     "build": "tsc",
     "start": "node dist/server.js",
-    "smoke": "npm run build && node dist/tests/smoke.test.js"
+    "smoke": "npm run build && AGENT_TASK_STORE=memory node dist/tests/smoke.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

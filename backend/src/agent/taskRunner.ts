@@ -1,6 +1,7 @@
 import { assertDemoSearchGrounding } from "../guards/demoEvidence.guard.js";
 import { createMockDemoSearchResponse } from "../mocks/demoSearch.mock.js";
 import { selectQualitySearchItems } from "../services/demoCandidateQuality.service.js";
+import { projectDemoFeedResponse } from "../services/demoFeed.service.js";
 import { composeRealDemoSearchResponse } from "../services/demoRealComposer.service.js";
 import { searchService } from "../services/search.service.js";
 import type { SearchItem, SearchMatchedQuery } from "../types/api.types.js";
@@ -248,9 +249,10 @@ export class AgentTaskRunner {
         notes: ["agent task explicit mock mode"]
       }
     );
+    projectDemoFeedResponse(result, { hidePaths: true });
     this.finishStage(taskId, "partial_compose", "succeeded", {
       outputSummary: {
-        pathCount: result.paths.length,
+        feedItemCount: result.feedItems?.length ?? 0,
         peopleCount: result.people.length
       }
     });
@@ -602,9 +604,10 @@ export class AgentTaskRunner {
     };
 
     assertDemoSearchGrounding(result);
+    projectDemoFeedResponse(result, { hidePaths: true });
     this.finishStage(taskId, "partial_compose", "succeeded", {
       outputSummary: {
-        pathCount: result.paths.length,
+        feedItemCount: result.feedItems?.length ?? 0,
         peopleCount: result.people.length,
         sourceRefCount: result.meta.sourceRefs.length
       }
@@ -669,7 +672,9 @@ export class AgentTaskRunner {
     });
 
     const enhancedResult = isDemoSearchResponse(partialResult)
-      ? applyAgentEvidenceExtractResult(partialResult, extraction)
+      ? projectDemoFeedResponse(applyAgentEvidenceExtractResult(partialResult, extraction), {
+          hidePaths: true
+        })
       : partialResult;
 
     this.store.setFinalResult(taskId, enhancedResult);
@@ -749,6 +754,7 @@ export class AgentTaskRunner {
       });
 
       const enhancedResult = applyAgentExperienceSummaryResult(currentResult, summary);
+      projectDemoFeedResponse(enhancedResult, { hidePaths: true });
       this.store.setFinalResult(taskId, enhancedResult);
       this.finishStage(taskId, "experience_summary", summary.status, {
         provider: summary.provider,

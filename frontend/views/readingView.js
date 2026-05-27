@@ -39,7 +39,7 @@
         <div class="article-evidence quote">${escapeHtml(evidenceText)}</div>
         <article class="article-body">${articleBody}</article>
         <section class="reading-actions legacy-reading-actions" aria-label="来源操作">
-          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已留下" : "留下样本"}</button>
+          <button class="btn-text ${saved ? "is-active" : ""}" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已收藏" : "收藏样本"}</button>
           ${chatOrSourceAction}
           <form class="fixed-note-form" data-form="note" data-person-id="${escapeAttribute(person.id)}">
             <label class="sr-only" for="note-${escapeAttribute(person.id)}">给这条内容写一句备注</label>

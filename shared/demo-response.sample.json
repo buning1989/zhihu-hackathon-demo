@@ -1,129 +1,18 @@
 {
-  "sample_name": "frontend-ai-persona-search-reference",
-  "contract_version": "0.2.0",
+  "sample_name": "frontend-experience-feed-reference",
+  "contract_version": "0.3.0",
   "main_interface": "POST /api/demo/search",
-  "legacy_interface": "GET /api/search?query=不工作了能去哪儿&count=1",
-  "implementation_status": "contract-ready-development-pending",
   "notes": [
-    "people[] is the primary data source for person/sample cards.",
-    "people[].aiPersona is the AI persona entry point.",
-    "top-level personas[] is optional and omitted by default in main responses; derive it from people[].aiPersona when absent.",
-    "sections[] is optional and omitted by default in main responses; render from analysis, paths, people, and derived personas when absent.",
-    "AI is not a fact source; persona answers must be grounded in public content and evidence.",
-    "contextUsed only exposes login/profile signal usage and never returns OAuth tokens, cookies, raw userInfo, or grounding evidence.",
-    "fitReason is optional and must stay grounded in the user question, safe basic profile signals, and matched Zhihu content.",
-    "paths should be differentiated life paths with summary, whyRelevant, tradeoff, diversityKey, and sourceRefs.",
-    "people[].oneLine is only the card hook; people[].lesson is only a caution/risk reminder and should not be merged into experienceSummary.",
-    "people[].experienceSummary is the primary author/sample experience summary and should be displayed only when source=llm and status=ready.",
-    "Debug fallbackSummary may exist for troubleshooting, but it is not a frontend primary display field.",
-    "Without Zhihu API keys or LLM keys, mock/stub responses must still keep the full shape.",
-    "When clarificationAnswers is present, POST /api/demo/search returns the full result-page shape and includes debug.clarificationContext."
+    "Main result rendering is based on feedItems[] and people[].",
+    "paths[] is kept as an empty compatibility field in public responses and must not be used for navigation.",
+    "top-level personas[] and sections[] are omitted by default; derive optional persona entry points from people[].aiPersona.",
+    "Only experience_sample items enter the main feed.",
+    "Every feed item keeps sourceUrl, sourceRefs and evidenceIds so AI is never treated as a fact source."
   ],
-  "field_levels": {
-    "P0_required": [
-      "schemaVersion",
-      "queryId",
-      "query",
-      "dataMode",
-      "contextUsed",
-      "features",
-      "analysis.steps",
-      "analysis.focusTags",
-      "paths",
-      "people",
-      "people[].experienceSummary",
-      "people[].articles",
-      "people[].match",
-      "people[].aiPersona"
-    ],
-    "P0_5_recommended": [
-      "POST /api/personas/chat",
-      "debug",
-      "persona grounded mock answer"
-    ],
-    "P1_future": [
-      "server-side save sample",
-      "saved sample list",
-      "complete multi-turn grounded QA",
-      "multi-article person aggregation",
-      "full article body reader"
-    ]
-  },
-  "clarified_intent_search_plan_response": {
-    "intent": "relationship_career_tradeoff",
-    "intentSummary": "用户正在权衡为了追求想做的工作而进入长期异地恋是否值得，希望参考真实经历，而不是获得单一建议。",
-    "focusTags": [
-      "事业选择与亲密关系冲突",
-      "长期异地恋的现实成本",
-      "坚持或分开的真实经历"
-    ],
-    "searchPlan": {
-      "coreQueries": [
-        "异地恋 工作",
-        "为了工作 异地恋",
-        "职业发展 异地恋"
-      ],
-      "expandedQueries": [
-        "异地恋 分手 后悔",
-        "异地恋 坚持下来",
-        "异地恋 职业选择"
-      ],
-      "exploratoryQueries": [
-        "为了事业选择异地恋",
-        "异地恋和职业发展如何平衡"
-      ],
-      "rankingSignals": [
-        "真实经历",
-        "长期异地",
-        "坚持下来",
-        "最后分开",
-        "后悔",
-        "不后悔",
-        "事业选择",
-        "关系稳定性",
-        "分手复盘"
-      ],
-      "negativeHints": [
-        "不要优先使用纯鸡汤内容",
-        "不要优先使用恋爱技巧泛泛建议",
-        "不要优先使用没有个人经历的空泛观点"
-      ],
-      "expectedEvidenceTypes": [
-        "亲身经历",
-        "分手复盘",
-        "异地坚持经验",
-        "职业选择后悔或不后悔的回答",
-        "关系与人生选择的长文讨论"
-      ]
-    },
-    "debug": {
-      "stage": "intent_expand",
-      "llmUsed": false,
-      "provider": "deepseek",
-      "model": "deepseek-v4-flash",
-      "fallbackReason": "DeepSeek not configured; deterministic search plan fallback used",
-      "objectiveSlots": {
-        "age": "35岁",
-        "industry": "互联网",
-        "companyType": "大厂",
-        "role": null,
-        "city": null,
-        "status": "裸辞",
-        "direction": "创业",
-        "constraint": null
-      },
-      "missingSlots": ["role", "constraint"],
-      "queryPlan": {
-        "primary": ["35岁 大厂 裸辞", "互联网大厂 裸辞 创业", "大厂 裸辞 创业"],
-        "secondary": ["35岁 裸辞 创业", "互联网 裸辞 创业"],
-        "fallback": ["裸辞 创业 后悔", "大厂裸辞 复盘"]
-      }
-    }
-  },
   "demo_search_success_response": {
-    "schemaVersion": "2026-05-13.ai-persona-v1",
-    "queryId": "query_demo_20260513_001",
-    "query": "不工作了之后，我想去新西兰生活",
+    "schemaVersion": "demo.v1",
+    "queryId": "query_demo_feed_001",
+    "query": "不工作了能去哪儿",
     "dataMode": "mock",
     "contextUsed": {
       "provider": "zhihu",
@@ -139,679 +28,163 @@
       "articleBody": false,
       "sourceEvidenceRequired": true
     },
-    "clarifyingCard": {
-      "show": true,
-      "title": "补充一点背景，帮你找到更像你的人",
-      "description": "我们不会直接替你判断，只是用这些信息去匹配相似处境下的真实经历。",
-      "questions": [
-        {
-          "id": "currentStatus",
-          "slot": "currentStatus",
-          "label": "你和当前路径的事实关系是哪类？",
-          "question": "你和当前路径的事实关系是哪类？",
-          "type": "single_select",
-          "required": true,
-          "selectedReason": "当前事实状态能匹配相似处境下离开、暂停或转向的人",
-          "queryTokens": ["在职", "离职", "裸辞", "已开始"],
-          "score": 0.86,
-          "options": [
-            {
-              "id": "currentStatus_1",
-              "label": "在职",
-              "queryTokens": ["在职"]
-            },
-            {
-              "id": "currentStatus_2",
-              "label": "已离职 / 裸辞",
-              "queryTokens": ["离职", "裸辞"]
-            }
-          ]
-        }
-      ],
-      "primaryActionText": "用这些信息重新匹配",
-      "skipActionText": "先跳过"
-    },
-    "clarificationStage": {
-      "needClarification": true,
-      "ambiguityLevel": "high",
-      "llmUsed": false,
-      "fallbackReason": "deterministic planner used for non-real data mode"
-    },
     "analysis": {
-      "steps": [
-        {
-          "title": "读取问题",
-          "text": "你在问离开工作轨道后，能不能用去新西兰生活作为新的起点。"
-        },
-        {
-          "title": "识别核心变量",
-          "text": "问题里同时包含暂停工作、地点迁移、现金流、身份周期和回流代价。"
-        },
-        {
-          "title": "拆成几种路径",
-          "text": "先比较回流、小城市生活和自由职业过渡三类公开经验。"
-        },
-        {
-          "title": "绑定公开证据",
-          "text": "每个样本都保留知乎原文入口和 evidence，AI 分身只基于这些内容回答。"
-        }
-      ],
-      "focusTags": ["暂停工作", "新西兰", "现金流", "工作边界", "回流代价"],
-      "summary": "这个问题不只是去哪里，更像是在确认离开工作结构之后如何重新建立生活秩序。",
-      "openQuestions": [
-        "你更想短暂停靠，还是长期迁移？",
-        "你最担心现金流、身份签证，还是回来以后怎么重新工作？"
-      ]
+      "summary": "围绕「不工作了能去哪儿」，已整理出 2 条可追溯真实经历样本。",
+      "intent": "work_pause_path_exploration",
+      "focusTags": ["不工作", "现金流", "生活节奏"],
+      "steps": []
     },
-    "paths": [
+    "feedItems": [
       {
-        "id": "return-home",
-        "title": "有人去了远方，又回头重建工作边界",
-        "summary": "这条路把远方当成暂停键，先解决从高压工作里撤出来的问题，同时把现金流和回流节奏摆到台面上。",
-        "whyRelevant": "它回应的是用户想离开工作结构、去别处生活的困惑：地点能提供距离，但不能自动解决工作边界。",
-        "tradeoff": "代价是收入、身份周期和重新找工作的节奏会变得更具体，公开内容也只支撑这段经历片段。",
-        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照工作边界和回流成本，判断仍以来源片段为准。",
-        "diversityKey": "回流成本",
-        "stance": "experience",
-        "personRefs": ["person_return_home"],
-        "evidenceIds": ["ev_return_home_place", "ev_return_home_cashflow"],
-        "sourceRefs": ["source_mock_return_home"]
-      },
-      {
-        "id": "small-city",
-        "title": "有人换到低成本城市，先把日常排稳",
-        "summary": "这条路不是彻底不工作，而是用更低的房租、通勤和生活压力换回判断时间。",
-        "whyRelevant": "它回应的是“不工作之后能去哪儿”的落脚问题：先找一个能活下来的生活半径，再谈长期方向。",
-        "tradeoff": "限制是机会密度和社交支持可能下降，低成本地点不能自动带来新的职业秩序。",
-        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照生活成本和停靠地点，判断仍以来源片段为准。",
-        "diversityKey": "低成本停靠",
-        "stance": "mixed",
-        "personRefs": ["person_small_city"],
-        "evidenceIds": ["ev_small_city_cost"],
-        "sourceRefs": ["source_mock_small_city"]
-      },
-      {
-        "id": "freelance-transition",
-        "title": "有人把工作搬出公司，用接单换自主时间",
-        "summary": "这条路不是简单不上班，而是把公司里的工作换成接单、写作、咨询或远程协作。",
-        "whyRelevant": "它回应的是不想继续被组织消耗、但仍需要收入来源的矛盾。",
-        "tradeoff": "代价是收入波动、自我管理和获客压力会被放大，自由本身不等于稳定。",
-        "fitReason": "结合你的问题，这条路径只说明公开内容可用来对照现金流和自我管理压力，判断仍以来源片段为准。",
-        "diversityKey": "自由职业过渡",
-        "stance": "mixed",
-        "personRefs": ["person_freelance"],
-        "evidenceIds": ["ev_freelance_income"],
-        "sourceRefs": ["source_mock_freelance"]
+        "id": "feed_person_city_pause",
+        "personId": "person_city_pause",
+        "authorName": "城市停靠样本",
+        "authorAvatar": "",
+        "sourceTitle": "关于「不工作了能去哪儿」的公开回答样本",
+        "sourcePlatform": "知乎回答样本",
+        "sourceUrl": "https://www.zhihu.com/question/mock/answer/1",
+        "directionLabel": "生活节奏",
+        "snippet": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+        "summaryText": "### 这个样本讲了什么\n公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。\n\n### 这个人的关键选择或变化\n样本把休整、现金流和回撤条件放在同一张表里判断。\n\n### 对当前问题有什么参考价值\n它只能作为可回到原文核对的对照样本，不代表作者完整人生。",
+        "summaryPayload": {
+          "whatHappened": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+          "keyChoiceOrChange": "样本把休整、现金流和回撤条件放在同一张表里判断。",
+          "referenceValue": "它只能作为可回到原文核对的对照样本，不代表作者完整人生。",
+          "markdown": "### 这个样本讲了什么\n公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。\n\n### 这个人的关键选择或变化\n样本把休整、现金流和回撤条件放在同一张表里判断。\n\n### 对当前问题有什么参考价值\n它只能作为可回到原文核对的对照样本，不代表作者完整人生。"
+        },
+        "sampleType": "experience_sample",
+        "evidenceIds": ["ev_city_daily"],
+        "sourceRefs": ["source_mock_city_walk"],
+        "saveSampleId": "person_city_pause"
       }
     ],
+    "paths": [],
     "people": [
       {
-        "id": "person_return_home",
-        "name": "阿禾",
-        "pathId": "return-home",
-        "role": "前互联网运营",
-        "badge": "离开工作轨道后短暂停靠",
-        "avatar": "https://picx.zhimg.com/mock-avatar-a.jpg",
-        "oneLine": "她把去远方当作暂停键，后来发现真正要处理的是工作边界。",
-        "experienceSummary": "这个样本里，作者曾把去远方当作从高压工作里撤出的暂停键；真正停下来后，TA 发现地点只能提供距离，后续仍要面对现金流、回流节奏和重新设定工作边界。",
-        "experienceSummarySource": "llm",
-        "experienceSummaryStatus": "ready",
-        "experienceSummaryConfidence": 0.86,
-        "fitReason": "结合你的问题和基础资料里的非敏感线索，这个样本只说明公开回答可用来对照现金流和工作边界，判断仍以来源片段为准。",
-        "who": "基于知乎公开回答整理出的前人样本：曾在高压工作后离开原来的城市，尝试用一段远距离生活恢复节奏。",
-        "overlaps": [
-          "都在不想继续当前工作的状态下考虑去远方",
-          "都不确定这是长期迁移还是一次暂停",
-          "都需要先判断现金流和回流成本"
-        ],
-        "timeline": [
-          {
-            "date": "公开回答片段",
-            "event": "离开高压工作后，先把生活节奏降下来。"
-          },
-          {
-            "date": "后续复盘片段",
-            "event": "意识到地点只能提供距离，不能自动修复职业倦怠。"
-          }
-        ],
-        "lesson": "地点可以给人喘息，但真正要重建的是工作边界和现金流安全感。",
-        "articles": [
-          {
-            "id": "article_return_home_001",
-            "title": "裸辞之后去远方，后来我还是回来了",
-            "text": "那段时间我以为换一个地方就能解决问题，真正停下来后才发现，问题不是城市，而是我一直没有给工作设边界。",
-            "url": "https://www.zhihu.com/question/mock/answer/return-home",
-            "author": "阿禾",
-            "avatar": "https://picx.zhimg.com/mock-avatar-a.jpg",
-            "sourceName": "知乎回答",
-            "sourceUrl": "https://www.zhihu.com/question/mock/answer/return-home",
-            "publishedAt": "2026-05-13",
-            "summary": "这条回答复盘了离开工作、去远方停靠、再重新判断工作边界的过程。",
-            "evidence": [
-              {
-                "label": "地点不是答案",
-                "text": "换一个地方能让我暂时离开压力，但不能自动解决我和工作的关系。",
-                "sourceUrl": "https://www.zhihu.com/question/mock/answer/return-home"
-              },
-              {
-                "label": "回流成本",
-                "text": "回来以后最现实的问题还是现金流和重新找工作的节奏。",
-                "sourceUrl": "https://www.zhihu.com/question/mock/answer/return-home"
-              }
-            ],
-            "body": []
-          }
-        ],
-        "match": {
-          "score": 0.88,
-          "level": "high",
-          "reasons": [
-            "都把远方生活当作离开工作压力的一种可能",
-            "公开内容同时提到了地点、现金流和回流节奏",
-            "这条样本适合回答去之前要先确认什么"
-          ],
-          "matchedVariables": ["暂停工作", "远方生活", "现金流", "工作边界"],
-          "riskNotes": [
-            "公开内容不足以代表作者完整人生",
-            "该样本不能代表所有去新西兰或海外生活的结果"
-          ],
-          "contentRelevance": 0.92,
-          "experienceSimilarity": 0.84,
-          "evidenceQuality": 0.8,
-          "personaReadiness": 0.78
+        "id": "person_city_pause",
+        "name": "城市停靠样本",
+        "sampleType": "experience_sample",
+        "pathId": "path_internal_city_pause",
+        "directionLabel": "生活节奏",
+        "sourceTitle": "关于「不工作了能去哪儿」的公开回答样本",
+        "sourcePlatform": "知乎回答样本",
+        "sourceUrl": "https://www.zhihu.com/question/mock/answer/1",
+        "snippet": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+        "summaryText": "### 这个样本讲了什么\n公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。\n\n### 这个人的关键选择或变化\n样本把休整、现金流和回撤条件放在同一张表里判断。\n\n### 对当前问题有什么参考价值\n它只能作为可回到原文核对的对照样本，不代表作者完整人生。",
+        "summaryPayload": {
+          "whatHappened": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+          "keyChoiceOrChange": "样本把休整、现金流和回撤条件放在同一张表里判断。",
+          "referenceValue": "它只能作为可回到原文核对的对照样本，不代表作者完整人生。",
+          "markdown": "### 这个样本讲了什么\n公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。\n\n### 这个人的关键选择或变化\n样本把休整、现金流和回撤条件放在同一张表里判断。\n\n### 对当前问题有什么参考价值\n它只能作为可回到原文核对的对照样本，不代表作者完整人生。"
         },
-        "aiPersona": {
-          "enabled": true,
-          "personaId": "persona_person_return_home",
-          "displayName": "阿禾的经验分身",
-          "label": "基于公开内容生成",
-          "openingLine": "你可以问我：当时为什么想离开，以及后来为什么觉得地点不是全部答案。",
-          "suggestedQuestions": [
-            "你当时最担心什么？",
-            "去之前应该先准备多少钱？",
-            "后来为什么决定回来？",
-            "如果重来一次，你会先确认什么？"
-          ],
-          "boundary": "这是基于知乎公开内容生成的经验回应，不代表作者本人。",
-          "grounding": {
-            "personId": "person_return_home",
-            "articleIds": ["article_return_home_001"],
-            "evidenceRequired": true
-          }
-        }
-      },
-      {
-        "id": "person_small_city",
-        "name": "陈岚",
-        "pathId": "small-city",
-        "role": "远程产品经理",
-        "badge": "从一线城市搬到低成本城市",
-        "avatar": "https://picx.zhimg.com/mock-avatar-b.jpg",
-        "oneLine": "她没有彻底不上班，而是先把城市成本和工作强度都降下来。",
-        "experienceSummary": "这段经历显示，作者没有把离开一线城市等同于彻底不上班，而是先搬到低成本城市、保留远程收入；TA 的转折在于用更低固定开支换取调整空间。",
-        "experienceSummarySource": "llm",
-        "experienceSummaryStatus": "ready",
-        "experienceSummaryConfidence": 0.82,
-        "who": "基于知乎公开回答整理出的前人样本：在职业疲惫期选择搬到生活成本更低的城市，同时保留远程工作收入。",
-        "overlaps": [
-          "都想离开原来的工作和城市节奏",
-          "都关心不工作或少工作时现金流能撑多久",
-          "都需要比较逃离和重建的区别"
-        ],
-        "timeline": [
-          {
-            "date": "公开回答片段",
-            "event": "先把房租和通勤压力降下来。"
-          },
-          {
-            "date": "后续复盘片段",
-            "event": "发现低成本城市可以延长试错期，但不能替代收入计划。"
-          }
-        ],
-        "lesson": "先降低生活成本，可能比直接彻底离开工作更可控。",
+        "role": "基于公开回答整理的真实经历样本",
+        "badge": "生活节奏",
+        "avatar": "",
+        "oneLine": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+        "experienceSummary": null,
+        "experienceSummarySource": "none",
+        "experienceSummaryStatus": "pending",
+        "who": "基于知乎公开回答整理出的经历样本，不等同于作者完整人生。",
+        "overlaps": ["都涉及生活节奏这个选择变量"],
+        "timeline": [],
+        "lesson": "先回到来源片段核对，再判断能否迁移到自己的处境。",
         "articles": [
           {
-            "id": "article_small_city_001",
-            "title": "我从一线城市搬走后，真正改变的是现金流压力",
-            "text": "搬走不是为了证明自己不需要工作，而是为了让每个月的固定开支先降下来，这样我才有空间慢慢调整。",
-            "url": "https://www.zhihu.com/question/mock/answer/small-city",
-            "author": "陈岚",
-            "avatar": "https://picx.zhimg.com/mock-avatar-b.jpg",
-            "sourceName": "知乎回答",
-            "sourceUrl": "https://www.zhihu.com/question/mock/answer/small-city",
-            "publishedAt": "2026-05-13",
-            "summary": "这条回答强调用低成本城市换取更长的缓冲期，而不是把地点当成最终答案。",
+            "id": "article_city_pause",
+            "title": "关于「不工作了能去哪儿」的公开回答样本",
+            "text": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+            "url": "https://www.zhihu.com/question/mock/answer/1",
+            "author": "城市停靠样本",
+            "avatar": "",
+            "sourceName": "知乎回答样本",
+            "sourceUrl": "https://www.zhihu.com/question/mock/answer/1",
+            "summary": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
             "evidence": [
               {
-                "label": "降低成本",
-                "text": "每个月的固定开支先降下来，我才有空间慢慢调整。",
-                "sourceUrl": "https://www.zhihu.com/question/mock/answer/small-city"
-              },
-              {
-                "label": "保留收入",
-                "text": "我没有立刻切断工作收入，而是先把工作量和生活成本一起调低。",
-                "sourceUrl": "https://www.zhihu.com/question/mock/answer/small-city"
+                "id": "ev_city_daily",
+                "label": "来源片段",
+                "text": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+                "sourceRefId": "source_mock_city_walk",
+                "sourceUrl": "https://www.zhihu.com/question/mock/answer/1"
               }
             ],
-            "body": []
+            "body": [],
+            "sourceRefs": ["source_mock_city_walk"]
           }
         ],
         "match": {
-          "score": 0.81,
+          "score": 0.86,
           "level": "high",
-          "reasons": [
-            "都在寻找离开原有城市和工作强度的方式",
-            "公开内容对现金流缓冲有明确讨论",
-            "这条路径比直接长期迁移更适合先做低风险试验"
-          ],
-          "matchedVariables": ["低成本城市", "远程工作", "现金流", "试错期"],
-          "riskNotes": [
-            "该样本没有覆盖海外身份和签证问题",
-            "远程工作收入不是所有人都具备的前提"
-          ],
-          "contentRelevance": 0.84,
-          "experienceSimilarity": 0.76,
+          "reasons": ["当前问题和样本都涉及暂停工作后的生活节奏"],
+          "matchedVariables": ["生活节奏"],
+          "riskNotes": ["公开内容只能说明片段经验，不能代表作者完整人生或长期结果"],
+          "contentRelevance": 0.86,
+          "experienceSimilarity": 0.82,
           "evidenceQuality": 0.78,
-          "personaReadiness": 0.72
+          "personaReadiness": 0.72,
+          "evidenceIds": ["ev_city_daily"],
+          "sourceRefs": ["source_mock_city_walk"]
         },
         "aiPersona": {
           "enabled": true,
-          "personaId": "persona_person_small_city",
-          "displayName": "陈岚的经验分身",
+          "personaId": "persona_city_pause",
+          "displayName": "城市停靠样本的经验回声",
           "label": "基于公开内容生成",
-          "openingLine": "你可以问我：为什么我没有立刻彻底不上班，而是先降低城市成本。",
-          "suggestedQuestions": [
-            "搬去低成本城市前要算哪些账？",
-            "远程工作和休息怎么平衡？",
-            "这条路最大的风险是什么？"
-          ],
-          "boundary": "这是基于知乎公开内容生成的经验回应，不代表作者本人。",
+          "openingLine": "我只能沿着这段公开内容聊选择、代价和边界。",
+          "suggestedQuestions": ["这段公开内容里，最确定的信息是什么？"],
+          "boundary": "这个分身基于作者公开内容生成，只能作为阅读辅助，不代表作者本人实时回应。",
           "grounding": {
-            "personId": "person_small_city",
-            "articleIds": ["article_small_city_001"],
-            "evidenceRequired": true
+            "personId": "person_city_pause",
+            "articleIds": ["article_city_pause"],
+            "evidenceRequired": true,
+            "sourceRefs": ["source_mock_city_walk"]
           }
-        }
-      },
-      {
-        "id": "person_freelance",
-        "name": "林澈",
-        "pathId": "freelance-transition",
-        "role": "自由职业尝试者",
-        "badge": "裸辞后接项目过渡",
-        "avatar": "https://picx.zhimg.com/mock-avatar-c.jpg",
-        "oneLine": "他拿回了时间，也同时发现自由职业需要更强的自我管理。",
-        "experienceSummary": "这个样本里，作者离开固定工作后用项目收入过渡，确实拿回了时间，但代价是收入、节奏和获客都要自己负责；这和用户关心的不工作后如何维持生活直接相关。",
-        "experienceSummarySource": "llm",
-        "experienceSummaryStatus": "ready",
-        "experienceSummaryConfidence": 0.8,
-        "who": "基于知乎公开回答整理出的前人样本：从固定工作离开后，用项目制收入过渡，重点复盘了自由和不确定性的交换。",
-        "overlaps": [
-          "都想知道不上班之后还能靠什么维持生活",
-          "都需要评估自由和不稳定收入的交换",
-          "都关心离职后每天如何安排"
-        ],
-        "timeline": [
-          {
-            "date": "公开回答片段",
-            "event": "离职后先接熟人项目维持现金流。"
-          },
-          {
-            "date": "后续复盘片段",
-            "event": "发现自由职业最难的是持续获客和自我管理。"
-          }
-        ],
-        "lesson": "自由职业不是没有压力，而是把组织压力换成了获客和自律压力。",
-        "articles": [
-          {
-            "id": "article_freelance_001",
-            "title": "裸辞后自由职业一年，我学到的不是自由",
-            "text": "不上班之后，我确实拿回了时间，但也失去了组织给我的边界。收入、节奏和项目都要自己负责。",
-            "url": "https://www.zhihu.com/question/mock/answer/freelance",
-            "author": "林澈",
-            "avatar": "https://picx.zhimg.com/mock-avatar-c.jpg",
-            "sourceName": "知乎回答",
-            "sourceUrl": "https://www.zhihu.com/question/mock/answer/freelance",
-            "publishedAt": "2026-05-13",
-            "summary": "这条回答讨论了从固定工作转向自由职业后，时间自主和收入不稳定之间的交换。",
-            "evidence": [
-              {
-                "label": "时间自主",
-                "text": "我确实拿回了时间，但也失去了组织给我的边界。",
-                "sourceUrl": "https://www.zhihu.com/question/mock/answer/freelance"
-              },
-              {
-                "label": "收入不稳定",
-                "text": "收入、节奏和项目都要自己负责。",
-                "sourceUrl": "https://www.zhihu.com/question/mock/answer/freelance"
-              }
-            ],
-            "body": []
-          }
-        ],
-        "match": {
-          "score": 0.77,
-          "level": "medium",
-          "reasons": [
-            "都在评估离开固定工作后的收入来源",
-            "公开内容对时间边界和项目收入有直接证据",
-            "这条路径适合补充说明自由职业不是单纯休息"
-          ],
-          "matchedVariables": ["自由职业", "项目收入", "时间结构", "自我管理"],
-          "riskNotes": [
-            "该样本不能覆盖海外生活的地点变量",
-            "公开内容没有完整披露收入数字"
-          ],
-          "contentRelevance": 0.78,
-          "experienceSimilarity": 0.7,
-          "evidenceQuality": 0.74,
-          "personaReadiness": 0.68
         },
-        "aiPersona": {
-          "enabled": true,
-          "personaId": "persona_person_freelance",
-          "displayName": "林澈的经验分身",
-          "label": "基于公开内容生成",
-          "openingLine": "你可以问我：自由职业听起来轻松，为什么后来反而更考验边界感。",
-          "suggestedQuestions": [
-            "刚开始自由职业怎么找项目？",
-            "不上班之后每天怎么安排？",
-            "自由职业最大的坑是什么？"
-          ],
-          "boundary": "这是基于知乎公开内容生成的经验回应，不代表作者本人。",
-          "grounding": {
-            "personId": "person_freelance",
-            "articleIds": ["article_freelance_001"],
-            "evidenceRequired": true
-          }
-        }
+        "evidenceIds": ["ev_city_daily"],
+        "sourceRefs": ["source_mock_city_walk"]
       }
     ],
     "meta": {
-      "mode": "mock",
-      "generatedAt": "2026-05-13T00:00:00.000Z",
-      "traceId": "trace_demo_20260513_001",
-      "sourcePolicy": "AI is not a fact source. People cards and persona answers must be grounded in public content and evidence.",
-      "peopleCount": 3,
-      "pathCount": 3,
-      "llmEnabled": false,
-      "zhihuKeyPresent": false,
-      "latencyMs": 42
+      "sourceRefs": [
+        {
+          "id": "source_mock_city_walk",
+          "provider": "mock",
+          "type": "mock_answer",
+          "title": "关于「不工作了能去哪儿」的公开回答样本",
+          "url": "https://www.zhihu.com/question/mock/answer/1",
+          "author": "城市停靠样本",
+          "evidenceIds": ["ev_city_daily"]
+        }
+      ],
+      "evidenceCount": 1,
+      "generatedAt": "2026-05-27T00:00:00.000Z",
+      "latencyMs": 12,
+      "fallbackUsed": false
     },
     "debug": {
-      "stubbed": true,
+      "composer": "mock",
+      "originalQuery": "不工作了能去哪儿",
+      "normalizedQuery": "不工作了能去哪儿",
+      "requestedDataMode": "mock",
+      "resolvedDataMode": "mock",
+      "cacheHit": false,
+      "cacheKeyPreview": "mock:not-work",
+      "itemCount": 1,
+      "peopleCount": 1,
+      "personaCount": 1,
+      "llmComposerUsed": false,
+      "fallbackUsed": false,
+      "fallbackKind": "",
+      "fallbackReason": "",
+      "guardWarnings": [],
       "intentStage": {
         "mode": "rule",
         "llmUsed": false,
-        "fallbackReason": "mock mode uses query-aware deterministic analysis; no LLM intent planner invoked",
+        "fallbackReason": "mock mode uses query-aware deterministic analysis",
         "intentSource": "rule",
-        "focusTagsSource": "rule",
-        "objectiveSlots": {
-          "age": "35岁",
-          "industry": "互联网",
-          "companyType": "大厂",
-          "role": null,
-          "city": null,
-          "status": "裸辞",
-          "direction": "创业",
-          "constraint": null
-        },
-        "missingSlots": ["role", "constraint"],
-        "queryPlan": {
-          "primary": ["35岁 大厂 裸辞", "互联网大厂 裸辞 创业", "大厂 裸辞 创业"],
-          "secondary": ["35岁 裸辞 创业", "互联网 裸辞 创业"],
-          "fallback": ["裸辞 创业 后悔", "大厂裸辞 复盘"]
-        }
+        "focusTagsSource": "rule"
       },
-      "clarificationPlan": {
-        "intentCategory": "similarity_clarification_planner",
-        "knownFacts": [
-          {
-            "slot": "currentStatus",
-            "value": "不工作",
-            "evidence": "不工作了之后",
-            "confidence": 0.9,
-            "queryTokens": ["不工作"]
-          }
-        ],
-        "choiceFrame": {
-          "type": "find_similar_path",
-          "currentPath": null,
-          "targetOptions": ["新西兰"],
-          "avoidPath": null,
-          "action": "evaluate",
-          "queryTokens": ["新西兰"]
-        },
-        "missingSimilarityDimensions": [
-          {
-            "slot": "cityContext",
-            "reason": "城市和迁移事实会显著影响可对照经历",
-            "queryUtility": 0.9,
-            "similarityPower": 0.9
-          }
-        ],
-        "candidateQuestions": [
-          {
-            "slot": "cityContext",
-            "question": "当前和目标城市事实更接近哪类？",
-            "type": "single_choice",
-            "options": ["北京 / 上海", "一线 / 新一线", "县城 / 老家"],
-            "whyUseful": "城市层级和迁移方向会显著影响可对照经历",
-            "queryTokens": ["北京", "上海", "县城", "老家"],
-            "similarityPower": 0.9,
-            "queryUtility": 0.9,
-            "answerability": 0.9,
-            "riskFlags": []
-          }
-        ],
-        "rejectedQuestions": [
-          {
-            "slot": "currentStatus",
-            "question": "你和当前路径的事实关系是哪类？",
-            "reason": "duplicate_known_fact",
-            "queryTokens": ["在职", "离职", "裸辞"]
-          }
-        ],
-        "selectedQuestions": [
-          {
-            "slot": "cityContext",
-            "question": "当前和目标城市事实更接近哪类？",
-            "selectedReason": "城市层级和迁移方向会显著影响可对照经历",
-            "queryTokens": ["北京", "上海", "县城", "老家"],
-            "score": 0.88
-          }
-        ],
-        "scoringDetails": [
-          {
-            "slot": "cityContext",
-            "question": "当前和目标城市事实更接近哪类？",
-            "score": 0.88,
-            "selected": true
-          }
-        ],
-        "queryPlan": {
-          "primary": ["不工作 新西兰"],
-          "secondary": ["北京 上海 新西兰"],
-          "fallback": ["新西兰 复盘"]
-        }
-      },
-      "searchQueries": [
-        "不工作了 新西兰 生活 真实经历",
-        "裸辞 后 去远方 回来 复盘",
-        "不上班 自由职业 现金流 知乎"
-      ],
-      "search": {
-        "dataMode": "real",
-        "queriesUsed": [
-          "异地恋 工作 追求自己 真实经历",
-          "为了工作 长期异地恋 值得吗",
-          "异地恋 职业选择 后悔吗"
-        ],
-        "searchRounds": [
-          {
-            "query": "异地恋 工作 追求自己 真实经历",
-            "roundIndex": 1,
-            "success": true,
-            "rawResultCount": 3,
-            "isEmptyResult": false
-          },
-          {
-            "query": "为了工作 长期异地恋 值得吗",
-            "roundIndex": 2,
-            "success": true,
-            "rawResultCount": 2,
-            "isEmptyResult": false
-          },
-          {
-            "query": "异地恋 职业选择 后悔吗",
-            "roundIndex": 3,
-            "success": true,
-            "rawResultCount": 1,
-            "isEmptyResult": false
-          }
-        ],
-        "totalRawResults": 6,
-        "totalDedupedCandidates": 3,
-        "failedQueries": [],
-        "emptyQueries": [],
-        "degraded": false,
-        "candidates": [
-          {
-            "sourceId": "zhihu_answer_sample_001",
-            "title": "离开工作后的一段低成本休整",
-            "url": "https://www.zhihu.com/question/mock/answer/001",
-            "authorName": "阿禾",
-            "snippet": "这条公开回答讨论了离开工作结构后的方向感、收入和生活节奏问题。",
-            "text": "这条公开回答讨论了离开工作结构后的方向感、收入和生活节奏问题。",
-            "sourceType": "answer",
-            "queryUsed": "异地恋 工作 追求自己 真实经历",
-            "searchRound": 1
-          }
-        ]
-      },
-      "warnings": [
-        "Mock response only. Replace with real Zhihu search and deterministic composer in P0 implementation.",
-        "Persona chat is a grounded stub until a real LLM client is explicitly enabled."
-      ],
-      "candidateQuality": [
-        {
-          "candidateId": "zhihu_answer_sample_001",
-          "sourceRefId": "source_mock_city_walk",
-          "title": "离开工作后的一段低成本休整",
-          "relevanceScore": 0.88,
-          "qualityScore": 0.76,
-          "experienceSignalScore": 0.72,
-          "contentLength": 238,
-          "filterReason": "used_as_core_evidence: ranked_high: concrete experience, decision process, and outcome signals found",
-          "usedAsEvidence": true
-        },
-        {
-          "candidateId": "zhihu_answer_sample_002",
-          "title": "不工作以后应该怎么办",
-          "relevanceScore": 0.64,
-          "qualityScore": 0.24,
-          "experienceSignalScore": 0.08,
-          "contentLength": 18,
-          "filterReason": "downranked: contentLength=18 is too short for core evidence",
-          "usedAsEvidence": false
-        }
-      ],
-      "experienceSummaryDebug": [
-        {
-          "personId": "person_return_home",
-          "status": "ready",
-          "source": "llm",
-          "reason": "LLM generated a grounded experience-style summary",
-          "cacheHit": false,
-          "fallbackSummary": "她把去远方当作暂停键，后来发现真正要处理的是工作边界。"
-        },
-        {
-          "personId": "person_small_city",
-          "status": "ready",
-          "source": "llm",
-          "reason": "LLM generated a grounded experience-style summary",
-          "cacheHit": false,
-          "fallbackSummary": "她没有彻底不上班，而是先把城市成本和工作强度都降下来。"
-        }
-      ]
-    }
-  },
-  "persona_chat_success_response": {
-    "success": true,
-    "data": {
-      "messageId": "msg_demo_20260513_001",
-      "personaId": "persona_person_return_home",
-      "personId": "person_return_home",
-      "answer": "从公开内容看，TA 当时更像是先把自己从高压工作中撤出来，而不是已经完成长期迁移规划。可以先把这个问题拆成三件事：现金流能撑多久、离开后每天怎么安排、如果回来怎么重新进入工作节奏。",
-      "answerType": "grounded_summary",
-      "citedArticleIds": ["article_return_home_001"],
-      "evidence": [
-        {
-          "articleId": "article_return_home_001",
-          "text": "换一个地方能让我暂时离开压力，但不能自动解决我和工作的关系。",
-          "sourceUrl": "https://www.zhihu.com/question/mock/answer/return-home"
-        },
-        {
-          "articleId": "article_return_home_001",
-          "text": "回来以后最现实的问题还是现金流和重新找工作的节奏。",
-          "sourceUrl": "https://www.zhihu.com/question/mock/answer/return-home"
-        }
-      ],
-      "followupQuestions": [
-        "你想看 TA 去之前应该先算哪些账吗？",
-        "你想比较一下低成本城市路线吗？"
-      ],
-      "boundary": "这是基于知乎公开内容生成的经验回应，不代表作者本人。"
-    }
-  },
-  "legacy_get_search_success_response": {
-    "success": true,
-    "data": {
-      "query": "不工作了能去哪儿",
-      "count": 1,
-      "hasMore": false,
-      "searchHashId": "",
-      "items": [
-        {
-          "id": "zhihu_item_1",
-          "type": "answer",
-          "title": "裸辞以后可以去哪里",
-          "text": "一段来自知乎真实内容或 mock 内容的摘要。前端兼容层可以把它作为主文案，也可以作为证据句展示。",
-          "url": "https://www.zhihu.com/question/mock/answer/mock",
-          "author": {
-            "name": "知乎作者",
-            "avatar": "",
-            "badge": "",
-            "badgeText": ""
-          },
-          "stats": {
-            "commentCount": 0,
-            "voteUpCount": 0,
-            "rankingScore": 0
-          },
-          "comments": [],
-          "editTime": 0,
-          "authorityLevel": "",
-          "source": {
-            "provider": "zhihu",
-            "url": "https://www.zhihu.com/question/mock/answer/mock"
-          },
-          "evidence": {
-            "text": "一段来自知乎真实内容或 mock 内容的摘要。前端兼容层可以把它作为主文案，也可以作为证据句展示。",
-            "source": {
-              "provider": "zhihu",
-              "url": "https://www.zhihu.com/question/mock/answer/mock"
-            }
-          }
-        }
-      ]
-    }
-  },
-  "error_response_without_zhihu_key": {
-    "success": false,
-    "error": {
-      "code": "ZHIHU_AUTH_FAILED",
-      "message": "知乎 API 鉴权失败"
+      "notes": ["public result is projected to experience feed; path navigation fields are hidden"]
     }
   }
 }

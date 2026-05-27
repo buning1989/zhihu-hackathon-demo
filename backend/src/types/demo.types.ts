@@ -141,6 +141,7 @@ export interface DemoSearchResponse {
   contextUsed?: DemoContextUsed;
   features: DemoFeatures;
   analysis: DemoAnalysis;
+  feedItems?: DemoFeedItem[];
   paths: DemoPath[];
   people: DemoPerson[];
   personas?: DemoPersona[];
@@ -199,6 +200,31 @@ export interface DemoPath {
   sourceRefs: string[];
 }
 
+export interface DemoFeedSummaryPayload {
+  whatHappened: string;
+  keyChoiceOrChange: string;
+  referenceValue: string;
+  markdown: string;
+}
+
+export interface DemoFeedItem {
+  id: string;
+  personId: string;
+  authorName: string;
+  authorAvatar: string;
+  sourceTitle: string;
+  sourcePlatform: string;
+  sourceUrl: string;
+  directionLabel: string;
+  snippet: string;
+  summaryText: string | null;
+  summaryPayload: DemoFeedSummaryPayload;
+  sampleType: "experience_sample";
+  evidenceIds: string[];
+  sourceRefs: string[];
+  saveSampleId: string;
+}
+
 export interface DemoPerson {
   id: string;
   name: string;
@@ -212,6 +238,14 @@ export interface DemoPerson {
   canChat?: boolean;
   displayLabel?: string;
   displayTradeoff?: string;
+  directionLabel?: string;
+  sourceTitle?: string;
+  sourcePlatform?: string;
+  sourceUrl?: string;
+  snippet?: string;
+  summaryText?: string | null;
+  summaryPayload?: DemoFeedSummaryPayload;
+  saveSampleId?: string;
   avatar: string;
   oneLine: string;
   experienceSummary: string | null;

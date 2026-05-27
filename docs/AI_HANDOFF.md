@@ -1,5 +1,21 @@
 # AI Handoff
 
+## 2026-05-27 - Experience feed output and path navigation slimming
+
+本轮目标：前台结果页从 path 分类导航收敛为真实经历 Feed，后端公开输出不再提供 path list、path count、重复 path 标题或 viewpoint path 给前端导航。
+
+已完成：
+
+- `/api/demo/search` 和 Agent Task 结果新增 `feedItems[]` 主列表，每个 item 绑定 `sourceUrl / sourceRefs / evidenceIds / saveSampleId`，且只允许 `experience_sample` 进入主 Feed。
+- 公开响应保留 `paths: []` 作为兼容空字段，删除公开 debug 中的 `pathCount / pathSource / pathDuplicateFound / pathDiversityCheck / enhancedPathCount`。
+- `people[]` 同步补齐 `directionLabel / sourceTitle / sourcePlatform / sourceUrl / snippet / summaryPayload / saveSampleId`，前端可直接渲染卡片。
+- Agent Task 仍保留 retrieve、定向补搜、candidate quality、experience_sample 准入、evidence_extract 和 experience_summary；只在写入 partial/final 前投影为 Feed 输出。
+- 前端结果页直接渲染经历样本卡，不再加载 `pathModule.js`，frontend smoke 会检查没有 path nav/module 回退。
+
+验证记录：
+
+- `npm run build -w backend` 通过。
+
 ## 2026-05-26 - Zhihu search replay fixtures and API budget guardrails
 
 本轮目标：降低知乎真实搜索 API 消耗，让本地 smoke/eval 默认通过 fixture 回放跑通。

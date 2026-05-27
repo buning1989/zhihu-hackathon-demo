@@ -43,7 +43,7 @@
       source: {
         title: "知乎回答节选：我怎样从高压岗位里慢慢退一步",
         evidence: "来源片段提到她先记录每天最消耗的场景，再和主管确认交付边界。",
-        url: "#"
+        url: "https://www.zhihu.com/question/mock/answer/person-ahe"
       },
       article: {
         title: "从高压岗位里慢慢退一步",
@@ -75,7 +75,7 @@
       source: {
         title: "知乎回答节选：决定离职前，我先让自己停下来",
         evidence: "来源片段写到短休、转组沟通和重新评估岗位消耗。",
-        url: "#"
+        url: "https://www.zhihu.com/question/mock/answer/person-chengye"
       },
       article: {
         title: "决定离职前，我先让自己停下来",
@@ -107,7 +107,7 @@
       source: {
         title: "知乎回答节选：在小城住 90 天后，我知道自己要什么",
         evidence: "来源片段包含 90 天预算、远程工作节奏和回到大城市后的对比。",
-        url: "#"
+        url: "https://www.zhihu.com/question/mock/answer/person-linbai"
       },
       article: {
         title: "在小城住 90 天后，我知道自己要什么",
@@ -139,7 +139,7 @@
       source: {
         title: "知乎回答节选：我试住过三个城市，才知道自己不是想逃",
         evidence: "来源片段记录三个城市分别承担的验证目标。",
-        url: "#"
+        url: "https://www.zhihu.com/question/mock/answer/person-xiaolu"
       },
       article: {
         title: "我试住过三个城市，才知道自己不是想逃",
@@ -171,7 +171,7 @@
       source: {
         title: "知乎回答节选：转行前，我先做了六个小作品",
         evidence: "来源片段提到公开作品、反馈记录和低风险试错。",
-        url: "#"
+        url: "https://www.zhihu.com/question/mock/answer/person-muyan"
       },
       article: {
         title: "转行前，我先做了六个小作品",
@@ -203,7 +203,7 @@
       source: {
         title: "知乎回答节选：我靠记录关系和机会，慢慢换了一条路",
         evidence: "来源片段包含请教记录、合作尝试和机会复盘。",
-        url: "#"
+        url: "https://www.zhihu.com/question/mock/answer/person-qingzhou"
       },
       article: {
         title: "我靠记录关系和机会，慢慢换了一条路",

@@ -168,6 +168,7 @@ async function evaluateQuery(baseUrl, query, dataMode) {
     summaryDurationMs: null,
     evidenceSamples: 0,
     experienceSummaries: 0,
+    feedItems: 0,
     paths: 0,
     people: 0,
     pathMismatchCount: 0,
@@ -248,8 +249,10 @@ async function evaluateQuery(baseUrl, query, dataMode) {
   if (result && typeof result === "object") {
     const meta = result.meta && typeof result.meta === "object" ? result.meta : {};
     const people = Array.isArray(result.people) ? result.people : [];
+    const feedItems = Array.isArray(result.feedItems) ? result.feedItems : [];
     record.demoFallback = result.dataMode === "mock";
     const paths = Array.isArray(result.paths) ? result.paths : [];
+    record.feedItems = feedItems.length;
     record.paths = paths.length;
     record.people = people.length;
     record.peopleTypeDistribution = countValues(
@@ -367,7 +370,7 @@ function summarize(results) {
   return {
     total: results.length,
     created: results.filter((item) => item.created).length,
-    partialDisplayable: results.filter((item) => item.paths > 0 && item.people > 0).length,
+    partialDisplayable: results.filter((item) => item.feedItems > 0 && item.people > 0).length,
     candidateSelectFailed: results.filter((item) => item.candidateSelectStatus === "failed").length,
     evidenceSucceeded: results.filter((item) => item.evidenceStatus === "succeeded").length,
     summarySucceeded: results.filter((item) => item.summaryStatus === "succeeded").length,
@@ -399,6 +402,10 @@ function inspectResultQuality(query, result) {
   let templatePathCount = 0;
 
   const paths = Array.isArray(result.paths) ? result.paths : [];
+  if (paths.length > 0) {
+    unsupportedPathCount += paths.length;
+    qualityIssues.push(`pathLeak: public result exposed ${paths.length} paths`);
+  }
   for (const path of paths) {
     const titleText = [path?.title, path?.displayLabel].filter(Boolean).join(" ");
     const fullPathText = [path?.title, path?.summary, path?.displayLabel].filter(Boolean).join(" ");
@@ -428,6 +435,7 @@ function inspectResultQuality(query, result) {
   let weakCandidateCount = 0;
   let opinionAsExperienceCount = 0;
   let marketingSuspectCount = 0;
+  let nonExperienceFeedCount = 0;
   for (const person of people) {
     const article = Array.isArray(person?.articles) ? person.articles[0] : undefined;
     const sourceRefs = Array.isArray(person?.sourceRefs) ? person.sourceRefs : [];
@@ -446,6 +454,11 @@ function inspectResultQuality(query, result) {
       MARKETING_MARKERS.some((marker) => sourceText.includes(marker)) ||
       /带过[几数百千\d]+人|培训辅导|付费咨询|预约咨询/.test(sourceText);
     const firstPersonLike = /我|本人|我的|我们|当时|后来|决定|选择|结果|后悔/.test(sourceText);
+
+    if (person?.sampleType !== "experience_sample") {
+      nonExperienceFeedCount += 1;
+      qualityIssues.push(`nonExperienceInFeed: ${article?.title || person?.id || "unknown person"}`);
+    }
 
     if (!sourceSupportsCandidate || matchScore < 0.48) {
       weakCandidateCount += 1;
@@ -468,7 +481,8 @@ function inspectResultQuality(query, result) {
     weakCandidateCount,
     opinionAsExperienceCount,
     marketingSuspectCount,
-    peopleIssueCount: weakCandidateCount + opinionAsExperienceCount + marketingSuspectCount,
+    peopleIssueCount:
+      weakCandidateCount + opinionAsExperienceCount + marketingSuspectCount + nonExperienceFeedCount,
     unsupportedPathCount,
     templatePathCount,
     qualityIssues
@@ -626,11 +640,11 @@ function buildMarkdownReport(report, outputPath, reviewPath) {
     `supplementalSearch: triggered=${report.summary.supplementalTriggered}/${report.summary.total}, queries=${report.summary.supplementalQueryCount}, candidates=${report.summary.supplementalCandidateCount}`
   );
   lines.push("");
-  lines.push("| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | paths | people |补搜| mismatch | weak | opinionAsExp | marketing | unsupported | template |");
-  lines.push("|---|---:|---:|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  lines.push("| Query | partial | final | candidate_select | evidence | evidence ms | summary | summary ms | feed | paths | people |补搜| mismatch | weak | opinionAsExp | marketing | unsupported | template |");
+  lines.push("|---|---:|---:|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const item of report.results) {
     lines.push(
-      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.paths} | ${item.people} | ${item.supplementalTriggered ? `${item.supplementalQueryCount}/${item.supplementalCandidateCount}` : "-"} | ${item.pathMismatchCount} | ${item.weakCandidateCount} | ${item.opinionAsExperienceCount} | ${item.marketingSuspectCount} | ${item.unsupportedPathCount} | ${item.templatePathCount} |`
+      `| ${escapeCell(item.query)} | ${formatMs(item.partialMs)} | ${formatMs(item.finalMs)} | ${item.candidateSelectStatus} | ${item.evidenceStatus} | ${formatMs(item.evidenceDurationMs)} | ${item.summaryStatus} | ${formatMs(item.summaryDurationMs)} | ${item.feedItems} | ${item.paths} | ${item.people} | ${item.supplementalTriggered ? `${item.supplementalQueryCount}/${item.supplementalCandidateCount}` : "-"} | ${item.pathMismatchCount} | ${item.weakCandidateCount} | ${item.opinionAsExperienceCount} | ${item.marketingSuspectCount} | ${item.unsupportedPathCount} | ${item.templatePathCount} |`
     );
   }
   lines.push("");
@@ -685,6 +699,8 @@ function formatCompactRow(item) {
     `summary=${item.summaryStatus}/${formatMs(item.summaryDurationMs)}`,
     `samples=${item.evidenceSamples}`,
     `summaries=${item.experienceSummaries}`,
+    `feed=${item.feedItems}`,
+    `paths=${item.paths}`,
     `mismatch=${item.pathMismatchCount}`,
     `weak=${item.weakCandidateCount}`,
     `opinionAsExp=${item.opinionAsExperienceCount}`,

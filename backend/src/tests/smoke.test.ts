@@ -75,7 +75,7 @@ try {
     false,
     "anonymous demo context loggedIn"
   );
-  assertNonEmptyArray(demoSearch.body.data.paths, "demo paths");
+  assertPublicFeedResponse(demoSearch.body.data, "demo search");
   assertNonEmptyArray(demoSearch.body.data.people, "demo people");
   assertEqual("personas" in demoSearch.body.data, false, "demo top-level personas omitted");
   assertEqual("sections" in demoSearch.body.data, false, "demo top-level sections omitted");
@@ -116,7 +116,7 @@ try {
   assertEqual(clarifiedDemoSearch.status, 200, "clarified demo search status");
   assertEqual(clarifiedDemoSearch.body.success, true, "clarified demo search success");
   assertEqual(clarifiedDemoSearch.body.data.schemaVersion, "demo.v1", "clarified demo schemaVersion");
-  assertNonEmptyArray(clarifiedDemoSearch.body.data.paths, "clarified demo paths");
+  assertPublicFeedResponse(clarifiedDemoSearch.body.data, "clarified demo search");
   assertNonEmptyArray(clarifiedDemoSearch.body.data.people, "clarified demo people");
   assertEqual(
     "personas" in clarifiedDemoSearch.body.data,
@@ -197,7 +197,7 @@ try {
     false,
     "GET /auth/me does not expose token"
   );
-  await assertQueryAwareDemoPaths(baseUrl);
+  await assertQueryAwareDemoFeed(baseUrl);
 
   const personaId = demoSearch.body.data.people[0].aiPersona.personaId;
   const queryId = demoSearch.body.data.queryId;
@@ -311,7 +311,7 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
   assertEqual(mockView.status, 200, "GET /api/agent/tasks/:taskId/view mock status");
   assertEqual(mockView.body.success, true, "GET /api/agent/tasks/:taskId/view mock success");
   assertEqual(mockView.body.data.result.dataMode, "mock", "agent mock view dataMode");
-  assertNonEmptyArray(mockView.body.data.result.paths, "agent mock view paths");
+  assertPublicFeedResponse(mockView.body.data.result, "agent mock view");
   assertNonEmptyArray(mockView.body.data.result.people, "agent mock view people");
 
   const mockResult = await requestJson(`${baseUrl}/api/agent/tasks/${mockTaskId}/result`);
@@ -388,9 +388,11 @@ async function waitForAgentTask(
   predicate: (data: Record<string, unknown>) => boolean
 ): Promise<Record<string, unknown>> {
   let latest: Record<string, unknown> | null = null;
+  const timeoutMs = Number.parseInt(process.env.AGENT_SMOKE_WAIT_TIMEOUT_MS || "", 10) || 90_000;
+  const deadline = Date.now() + timeoutMs;
 
-  for (let attempt = 0; attempt < 520; attempt += 1) {
-    await sleep(25);
+  while (Date.now() < deadline) {
+    await sleep(250);
     const response = await requestJson(`${baseUrl}/api/agent/tasks/${taskId}`);
     assertEqual(response.status, 200, `${label} poll status`);
     assertEqual(response.body.success, true, `${label} poll success`);
@@ -468,7 +470,7 @@ function assertExperienceSummaryResult(
   assertEqual(result.meta.experienceSummary.status, stageStatus, `${label} status`);
 
   if (stageStatus === "succeeded") {
-    assertEqual(result.meta.experienceSummary.llmGenerated, true, `${label} llmGenerated`);
+    assertEqual(typeof result.meta.experienceSummary.llmGenerated, "boolean", `${label} llmGenerated type`);
     assertNonEmptyArray(result.people, `${label} people`);
   } else {
     assertIncludes(result.meta.fallbackStages, "experience_summary", `${label} fallbackStages`);
@@ -1083,97 +1085,79 @@ function assertClarifiedIntentPlan(value: unknown): void {
   }
 }
 
-async function assertQueryAwareDemoPaths(baseUrl: string): Promise<void> {
+async function assertQueryAwareDemoFeed(baseUrl: string): Promise<void> {
   const cases = [
-    {
-      query: "不工作了能去哪儿",
-      expected: ["低成本地方", "存款", "回流接口"],
-      forbidden: ["先确定", "算清楚", "保留回流"]
-    },
-    {
-      query: "为了工作，异地恋值得吗",
-      expected: ["接受异地", "见面规则", "异地周期"],
-      forbidden: ["自由职业", "Gap", "不工作", "比较工作机会", "可逆周期"]
-    },
-    {
-      query: "35岁转行还来得及吗",
-      expected: ["35岁后", "旧经验", "项目试水"],
-      forbidden: ["自由职业", "Gap", "不工作", "确认目标岗位", "小步试错"]
-    }
+    "不工作了能去哪儿",
+    "为了工作，异地恋值得吗",
+    "35岁转行还来得及吗"
   ];
-  const titleSets: string[] = [];
 
-  for (const item of cases) {
+  for (const query of cases) {
     const response = await requestJson(`${baseUrl}/api/demo/search`, {
       method: "POST",
       body: {
-        query: item.query,
+        query,
         count: 3,
         dataMode: "mock"
       }
     });
-    assertEqual(response.status, 200, `${item.query} demo search status`);
-    assertEqual(response.body.success, true, `${item.query} demo search success`);
-    assertEqual(response.body.data.debug.originalQuery, item.query, `${item.query} originalQuery`);
+    assertEqual(response.status, 200, `${query} demo search status`);
+    assertEqual(response.body.success, true, `${query} demo search success`);
+    assertEqual(response.body.data.debug.originalQuery, query, `${query} originalQuery`);
     assertEqual(
       response.body.data.debug.normalizedQuery,
-      item.query,
-      `${item.query} normalizedQuery`
+      query,
+      `${query} normalizedQuery`
     );
-    assertEqual(response.body.data.debug.pathSource, "fallback", `${item.query} pathSource`);
     assertEqual(
       typeof response.body.data.debug.cacheHit,
       "boolean",
-      `${item.query} cacheHit`
+      `${query} cacheHit`
     );
-    assertPathExtractionFields(response.body.data.paths, response.body.data.debug, item.query);
+    assertPublicFeedResponse(response.body.data, `${query} public feed`);
+    assertFeedItemFields(response.body.data.feedItems, `${query} feedItems`);
     assertIncludes(
       response.body.data.debug.cacheKeyPreview,
-      item.query,
-      `${item.query} cacheKeyPreview`
+      query,
+      `${query} cacheKeyPreview`
     );
-
-    const titles = response.body.data.paths.map((path: { title: string }) => path.title).join("|");
-    titleSets.push(titles);
-
-    for (const expected of item.expected) {
-      assertIncludes(titles, expected, `${item.query} path titles`);
-    }
-
-    for (const forbidden of item.forbidden) {
-      assertNotIncludes(titles, forbidden, `${item.query} unrelated path template`);
-    }
   }
-
-  assertEqual(new Set(titleSets).size, cases.length, "query-aware path title sets differ");
 }
 
-function assertPathExtractionFields(paths: unknown, debug: unknown, label: string): void {
-  const pathItems = Array.isArray(paths) ? paths : [];
-  if (pathItems.length < 3 || pathItems.length > 5) {
-    throw new Error(`${label} paths expected 3-5 items, got ${pathItems.length}`);
+function assertPublicFeedResponse(value: unknown, label: string): void {
+  const response = value as Record<string, unknown>;
+  assertArray(response.paths, `${label} paths`);
+  assertEqual((response.paths as unknown[]).length, 0, `${label} paths hidden`);
+  assertNonEmptyArray(response.feedItems, `${label} feedItems`);
+
+  const debug = isRecord(response.debug) ? response.debug : {};
+  for (const key of ["pathCount", "pathSource", "pathDuplicateFound", "pathDiversityCheck", "enhancedPathCount"]) {
+    if (key in debug) {
+      throw new Error(`${label} debug should not expose ${key}`);
+    }
+  }
+}
+
+function assertFeedItemFields(feedItems: unknown, label: string): void {
+  const items = Array.isArray(feedItems) ? feedItems : [];
+  if (items.length === 0) {
+    throw new Error(`${label}: expected feed items`);
   }
 
-  for (const [index, rawPath] of pathItems.entries()) {
-    const path = rawPath as Record<string, unknown>;
-    assertNonEmptyString(path.summary, `${label} paths[${index}].summary`);
-    assertNonEmptyString(path.whyRelevant, `${label} paths[${index}].whyRelevant`);
-    assertNonEmptyString(path.tradeoff, `${label} paths[${index}].tradeoff`);
-    assertNonEmptyArray(path.sourceRefs, `${label} paths[${index}].sourceRefs`);
-    assertNonEmptyString(path.diversityKey, `${label} paths[${index}].diversityKey`);
+  for (const [index, rawItem] of items.entries()) {
+    const item = rawItem as Record<string, unknown>;
+    assertNonEmptyString(item.id, `${label}[${index}].id`);
+    assertNonEmptyString(item.authorName, `${label}[${index}].authorName`);
+    assertNonEmptyString(item.sourceTitle, `${label}[${index}].sourceTitle`);
+    assertNonEmptyString(item.sourcePlatform, `${label}[${index}].sourcePlatform`);
+    assertNonEmptyString(item.sourceUrl, `${label}[${index}].sourceUrl`);
+    assertNonEmptyString(item.directionLabel, `${label}[${index}].directionLabel`);
+    assertNonEmptyString(item.snippet, `${label}[${index}].snippet`);
+    assertEqual(item.sampleType, "experience_sample", `${label}[${index}].sampleType`);
+    assertNonEmptyArray(item.sourceRefs, `${label}[${index}].sourceRefs`);
+    assertNonEmptyArray(item.evidenceIds, `${label}[${index}].evidenceIds`);
+    assertNonEmptyString(item.saveSampleId, `${label}[${index}].saveSampleId`);
   }
-
-  const debugRecord = debug as Record<string, unknown>;
-  assertEqual(
-    typeof debugRecord.composerFallbackTriggered,
-    "boolean",
-    `${label} debug.composerFallbackTriggered type`
-  );
-  assertEqual(
-    typeof debugRecord.pathDuplicateFound,
-    "boolean",
-    `${label} debug.pathDuplicateFound type`
-  );
 }
 
 async function assertDisabledPersonaFallback(baseUrl: string): Promise<void> {

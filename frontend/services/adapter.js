@@ -66,9 +66,9 @@
       degradedReason,
       cacheHit,
       reused,
-      emptyResult: result.paths.length === 0 && result.people.length === 0,
-      emptyPaths: result.paths.length === 0,
-      emptyPeople: result.people.length === 0
+      emptyResult: result.people.length === 0 && (!Array.isArray(result.feedItems) || result.feedItems.length === 0),
+      emptyPeople: result.people.length === 0,
+      feedItemCount: Array.isArray(result.feedItems) ? result.feedItems.length : result.people.length
     };
 
     return result;
@@ -94,7 +94,13 @@
     const result = raw?.result && isRecord(raw.result) ? raw.result : raw;
     const queryId = stringOf(result.queryId || result.taskId || context.task?.taskId || raw?.taskId || `query-${Date.now()}`);
     const rawPeople = Array.isArray(result.people) ? result.people : [];
-    const people = rawPeople.map((person, index) => normalizePerson(person, index));
+    const feedItems = Array.isArray(result.feedItems)
+      ? result.feedItems.map((item, index) => normalizeFeedItem(item, index))
+      : [];
+    const feedByPersonId = new Map(feedItems.map((item) => [item.personId, item]));
+    const people = rawPeople.length
+      ? rawPeople.map((person, index) => enrichPersonWithFeedItem(normalizePerson(person, index), feedByPersonId))
+      : feedItems.map((item, index) => personFromFeedItem(item, index));
     const paths = normalizePaths(Array.isArray(result.paths) ? result.paths : [], people, result);
     const personas = Array.isArray(result.personas) && result.personas.length
       ? result.personas
@@ -113,6 +119,7 @@
       contextUsed: result.contextUsed || {},
       features: result.features || {},
       analysis: normalizeAnalysis(result.analysis, result.summary),
+      feedItems,
       paths,
       people,
       personas,
@@ -214,6 +221,7 @@
         sourceEvidenceRequired: true
       },
       analysis: normalizeAnalysis(null, finalResult.summary),
+      feedItems: people.map((person, index) => feedItemFromPerson(person, index)),
       paths: displayPaths,
       people,
       personas,
@@ -244,7 +252,7 @@
     const id = stringOf(path.id || `path_${index + 1}`);
     const sourceRefs = deriveProductionSourceRefs(path, evidenceMap);
     const quote = firstEvidenceText(sourceRefs, evidenceMap);
-    const title = stringOf(path.title || `样本方向 ${index + 1}`);
+    const title = stringOf(path.title || `公开内容方向 ${index + 1}`);
     const summary = stringOf(path.summary || "");
     const whyRelevant = stringOf(path.angle || path.suitableContext || path.tradeoffs || summary);
 
@@ -477,10 +485,10 @@
   function buildEvidenceFallbackPath(input) {
     const sourceRefs = input.people.flatMap((person) => person.sourceRefs || []);
     const quote = firstEvidenceText(sourceRefs, input.evidenceMap);
-    const title = input.hasBackendPaths ? "其他可追溯来源片段" : "来源片段（暂未形成样本方向）";
+    const title = input.hasBackendPaths ? "其他可追溯来源片段" : "来源片段（暂未形成归属方向）";
     const summary = input.hasBackendPaths
-      ? "这些来源有可追溯证据，但没有被归入某个样本方向。"
-      : "证据不足，暂时没有可展示样本方向；下面只展示可追溯的来源片段。";
+      ? "这些来源有可追溯证据，但没有被归入某个归属方向。"
+      : "证据不足，暂时没有可展示归属方向；下面只展示可追溯的来源片段。";
 
     return {
       id: input.hasBackendPaths ? "production_extra_evidence_samples" : "production_evidence_samples",
@@ -531,7 +539,7 @@
     const linkedPeople = people.filter((person) => person.pathId === id || personRefs.includes(person.id));
     const sourceRefs = Array.isArray(path.sourceRefs) ? path.sourceRefs : [];
     const evidenceIds = normalizeStringArray(path.evidenceIds);
-    const title = stringOf(path.title || path.name || `样本方向 ${index + 1}`);
+    const title = stringOf(path.title || path.name || `公开内容方向 ${index + 1}`);
     const summary = stringOf(path.summary || path.desc || path.short || "");
     const quote = stringOf(
       path.representativeQuote ||
@@ -569,6 +577,11 @@
     );
     const experienceSummary = normalizeExperienceSummary(person);
     const aiPersona = normalizePersona(person.aiPersona, id);
+    const sourceTitle = stringOf(person.sourceTitle || article.title || source.title || "知乎公开内容");
+    const sourcePlatform = stringOf(person.sourcePlatform || article.sourceName || "知乎");
+    const sourceUrl = stringOf(person.sourceUrl || source.url || article.sourceUrl || "");
+    const directionLabel = stringOf(person.directionLabel || person.match?.matchedVariables?.[0] || person.badge || "真实经历");
+    const snippet = stringOf(person.snippet || article.evidenceText || source.evidence || article.lead || oneLine);
 
     return {
       ...person,
@@ -576,6 +589,14 @@
       name,
       avatar: stringOf(person.avatar || article.avatar || ""),
       pathId: stringOf(person.pathId || ""),
+      sourceTitle,
+      sourcePlatform,
+      sourceUrl,
+      directionLabel,
+      snippet,
+      summaryText: stringOf(person.summaryText || ""),
+      summaryPayload: isRecord(person.summaryPayload) ? person.summaryPayload : null,
+      saveSampleId: stringOf(person.saveSampleId || id),
       oneLine,
       experienceSummary,
       source,
@@ -669,12 +690,6 @@
 
     return [
       {
-        id: "section_paths",
-        type: "paths",
-        title: "参考路径",
-        itemRefs: paths.map((path) => path.id)
-      },
-      {
         id: "section_core_people",
         type: "people",
         title: "较匹配的公开经历",
@@ -699,6 +714,102 @@
         itemRefs: sourceOnlyPersonas.map((persona) => persona.id)
       }
     ];
+  }
+
+  function normalizeFeedItem(item, index) {
+    const raw = isRecord(item) ? item : {};
+    const id = stringOf(raw.id || `feed_${index + 1}`);
+    const personId = stringOf(raw.personId || raw.saveSampleId || id);
+    return {
+      ...raw,
+      id,
+      personId,
+      authorName: stringOf(raw.authorName || raw.name || "知乎用户"),
+      authorAvatar: stringOf(raw.authorAvatar || raw.avatar || ""),
+      sourceTitle: stringOf(raw.sourceTitle || raw.title || "知乎公开内容"),
+      sourcePlatform: stringOf(raw.sourcePlatform || raw.sourceName || "知乎"),
+      sourceUrl: stringOf(raw.sourceUrl || raw.url || ""),
+      directionLabel: stringOf(raw.directionLabel || "真实经历"),
+      snippet: stringOf(raw.snippet || raw.summaryText || ""),
+      summaryText: stringOf(raw.summaryText || ""),
+      summaryPayload: isRecord(raw.summaryPayload) ? raw.summaryPayload : null,
+      sampleType: "experience_sample",
+      evidenceIds: normalizeStringArray(raw.evidenceIds),
+      sourceRefs: normalizeStringArray(raw.sourceRefs),
+      saveSampleId: stringOf(raw.saveSampleId || personId)
+    };
+  }
+
+  function enrichPersonWithFeedItem(person, feedByPersonId) {
+    const feedItem = feedByPersonId.get(person.id);
+    if (!feedItem) {
+      return person;
+    }
+
+    return {
+      ...person,
+      sampleType: "experience_sample",
+      directionLabel: feedItem.directionLabel || person.directionLabel,
+      sourceTitle: feedItem.sourceTitle || person.sourceTitle,
+      sourcePlatform: feedItem.sourcePlatform || person.sourcePlatform,
+      sourceUrl: feedItem.sourceUrl || person.sourceUrl,
+      snippet: feedItem.snippet || person.snippet,
+      summaryText: feedItem.summaryText || person.summaryText,
+      summaryPayload: feedItem.summaryPayload || person.summaryPayload,
+      saveSampleId: feedItem.saveSampleId || person.saveSampleId
+    };
+  }
+
+  function personFromFeedItem(feedItem, index) {
+    return normalizePerson({
+      id: feedItem.personId || `person_${index + 1}`,
+      name: feedItem.authorName,
+      avatar: feedItem.authorAvatar,
+      sampleType: "experience_sample",
+      directionLabel: feedItem.directionLabel,
+      sourceTitle: feedItem.sourceTitle,
+      sourcePlatform: feedItem.sourcePlatform,
+      sourceUrl: feedItem.sourceUrl,
+      snippet: feedItem.snippet,
+      summaryText: feedItem.summaryText,
+      summaryPayload: feedItem.summaryPayload,
+      saveSampleId: feedItem.saveSampleId,
+      oneLine: feedItem.snippet,
+      articles: [{
+        id: `article_${feedItem.personId || index + 1}`,
+        title: feedItem.sourceTitle,
+        author: feedItem.authorName,
+        avatar: feedItem.authorAvatar,
+        sourceName: feedItem.sourcePlatform,
+        sourceUrl: feedItem.sourceUrl,
+        summary: feedItem.snippet,
+        text: feedItem.snippet,
+        evidence: []
+      }],
+      aiPersona: { enabled: false, canChat: false, personaId: "" },
+      sourceRefs: feedItem.sourceRefs,
+      evidenceIds: feedItem.evidenceIds
+    }, index);
+  }
+
+  function feedItemFromPerson(person, index) {
+    return normalizeFeedItem({
+      id: `feed_${person.id || index + 1}`,
+      personId: person.id,
+      authorName: person.name,
+      authorAvatar: person.avatar,
+      sourceTitle: person.sourceTitle || person.article?.title || person.source?.title,
+      sourcePlatform: person.sourcePlatform || person.article?.sourceName || "知乎",
+      sourceUrl: person.sourceUrl || person.source?.url || person.article?.sourceUrl,
+      directionLabel: person.directionLabel || person.badge || "真实经历",
+      snippet: person.snippet || person.article?.lead || person.oneLine,
+      summaryText: person.summaryText || person.experienceSummary || "",
+      summaryPayload: person.summaryPayload || null,
+      sampleType: "experience_sample",
+      evidenceIds: person.evidenceIds,
+      sourceRefs: person.sourceRefs,
+      saveSampleId: person.saveSampleId || person.id
+    }, index);
   }
 
   function ensurePeoplePathIds(people, paths) {

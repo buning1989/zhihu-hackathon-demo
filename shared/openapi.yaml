@@ -21,7 +21,7 @@ tags:
   - name: Zhihu
     description: Implemented raw Zhihu proxy endpoints.
   - name: Demo
-    description: Product-layer demo contracts for analysis, paths, people and AI personas.
+    description: Product-layer demo contracts for analysis, experience feed items, people and AI personas.
   - name: Agent
     description: Product mainline task contracts for staged, progressive search results.
   - name: Personas
@@ -1675,6 +1675,7 @@ components:
         - dataMode
         - features
         - analysis
+        - feedItems
         - paths
         - people
         - meta
@@ -1700,8 +1701,14 @@ components:
           $ref: "#/components/schemas/DemoFeatures"
         analysis:
           $ref: "#/components/schemas/DemoAnalysis"
+        feedItems:
+          type: array
+          description: Main public result feed. Only experience_sample items should appear here.
+          items:
+            $ref: "#/components/schemas/DemoFeedItem"
         paths:
           type: array
+          description: Compatibility field only. Public main responses return an empty array; do not render navigation from it.
           items:
             $ref: "#/components/schemas/DemoPath"
         people:
@@ -1716,7 +1723,7 @@ components:
             $ref: "#/components/schemas/PersonaIndex"
         sections:
           type: array
-          description: Optional weak layout grouping. Main responses omit this by default. If absent, render from analysis, paths, people and derived personas in the default order.
+          description: Optional weak layout grouping. Main responses omit this by default. If absent, render from analysis and feedItems/people.
           items:
             $ref: "#/components/schemas/DemoSection"
         meta:
@@ -1926,8 +1933,87 @@ components:
           type: string
         text:
           type: string
+    DemoFeedSummaryPayload:
+      type: object
+      required:
+        - whatHappened
+        - keyChoiceOrChange
+        - referenceValue
+        - markdown
+      properties:
+        whatHappened:
+          type: string
+          description: First markdown section body: what this sample says.
+        keyChoiceOrChange:
+          type: string
+          description: Second markdown section body: the person's key choice or change.
+        referenceValue:
+          type: string
+          description: Third markdown section body: why this sample is useful for the current question.
+        markdown:
+          type: string
+          description: Three-section markdown summary for the content summary action.
+    DemoFeedItem:
+      type: object
+      required:
+        - id
+        - personId
+        - authorName
+        - authorAvatar
+        - sourceTitle
+        - sourcePlatform
+        - sourceUrl
+        - directionLabel
+        - snippet
+        - summaryPayload
+        - sampleType
+        - evidenceIds
+        - sourceRefs
+        - saveSampleId
+      properties:
+        id:
+          type: string
+        personId:
+          type: string
+        authorName:
+          type: string
+        authorAvatar:
+          type: string
+        sourceTitle:
+          type: string
+        sourcePlatform:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+        directionLabel:
+          type: string
+          description: Weak card label only; not a path navigation category.
+        snippet:
+          type: string
+          description: Grounded source snippet for the card.
+        summaryText:
+          type: string
+          nullable: true
+        summaryPayload:
+          $ref: "#/components/schemas/DemoFeedSummaryPayload"
+        sampleType:
+          type: string
+          enum:
+            - experience_sample
+        evidenceIds:
+          type: array
+          items:
+            type: string
+        sourceRefs:
+          type: array
+          items:
+            type: string
+        saveSampleId:
+          type: string
     DemoPath:
       type: object
+      description: Internal/legacy path object. Public main responses no longer expose path navigation items.
       required:
         - id
         - title
@@ -2009,7 +2095,26 @@ components:
           description: Display name from public content. Empty values should fall back to 知乎用户.
         pathId:
           type: string
-          description: Must reference paths[].id.
+          description: Internal compatibility id retained for older clients; public feed rendering should use directionLabel instead of paths[].
+        directionLabel:
+          type: string
+          description: Weak card label for the feed. It is not a navigation category.
+        sourceTitle:
+          type: string
+        sourcePlatform:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+        snippet:
+          type: string
+        summaryText:
+          type: string
+          nullable: true
+        summaryPayload:
+          $ref: "#/components/schemas/DemoFeedSummaryPayload"
+        saveSampleId:
+          type: string
         role:
           type: string
         roleLabel:
@@ -2523,6 +2628,7 @@ components:
         pathCount:
           type: integer
           minimum: 0
+          description: Legacy/internal count. Public feed responses do not expose path counts in debug and may omit this meta field.
         llmEnabled:
           type: boolean
         zhihuKeyPresent:

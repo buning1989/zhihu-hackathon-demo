@@ -414,6 +414,7 @@ function buildQueryAwareMockPeople(
     return {
       id: personId,
       name: `${truncateText(primaryVariable, 8)}样本`,
+      sampleType: "experience_sample" as const,
       pathId: seed.plan.id,
       role: `基于公开回答整理的${truncateText(primaryVariable, 12)}样本`,
       roleLabel: `代表「${seed.plan.title}」的公开样本`,
@@ -602,6 +603,7 @@ function buildMockPeople() {
     {
       id: "person_city_pause",
       name: "城市停靠样本",
+      sampleType: "experience_sample" as const,
       pathId: "path_city_pause",
       role: "基于公开回答整理的生活节奏样本",
       badge: "先把日常排稳",
@@ -639,6 +641,7 @@ function buildMockPeople() {
     {
       id: "person_side_income",
       name: "轻量试错样本",
+      sampleType: "experience_sample" as const,
       pathId: "path_side_income",
       role: "基于公开回答整理的副业试错样本",
       badge: "先验证现金流",
@@ -676,6 +679,7 @@ function buildMockPeople() {
     {
       id: "person_safety_net",
       name: "底线兜住样本",
+      sampleType: "experience_sample" as const,
       pathId: "path_safety_net",
       role: "基于公开回答整理的风险兜底样本",
       badge: "先处理最坏情况",
