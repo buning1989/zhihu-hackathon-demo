@@ -36,7 +36,8 @@
   }
 
   function canChatWithPerson(person) {
-    return !person?.isProductionSample && Boolean(
+    const hasLlmEvidence = String(person?.evidenceStatus || person?.aiPersona?.evidenceStatus || "llm_extracted") === "llm_extracted";
+    return !person?.isProductionSample && hasLlmEvidence && Boolean(
       person?.displayCanChat
       || person?.aiPersona?.canChat
       || (person?.aiPersona?.enabled && person?.aiPersona?.personaId)
@@ -118,24 +119,27 @@
     const title = publicUiLabel(article.title || person.source?.title, "知乎公开内容");
     const paragraphs = articleParagraphs(person);
     const body = paragraphs.length
-      ? paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")
+      ? paragraphs
+        .map((paragraph) => publicUiLabel(paragraph, "当前只展示可追溯公开内容片段。"))
+        .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+        .join("")
       : "<p>当前只展示可追溯公开内容片段。</p>";
     const sourceUrl = person.source?.url || article.sourceUrl || "";
-    const isProductionSample = Boolean(person.isProductionSample);
     const saved = App.store.isInBook(person.id);
-    const chatButtonClass = canChatWithPerson(person) ? "reading-primary" : "";
-    const chatOrSourceButton = isProductionSample
-      ? sourceUrl
+    const canChat = canChatWithPerson(person);
+    const chatOrSourceButton = canChat
+      ? `<button class="btn-text reading-primary" type="button" data-action="toggle-inline-chat" data-person-id="${escapeAttribute(person.id)}">${icon("message-circle")}继续对话</button>`
+      : sourceUrl
         ? `<a class="btn-text" href="${escapeAttribute(sourceUrl)}" target="_blank" rel="noopener noreferrer">${icon("book-open")}查看来源</a>`
-        : ""
-      : `<button class="btn-text ${chatButtonClass}" type="button" data-action="toggle-inline-chat" data-person-id="${escapeAttribute(person.id)}">${icon("message-circle")}继续对话</button>`;
+        : "";
+    const isSourceOnly = !canChat;
 
     return `
       <div class="modal-overlay reading-modal-overlay" role="presentation" data-action="close-modal"></div>
       <section class="reading-modal" role="dialog" aria-modal="true" aria-labelledby="reading-modal-title" data-stop-close>
         <header class="reading-modal-head">
           <div>
-            <p>${escapeHtml(isProductionSample ? `来源片段 · ${sourceName}` : `${person.name} · ${sourceName}`)}</p>
+            <p>${escapeHtml(isSourceOnly ? `来源片段 · ${sourceName}` : `${person.name} · ${sourceName}`)}</p>
             <h2 id="reading-modal-title">${escapeHtml(title)}</h2>
           </div>
           <button class="btn-text" type="button" data-action="close-modal" aria-label="关闭阅读浮层">${icon("x")}关闭</button>

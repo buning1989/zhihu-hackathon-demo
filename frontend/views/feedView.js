@@ -88,7 +88,54 @@
   }
 
   function mainFeedPeople(result) {
-    return (Array.isArray(result.people) ? result.people : []).filter(isMainFeedPerson);
+    const people = Array.isArray(result.people) ? result.people : [];
+    const feedItems = Array.isArray(result.feedItems) ? result.feedItems : [];
+    const peopleById = new Map(people.map((person) => [person.id, person]));
+
+    if (!feedItems.length) {
+      return people.filter(isMainFeedPerson);
+    }
+
+    return feedItems.map((feedItem, index) => {
+      const person = peopleById.get(feedItem.personId) || null;
+      const fallbackId = feedItem.personId || feedItem.saveSampleId || feedItem.id || `feed_person_${index + 1}`;
+      return {
+        ...(person || {}),
+        id: person?.id || fallbackId,
+        name: feedItem.authorName || person?.name || "知乎用户",
+        avatar: feedItem.authorAvatar || person?.avatar || "",
+        sampleType: "experience_sample",
+        directionLabel: feedItem.directionLabel || person?.directionLabel || "真实经历",
+        sourceTitle: feedItem.sourceTitle || person?.sourceTitle || person?.article?.title || "知乎公开内容",
+        sourcePlatform: feedItem.sourcePlatform || person?.sourcePlatform || person?.article?.sourceName || "知乎",
+        sourceUrl: feedItem.sourceUrl || person?.sourceUrl || person?.source?.url || person?.article?.sourceUrl || "",
+        snippet: feedItem.snippet || person?.snippet || person?.source?.evidence || person?.article?.lead || "",
+        summaryText: feedItem.summaryText || person?.summaryText || "",
+        summaryPayload: feedItem.summaryPayload || person?.summaryPayload || null,
+        evidenceStatus: feedItem.evidenceStatus || person?.evidenceStatus || "llm_extracted",
+        saveSampleId: feedItem.saveSampleId || person?.saveSampleId || fallbackId,
+        article: person?.article || {
+          title: feedItem.sourceTitle || "知乎公开内容",
+          author: feedItem.authorName || "知乎用户",
+          avatar: feedItem.authorAvatar || "",
+          sourceName: feedItem.sourcePlatform || "知乎",
+          sourceUrl: feedItem.sourceUrl || "",
+          lead: feedItem.snippet || "",
+          paragraphs: feedItem.snippet ? [feedItem.snippet] : [],
+          evidence: []
+        },
+        source: person?.source || {
+          title: feedItem.sourceTitle || "知乎公开内容",
+          evidence: feedItem.snippet || "",
+          url: feedItem.sourceUrl || ""
+        },
+        canChat: feedItem.evidenceStatus === "raw_snippet_only" ? false : person?.canChat,
+        displayCanChat: feedItem.evidenceStatus === "raw_snippet_only" ? false : person?.displayCanChat,
+        aiPersona: feedItem.evidenceStatus === "raw_snippet_only"
+          ? { ...(person?.aiPersona || {}), enabled: false, canChat: false }
+          : person?.aiPersona
+      };
+    }).filter(isMainFeedPerson);
   }
 
   function renderFeedSummary(state, result) {

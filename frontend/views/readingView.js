@@ -15,11 +15,15 @@
     const sourceUrl = person.source?.url || article.sourceUrl || "";
     const evidenceText = person.source?.evidence || person.representativeQuote || article.lead || person.oneLine || person.experienceSummary || "";
     const articleBody = paragraphs.length
-      ? paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")
-      : `<p>${escapeHtml(evidenceText || "当前只展示可追溯片段。")}</p>`;
+      ? paragraphs
+        .map((paragraph) => App.utils.publicUiLabel(paragraph, "当前只展示可追溯公开内容片段。"))
+        .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+        .join("")
+      : `<p>${escapeHtml(App.utils.publicUiLabel(evidenceText, "当前只展示可追溯片段。"))}</p>`;
     const isProductionSample = Boolean(person.isProductionSample);
     const saved = App.store.isInBook(person.id);
-    const canChat = !isProductionSample && Boolean(
+    const hasLlmEvidence = String(person.evidenceStatus || person.aiPersona?.evidenceStatus || "llm_extracted") === "llm_extracted";
+    const canChat = !isProductionSample && hasLlmEvidence && Boolean(
       person.displayCanChat
       || person.aiPersona?.canChat
       || (person.aiPersona?.enabled && person.aiPersona?.personaId)

@@ -56,7 +56,11 @@
     if (person.avatar) {
       return `<img src="${escapeAttribute(person.avatar)}" alt="" />`;
     }
-    return `<span class="avatar-fallback" aria-hidden="true">${escapeHtml((person.name || "样").slice(0, 1))}</span>`;
+    return `<span class="avatar-fallback" aria-hidden="true">${escapeHtml((person.displayName || person.name || "样").slice(0, 1))}</span>`;
+  }
+
+  function hasLlmEvidence(person) {
+    return String(person.evidenceStatus || person.aiPersona?.evidenceStatus || "llm_extracted") === "llm_extracted";
   }
 
   function buildMarkdownSummary(person, path, state) {
@@ -82,7 +86,7 @@
       person.representativeQuote
     ]);
     const title = firstText([person.sourceTitle, article.title, person.source?.title, "知乎公开内容"]);
-    const pathLabel = App.utils.publicUiLabel(person.directionLabel || path?.shortTitle || path?.title, "公开内容方向");
+    const pathLabel = App.utils.publicUiLabel(person.directionLabel, "真实经历");
     const query = firstText([state.query, state.pendingQuery, "当前问题"]);
 
     if (!evidenceText && !choiceText) {
@@ -147,14 +151,20 @@
     const saved = App.store.isInBook(person.id);
     const experienceExpanded = state.expandedExperiencePersonId === person.id;
     const article = person.article || {};
-    const brief = person.sourceTitle || article.title || person.source?.title || "知乎公开内容样本";
+    const displayName = publicUiLabel(person.name, "知乎用户");
+    const brief = publicUiLabel(person.sourceTitle || article.title || person.source?.title, "知乎公开内容样本");
     const platform = publicUiLabel(person.sourcePlatform || article.sourceName || "知乎", "知乎");
-    const path = App.store.findPath(person.pathId);
-    const pathLabel = publicUiLabel(person.directionLabel || path?.shortTitle || path?.title || person.matchedPathTitle, "公开内容方向");
+    const pathLabel = publicUiLabel(person.directionLabel || person.matchedPathTitle, "真实经历");
     const sourceUrl = person.sourceUrl || person.source?.url || article.sourceUrl || article.url || "";
-    const meta = `${publicUiLabel(brief, "知乎公开内容样本")} · ${platform} · ${pathLabel}`;
-    const snippet = keySnippet(person).map((paragraph) => escapeHtml(paragraph)).join("<br />");
-    const avatar = renderAvatar(person, escapeHtml, escapeAttribute);
+    const meta = `${brief} · ${platform} · ${pathLabel}`;
+    const snippet = keySnippet(person)
+      .map((paragraph) => publicUiLabel(paragraph, "当前只展示可追溯公开内容片段。"))
+      .map((paragraph) => escapeHtml(paragraph))
+      .join("<br />");
+    const avatar = renderAvatar({ ...person, name: displayName }, escapeHtml, escapeAttribute);
+    const summaryAction = hasLlmEvidence(person)
+      ? `<button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "file-text")}${experienceExpanded ? "收起总结" : "内容总结"}</button>`
+      : "";
     const originalAction = sourceUrl
       ? `<a class="btn-text read-link" href="${escapeAttribute(sourceUrl)}" target="_blank" rel="noopener noreferrer">${icon("book-open")}查看原文</a>`
       : `<button class="btn-text read-link" type="button" disabled>${icon("book-open")}查看原文</button>`;
@@ -164,14 +174,14 @@
         <header class="person-head">
           <span class="avatar" aria-hidden="true">${avatar}</span>
           <div>
-            <h3 class="name">${escapeHtml(person.name)}</h3>
+            <h3 class="name">${escapeHtml(displayName)}</h3>
             <p class="person-meta">${escapeHtml(meta)}</p>
           </div>
         </header>
         <div class="original-snippet">${snippet}</div>
-        ${renderExperience(person, path, state)}
+        ${hasLlmEvidence(person) ? renderExperience(person, null, state) : ""}
         <footer class="person-actions">
-          <button class="btn-text" type="button" data-action="toggle-experience" data-person-id="${escapeAttribute(person.id)}" aria-expanded="${experienceExpanded ? "true" : "false"}">${icon(experienceExpanded ? "chevron-up" : "file-text")}${experienceExpanded ? "收起总结" : "内容总结"}</button>
+          ${summaryAction}
           ${originalAction}
           <button class="btn-text ${saved ? "is-active" : ""} ml-auto" type="button" data-action="add-book" data-person-id="${escapeAttribute(person.id)}">${icon(saved ? "bookmark-check" : "bookmark")}${saved ? "已收藏" : "收藏样本"}</button>
         </footer>

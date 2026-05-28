@@ -6,6 +6,9 @@
     "agent.production_final_result.v1",
     "agent.production_final_result.v2"
   ]);
+  const rawSnippetEvidenceStatus = "raw_snippet_only";
+  const llmExtractedEvidenceStatus = "llm_extracted";
+  const templateDisplayPattern = /(代表[「"].{1,120}[」"].{0,12}经历样本|[「"].{1,120}[」"]的经历样本[:：])/i;
 
   function normalizeNeedInput(needInput) {
     if (!needInput) {
@@ -79,6 +82,10 @@
       return false;
     }
 
+    if (Array.isArray(result.feedItems) && result.feedItems.length > 0) {
+      return true;
+    }
+
     if (Array.isArray(result.paths) && result.paths.length > 0) {
       return true;
     }
@@ -110,6 +117,7 @@
       : deriveSections(paths, people, personas);
 
     ensurePeoplePathIds(people, paths);
+    const displayFeedItems = feedItems.length ? feedItems : people.map((person, index) => feedItemFromPerson(person, index));
 
     return {
       schemaVersion: stringOf(result.schemaVersion || "frontend-agent-adapter-v1"),
@@ -119,7 +127,7 @@
       contextUsed: result.contextUsed || {},
       features: result.features || {},
       analysis: normalizeAnalysis(result.analysis, result.summary),
-      feedItems,
+      feedItems: displayFeedItems,
       paths,
       people,
       personas,
@@ -568,20 +576,25 @@
     const article = normalizeArticle(Array.isArray(person.articles) ? person.articles[0] : person.article, index);
     const source = normalizeSource(person.source, article, person);
     const id = stringOf(person.id || person.personId || `person_${index + 1}`);
-    const name = stringOf(person.name || person.displayName || person.displayLabel || article.author || "知乎用户");
-    const oneLine = stringOf(
+    const name = cleanDisplayText(person.name || person.displayName || person.displayLabel || article.author, "知乎用户");
+    const oneLine = cleanDisplayText(
       person.oneLine ||
       article.lead ||
       source.evidence ||
+      "这条样本目前只有较短公开内容，适合先查看来源片段。",
       "这条样本目前只有较短公开内容，适合先查看来源片段。"
     );
     const experienceSummary = normalizeExperienceSummary(person);
-    const aiPersona = normalizePersona(person.aiPersona, id);
-    const sourceTitle = stringOf(person.sourceTitle || article.title || source.title || "知乎公开内容");
+    const evidenceStatus = normalizeEvidenceStatus(person.evidenceStatus || person.aiPersona?.evidenceStatus);
+    const aiPersona = guardPersonaByEvidenceStatus(normalizePersona(person.aiPersona, id), evidenceStatus);
+    const sourceTitle = cleanDisplayText(person.sourceTitle || article.title || source.title, "知乎公开内容");
     const sourcePlatform = stringOf(person.sourcePlatform || article.sourceName || "知乎");
     const sourceUrl = stringOf(person.sourceUrl || source.url || article.sourceUrl || "");
-    const directionLabel = stringOf(person.directionLabel || person.match?.matchedVariables?.[0] || person.badge || "真实经历");
-    const snippet = stringOf(person.snippet || article.evidenceText || source.evidence || article.lead || oneLine);
+    const directionLabel = cleanDisplayText(person.directionLabel || person.match?.matchedVariables?.[0] || person.badge, "真实经历");
+    const snippet = cleanDisplayText(person.snippet || article.evidenceText || source.evidence || article.lead || oneLine, oneLine);
+    const displayCanChat = evidenceStatus === llmExtractedEvidenceStatus &&
+      person.canChat !== false &&
+      Boolean(aiPersona.enabled && aiPersona.canChat);
 
     return {
       ...person,
@@ -594,6 +607,7 @@
       sourceUrl,
       directionLabel,
       snippet,
+      evidenceStatus,
       summaryText: stringOf(person.summaryText || ""),
       summaryPayload: isRecord(person.summaryPayload) ? person.summaryPayload : null,
       saveSampleId: stringOf(person.saveSampleId || id),
@@ -602,8 +616,9 @@
       source,
       article,
       aiPersona,
-      displayCanChat: Boolean(aiPersona.enabled && aiPersona.canChat),
-      chatDisabledReason: aiPersona.enabled ? "" : "当前只展示来源片段，不开放对话。"
+      canChat: displayCanChat,
+      displayCanChat,
+      chatDisabledReason: displayCanChat ? "" : "当前只展示来源片段，不开放对话。"
     };
   }
 
@@ -628,11 +643,13 @@
     return {
       ...raw,
       id: stringOf(raw.id || `article_${index + 1}`),
-      title: stringOf(raw.title || raw.sourceName || "知乎公开内容"),
-      author: stringOf(raw.author || "知乎用户"),
+      title: cleanDisplayText(raw.title || raw.sourceName, "知乎公开内容"),
+      author: cleanDisplayText(raw.author, "知乎用户"),
       avatar: stringOf(raw.avatar || ""),
-      lead: stringOf(raw.lead || raw.summary || raw.text || firstEvidence?.text || paragraphs[0] || ""),
-      paragraphs: paragraphs.length ? paragraphs : [stringOf(raw.summary || firstEvidence?.text || "当前只展示可追溯公开内容片段。")],
+      lead: cleanDisplayText(raw.lead || raw.summary || raw.text || firstEvidence?.text || paragraphs[0], ""),
+      paragraphs: paragraphs.length
+        ? paragraphs
+        : [cleanDisplayText(raw.summary || firstEvidence?.text, "当前只展示可追溯公开内容片段。")],
       sourceUrl: stringOf(raw.sourceUrl || raw.url || firstEvidence?.sourceUrl || ""),
       evidence
     };
@@ -642,8 +659,8 @@
     const raw = isRecord(source) ? source : {};
     const firstEvidence = Array.isArray(article.evidence) ? article.evidence[0] : null;
     return {
-      title: stringOf(raw.title || article.title || person.badge || "知乎公开内容"),
-      evidence: stringOf(raw.evidence || firstEvidence?.text || article.lead || person.oneLine || person.experienceSummary || ""),
+      title: cleanDisplayText(raw.title || article.title || person.badge, "知乎公开内容"),
+      evidence: cleanDisplayText(raw.evidence || firstEvidence?.text || article.lead || person.oneLine || person.experienceSummary, ""),
       url: stringOf(raw.url || article.sourceUrl || firstEvidence?.sourceUrl || "")
     };
   }
@@ -660,6 +677,35 @@
     };
   }
 
+  function guardPersonaByEvidenceStatus(aiPersona, evidenceStatus) {
+    const normalizedStatus = normalizeEvidenceStatus(evidenceStatus);
+    if (normalizedStatus !== rawSnippetEvidenceStatus) {
+      return aiPersona;
+    }
+
+    return {
+      ...aiPersona,
+      enabled: false,
+      canChat: false
+    };
+  }
+
+  function normalizeEvidenceStatus(value) {
+    const text = stringOf(value).trim();
+    if (text === rawSnippetEvidenceStatus) {
+      return rawSnippetEvidenceStatus;
+    }
+    return llmExtractedEvidenceStatus;
+  }
+
+  function cleanDisplayText(value, fallback = "") {
+    const text = stringOf(value).trim();
+    if (!text || templateDisplayPattern.test(text)) {
+      return fallback;
+    }
+    return text;
+  }
+
   function derivePersonasFromPeople(people) {
     return people
       .filter((person) => person.aiPersona?.personaId)
@@ -669,7 +715,8 @@
         displayName: stringOf(person.aiPersona.displayName || `${person.name}的经验回声`),
         avatar: stringOf(person.avatar || ""),
         personaType: "experience_echo",
-        canChat: Boolean(person.displayCanChat || person.canChat || person.aiPersona.canChat),
+        canChat: person.evidenceStatus === llmExtractedEvidenceStatus &&
+          Boolean(person.displayCanChat || person.canChat || person.aiPersona.canChat),
         displayTier: person.displayTier,
         evidenceStatus: person.evidenceStatus || person.aiPersona.evidenceStatus,
         displayLabel: person.aiPersona.displayLabel,
@@ -720,20 +767,22 @@
     const raw = isRecord(item) ? item : {};
     const id = stringOf(raw.id || `feed_${index + 1}`);
     const personId = stringOf(raw.personId || raw.saveSampleId || id);
+    const evidenceStatus = normalizeEvidenceStatus(raw.evidenceStatus);
     return {
       ...raw,
       id,
       personId,
-      authorName: stringOf(raw.authorName || raw.name || "知乎用户"),
+      authorName: cleanDisplayText(raw.authorName || raw.name, "知乎用户"),
       authorAvatar: stringOf(raw.authorAvatar || raw.avatar || ""),
-      sourceTitle: stringOf(raw.sourceTitle || raw.title || "知乎公开内容"),
+      sourceTitle: cleanDisplayText(raw.sourceTitle || raw.title, "知乎公开内容"),
       sourcePlatform: stringOf(raw.sourcePlatform || raw.sourceName || "知乎"),
       sourceUrl: stringOf(raw.sourceUrl || raw.url || ""),
-      directionLabel: stringOf(raw.directionLabel || "真实经历"),
-      snippet: stringOf(raw.snippet || raw.summaryText || ""),
+      directionLabel: cleanDisplayText(raw.directionLabel, "真实经历"),
+      snippet: cleanDisplayText(raw.snippet || raw.summaryText, ""),
       summaryText: stringOf(raw.summaryText || ""),
       summaryPayload: isRecord(raw.summaryPayload) ? raw.summaryPayload : null,
       sampleType: "experience_sample",
+      evidenceStatus,
       evidenceIds: normalizeStringArray(raw.evidenceIds),
       sourceRefs: normalizeStringArray(raw.sourceRefs),
       saveSampleId: stringOf(raw.saveSampleId || personId)
@@ -745,15 +794,24 @@
     if (!feedItem) {
       return person;
     }
+    const evidenceStatus = person.evidenceStatus === rawSnippetEvidenceStatus
+      ? rawSnippetEvidenceStatus
+      : normalizeEvidenceStatus(feedItem.evidenceStatus || person.evidenceStatus);
 
     return {
       ...person,
       sampleType: "experience_sample",
+      name: feedItem.authorName && feedItem.authorName !== "知乎用户" ? feedItem.authorName : person.name,
+      avatar: feedItem.authorAvatar || person.avatar,
       directionLabel: feedItem.directionLabel || person.directionLabel,
       sourceTitle: feedItem.sourceTitle || person.sourceTitle,
       sourcePlatform: feedItem.sourcePlatform || person.sourcePlatform,
       sourceUrl: feedItem.sourceUrl || person.sourceUrl,
       snippet: feedItem.snippet || person.snippet,
+      evidenceStatus,
+      aiPersona: guardPersonaByEvidenceStatus(person.aiPersona, evidenceStatus),
+      canChat: evidenceStatus === rawSnippetEvidenceStatus ? false : person.canChat,
+      displayCanChat: evidenceStatus === rawSnippetEvidenceStatus ? false : person.displayCanChat,
       summaryText: feedItem.summaryText || person.summaryText,
       summaryPayload: feedItem.summaryPayload || person.summaryPayload,
       saveSampleId: feedItem.saveSampleId || person.saveSampleId
@@ -775,6 +833,7 @@
       summaryPayload: feedItem.summaryPayload,
       saveSampleId: feedItem.saveSampleId,
       oneLine: feedItem.snippet,
+      evidenceStatus: feedItem.evidenceStatus,
       articles: [{
         id: `article_${feedItem.personId || index + 1}`,
         title: feedItem.sourceTitle,
@@ -806,6 +865,7 @@
       summaryText: person.summaryText || person.experienceSummary || "",
       summaryPayload: person.summaryPayload || null,
       sampleType: "experience_sample",
+      evidenceStatus: person.evidenceStatus,
       evidenceIds: person.evidenceIds,
       sourceRefs: person.sourceRefs,
       saveSampleId: person.saveSampleId || person.id
@@ -1016,10 +1076,10 @@
     if (Array.isArray(value)) {
       return value.map((item) => {
         if (typeof item === "string") {
-          return item;
+          return cleanDisplayText(item, "");
         }
         if (isRecord(item)) {
-          return stringOf(item.content || item.text || item.value);
+          return cleanDisplayText(item.content || item.text || item.value, "");
         }
         return "";
       }).filter(Boolean);
@@ -1030,7 +1090,10 @@
       return [];
     }
 
-    return text.split(/\n{2,}|。/).map((item) => item.trim()).filter(Boolean).slice(0, 6);
+    return text.split(/\n{2,}|。/)
+      .map((item) => cleanDisplayText(item, ""))
+      .filter(Boolean)
+      .slice(0, 6);
   }
 
   function unwrapResult(raw) {

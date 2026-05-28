@@ -121,7 +121,8 @@
   }
 
   function findPath(pathId) {
-    return getResult().paths.find((path) => path.id === pathId) || null;
+    const paths = Array.isArray(getResult().paths) ? getResult().paths : [];
+    return paths.find((path) => path.id === pathId) || null;
   }
 
   function findPerson(personId) {
@@ -206,7 +207,7 @@
 
   const byId = (items, id) => items.find((item) => item.id === id) || null;
 
-  const statusLabelPattern = /(证据不足|证据有限|证据样本|证据路径|可追溯|结果已保守收敛|保守收敛|degraded|evidenceStatus|grounding status|grounding)/i;
+  const statusLabelPattern = /(证据不足|证据有限|证据样本|证据路径|可追溯|结果已保守收敛|保守收敛|degraded|evidenceStatus|grounding status|grounding|代表[「"].{1,120}[」"].{0,12}经历样本|[「"].{1,120}[」"]的经历样本[:：])/i;
 
   function publicUiLabel(value, fallback = "公开内容片段") {
     const text = String(value || "").trim();

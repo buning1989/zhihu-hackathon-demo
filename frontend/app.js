@@ -1775,7 +1775,8 @@
   }
 
   function canChatWithPerson(person) {
-    return !person?.isProductionSample && Boolean(
+    const hasLlmEvidence = String(person?.evidenceStatus || person?.aiPersona?.evidenceStatus || "llm_extracted") === "llm_extracted";
+    return !person?.isProductionSample && hasLlmEvidence && Boolean(
       person?.displayCanChat
       || person?.aiPersona?.canChat
       || (person?.aiPersona?.enabled && person?.aiPersona?.personaId)
