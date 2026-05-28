@@ -106,6 +106,30 @@ export const config = {
       intentExpandMs: parsePositiveInteger(
         process.env.INTENT_EXPAND_TIMEOUT_MS,
         45000
+      ),
+      candidateRerankMs: parsePositiveInteger(
+        process.env.CANDIDATE_RERANK_TIMEOUT_MS,
+        12000
+      ),
+      evidenceExtractMs: parsePositiveInteger(
+        process.env.EVIDENCE_EXTRACT_TIMEOUT_MS,
+        12000
+      ),
+      demoResponseComposeMs: parsePositiveInteger(
+        process.env.DEMO_RESPONSE_COMPOSE_TIMEOUT_MS,
+        15000
+      ),
+      experienceSummaryMs: parsePositiveInteger(
+        process.env.EXPERIENCE_SUMMARY_TIMEOUT_MS,
+        12000
+      ),
+      groundingGuardMs: parsePositiveInteger(
+        process.env.GROUNDING_GUARD_TIMEOUT_MS,
+        8000
+      ),
+      personaChatMs: parsePositiveInteger(
+        process.env.PERSONA_CHAT_TIMEOUT_MS,
+        8000
       )
     },
     kimi: {

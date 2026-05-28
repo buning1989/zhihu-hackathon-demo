@@ -3,13 +3,13 @@ import type { LlmTaskType } from "./llmRouter.js";
 
 export const LLM_TASK_TIMEOUT_MS: Record<LlmTaskType, number> = {
   similarity_clarification_plan: 24000,
-  intent_expand: 3000,
-  candidate_rerank: 5000,
-  evidence_extract: 5000,
-  demo_response_compose: 5000,
-  experience_summary: 5000,
-  grounding_guard: 3000,
-  persona_chat: 5000
+  intent_expand: 45000,
+  candidate_rerank: 12000,
+  evidence_extract: 12000,
+  demo_response_compose: 15000,
+  experience_summary: 12000,
+  grounding_guard: 8000,
+  persona_chat: 8000
 };
 
 export class LlmTaskTimeoutError extends Error {
@@ -29,11 +29,24 @@ export function getLlmTaskTimeoutMs(taskType: LlmTaskType): number {
     return config.llm.taskTimeouts.similarityClarificationPlanMs;
   }
 
-  if (taskType === "intent_expand") {
-    return config.llm.taskTimeouts.intentExpandMs;
+  switch (taskType) {
+    case "intent_expand":
+      return config.llm.taskTimeouts.intentExpandMs;
+    case "candidate_rerank":
+      return config.llm.taskTimeouts.candidateRerankMs;
+    case "evidence_extract":
+      return config.llm.taskTimeouts.evidenceExtractMs;
+    case "demo_response_compose":
+      return config.llm.taskTimeouts.demoResponseComposeMs;
+    case "experience_summary":
+      return config.llm.taskTimeouts.experienceSummaryMs;
+    case "grounding_guard":
+      return config.llm.taskTimeouts.groundingGuardMs;
+    case "persona_chat":
+      return config.llm.taskTimeouts.personaChatMs;
+    default:
+      return LLM_TASK_TIMEOUT_MS[taskType];
   }
-
-  return LLM_TASK_TIMEOUT_MS[taskType];
 }
 
 export function getAgentLlmTaskTimeoutMs(

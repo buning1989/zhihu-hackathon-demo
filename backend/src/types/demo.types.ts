@@ -482,6 +482,7 @@ export interface DemoDebug {
   llmRepairUsed?: boolean;
   llmRepairFailed?: boolean;
   llmStageResults?: DemoDebugLlmStageResult[];
+  llmArtifactSources?: Record<DemoLlmArtifactSourceStage, DemoLlmArtifactSource>;
   timings?: DemoDebugTiming[];
   enhancedPeopleCount?: number;
   enhancedPathCount?: number;
@@ -754,6 +755,8 @@ export interface DemoDebugLlmStageResult {
   repairUsed: number;
   repairFailed: number;
   fallbackReasons: string[];
+  provider?: string;
+  model?: string;
 }
 
 export interface DemoExperienceSummaryDebug {
@@ -763,4 +766,18 @@ export interface DemoExperienceSummaryDebug {
   reason: string;
   cacheHit: boolean;
   fallbackSummary?: string;
+}
+
+export type DemoLlmArtifactSourceStage =
+  | "intent_expand"
+  | "candidate_rerank"
+  | "evidence_extract"
+  | "demo_response_compose"
+  | "experience_summary"
+  | "grounding_guard";
+
+export interface DemoLlmArtifactSource {
+  source: "llm" | "rule_fallback" | "skipped";
+  stageStatus: "success" | "fallback" | "skipped";
+  fallbackReason?: string;
 }

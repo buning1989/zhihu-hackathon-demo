@@ -240,7 +240,7 @@ export function parseCandidateRerankOutput(
   }
 
   return {
-    selected: selected.slice(0, 10),
+    selected: selected.slice(0, 2),
     dropped: dropped.slice(0, allowedCandidateIds.size)
   };
 }

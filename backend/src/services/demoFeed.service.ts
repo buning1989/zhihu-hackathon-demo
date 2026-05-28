@@ -59,7 +59,7 @@ export function projectDemoFeedResponse(
   if (options.hidePaths) {
     response.paths = [];
     response.sections = response.sections?.filter((section) => section.type !== "paths");
-    stripPublicPathDebug(response.debug);
+    stripPublicPathDebug(response.debug, response.dataMode);
   }
 
   return response;
@@ -221,10 +221,12 @@ function buildFeedAnalysisSummary(response: DemoSearchResponse): string {
   return `围绕「${truncateText(query, 40)}」，已整理出 ${response.feedItems?.length ?? 0} 条可追溯真实经历样本。`;
 }
 
-function stripPublicPathDebug(debug: DemoDebug): void {
+function stripPublicPathDebug(debug: DemoDebug, dataMode: DemoSearchResponse["dataMode"]): void {
   const publicDebug = debug as Partial<DemoDebug>;
   delete publicDebug.pathCount;
-  delete publicDebug.enhancedPathCount;
+  if (dataMode !== "real") {
+    delete publicDebug.enhancedPathCount;
+  }
   delete publicDebug.pathSource;
   delete publicDebug.pathDuplicateFound;
   delete publicDebug.pathDiversityCheck;

@@ -13,7 +13,7 @@ export interface JsonCompletionInput {
   maxTokens?: number;
   timeoutMs?: number;
   maxRetry?: number;
-  responseFormat?: JsonResponseFormat;
+  responseFormat?: JsonResponseFormat | null;
   taskType: string;
 }
 

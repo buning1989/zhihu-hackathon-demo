@@ -25,6 +25,11 @@ export class DeepSeekClient {
     const jsonMode = input.taskType === "intent_expand"
       ? config.llm.deepseek.intentExpandJsonMode
       : config.llm.deepseek.jsonMode;
+    const responseFormat = input.responseFormat === null
+      ? undefined
+      : jsonMode
+        ? input.responseFormat ?? { type: "json_object" }
+        : undefined;
     return createOpenAICompatibleJsonCompletion(this.provider, {
       apiKey: config.llm.deepseek.apiKey,
       baseUrl: config.llm.deepseek.baseUrl,
@@ -33,9 +38,7 @@ export class DeepSeekClient {
       maxRetry: config.llm.maxRetry
     }, {
       ...input,
-      responseFormat: jsonMode
-        ? input.responseFormat ?? { type: "json_object" }
-        : undefined
+      responseFormat
     });
   }
 }

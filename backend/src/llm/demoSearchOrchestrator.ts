@@ -7,7 +7,6 @@ import {
 } from "../services/userContext.service.js";
 import {
   MAX_REFILL_ROUNDS,
-  MAX_RERANK_CANDIDATES,
   MIN_EFFECTIVE_CANDIDATES,
   TARGET_EFFECTIVE_CANDIDATES,
   assessSearchCandidates,
@@ -46,6 +45,8 @@ import type { UserContext } from "../auth/session.js";
 import type { SearchItem } from "../types/api.types.js";
 import { HttpError } from "../utils/httpError.js";
 import { llmRouter, type LlmTaskType } from "./llmRouter.js";
+import { kimiClient } from "./clients/kimiClient.js";
+import type { JsonCompletionInput } from "./clients/openaiCompatible.js";
 import { getLlmTaskTimeoutMs } from "./llmTimeout.js";
 import { DEMO_RESPONSE_COMPOSE_SYSTEM_PROMPT } from "./prompts/demoResponseComposePrompt.js";
 import { EVIDENCE_EXTRACT_SYSTEM_PROMPT } from "./prompts/evidenceExtractPrompt.js";
@@ -217,8 +218,11 @@ const MAX_SEARCH_PLAN_QUERIES = 12;
 const MIN_SEARCH_ROUNDS = 3;
 const MAX_SEARCH_ROUNDS = 6;
 const MAX_REAL_ITEMS = 12;
-const MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES = 5;
-const EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET = 4200;
+const MAX_RERANK_PROMPT_CANDIDATES = 2;
+const MAX_DEMO_COMPOSE_PATHS = 1;
+const MAX_DEMO_COMPOSE_PEOPLE = 1;
+const MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES = 1;
+const EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET = 650;
 const MAX_EXPERIENCE_SUMMARY_PEOPLE = 3;
 const MIN_CONTENT_LENGTH = 8;
 const EXPERIENCE_SUMMARY_MIN_CONTENT_LENGTH = 60;
@@ -321,6 +325,8 @@ export async function composeMultiLlmDemoSearchResponse(
   stageResults.push(candidatePipeline.stageResult);
   timings.push(logAndCreateStageTiming({
     stageName: candidatePipeline.stageResult.stage,
+    provider: candidatePipeline.stageResult.provider,
+    model: candidatePipeline.stageResult.model,
     durationMs: candidatePipeline.durationMs,
     llmUsed: candidatePipeline.rerankUsed,
     fallbackUsed:
@@ -435,6 +441,7 @@ export async function composeMultiLlmDemoSearchResponse(
     llmRepairUsed: false,
     llmRepairFailed: false,
     llmStageResults: stageResults,
+    llmArtifactSources: buildLlmArtifactSources(stageResults),
     timings,
     enhancedPeopleCount: applyStats.peopleCount + applyStats.personaCount,
     enhancedPathCount: applyStats.pathCount,
@@ -565,9 +572,12 @@ async function runTimedStage<T>(
 
 function createStageTiming(result: TimedStageRunResult<unknown>): DemoDebugTiming {
   const fallbackUsed = result.stageResult.attempted === 0 || result.stageResult.failed > 0;
+  const runtimeInfo = getLlmStageRuntimeInfo(result.stageResult.stage);
   return logAndCreateStageTiming({
     stageName: result.stageResult.stage,
-    ...getLlmStageRuntimeInfo(result.stageResult.stage),
+    ...runtimeInfo,
+    provider: result.stageResult.provider ?? runtimeInfo.provider,
+    model: result.stageResult.model ?? runtimeInfo.model,
     durationMs: result.durationMs,
     llmUsed: result.stageResult.succeeded > 0,
     fallbackUsed,
@@ -631,6 +641,50 @@ function buildLlmStageMeta(timings: DemoDebugTiming[]): {
         .map((timing) => timing.stageName)
     )
   };
+}
+
+function buildLlmArtifactSources(
+  stageResults: DemoDebugLlmStageResult[]
+): NonNullable<DemoSearchResponse["debug"]["llmArtifactSources"]> {
+  const artifactStages = [
+    "intent_expand",
+    "candidate_rerank",
+    "evidence_extract",
+    "demo_response_compose",
+    "experience_summary",
+    "grounding_guard"
+  ] as const;
+  const result = {} as NonNullable<DemoSearchResponse["debug"]["llmArtifactSources"]>;
+
+  for (const stageName of artifactStages) {
+    const stage = stageResults.find((item) => item.stage === stageName);
+    const fallbackReason = stage?.fallbackReasons.join("; ");
+    if (!stage || stage.attempted === 0) {
+      result[stageName] = {
+        source: "skipped",
+        stageStatus: "skipped",
+        ...(fallbackReason ? { fallbackReason } : {})
+      };
+      continue;
+    }
+
+    if (stage.succeeded > 0) {
+      result[stageName] = {
+        source: "llm",
+        stageStatus: "success",
+        ...(fallbackReason ? { fallbackReason } : {})
+      };
+      continue;
+    }
+
+    result[stageName] = {
+      source: "rule_fallback",
+      stageStatus: "fallback",
+      ...(fallbackReason ? { fallbackReason } : {})
+    };
+  }
+
+  return result;
 }
 
 function isTimeoutFallbackReason(reason: string): boolean {
@@ -731,6 +785,132 @@ async function runJsonTaskWithStageTimeout(
   });
 }
 
+async function runPreferredJsonTaskWithStageTimeout(
+  taskType: LlmTaskType,
+  input: Omit<JsonCompletionInput, "taskType">
+): Promise<{
+  content: string;
+  provider?: string;
+  model?: string;
+}> {
+  if (!shouldPreferKimiForTask(taskType)) {
+    return {
+      content: await runJsonTaskWithStageTimeout(taskType, input)
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const content = await kimiClient.createJsonCompletion({
+      ...input,
+      taskType,
+      timeoutMs: getKimiTaskTimeoutMs(taskType, input),
+      maxRetry: 0,
+      responseFormat: input.responseFormat === null ? undefined : input.responseFormat
+    });
+    console.info(
+      formatLlmStageLogLine({
+        taskType,
+        provider: kimiClient.provider,
+        model: kimiClient.model,
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        fallbackReason: ""
+      })
+    );
+    return {
+      content,
+      provider: kimiClient.provider,
+      model: kimiClient.model
+    };
+  } catch (error) {
+    console.warn(
+      formatLlmStageLogLine({
+        taskType,
+        provider: kimiClient.provider,
+        model: kimiClient.model,
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        fallbackReason: `Kimi preferred route failed; DeepSeek route will be tried: ${formatErrorSummary(error)}`
+      })
+    );
+    return {
+      content: await runJsonTaskWithStageTimeout(taskType, input)
+    };
+  }
+}
+
+function shouldPreferKimiForTask(taskType: LlmTaskType): boolean {
+  if (!kimiClient.isConfigured()) {
+    return false;
+  }
+
+  return (
+    taskType === "candidate_rerank" ||
+    taskType === "evidence_extract" ||
+    taskType === "demo_response_compose" ||
+    taskType === "experience_summary"
+  );
+}
+
+function getKimiTaskTimeoutMs(
+  taskType: LlmTaskType,
+  input: Omit<JsonCompletionInput, "taskType">
+): number {
+  const timeoutMs = input.timeoutMs ?? getLlmTaskTimeoutMs(taskType);
+  return taskType === "intent_expand" ? Math.min(timeoutMs, 15000) : timeoutMs;
+}
+
+async function runKimiFallbackJsonTask(
+  taskType: LlmTaskType,
+  input: Omit<JsonCompletionInput, "taskType">,
+  originalError: unknown
+): Promise<string | undefined> {
+  if (!kimiClient.isConfigured() || !isKimiFallbackEligible(originalError)) {
+    return undefined;
+  }
+
+  const startedAt = Date.now();
+  try {
+    const content = await kimiClient.createJsonCompletion({
+      ...input,
+      taskType,
+      timeoutMs: getKimiTaskTimeoutMs(taskType, input),
+      maxRetry: 0,
+      responseFormat: input.responseFormat === null ? undefined : input.responseFormat
+    });
+    console.info(
+      formatLlmStageLogLine({
+        taskType,
+        provider: kimiClient.provider,
+        model: kimiClient.model,
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        fallbackReason: `DeepSeek retry fallback after ${formatErrorSummary(originalError)}`
+      })
+    );
+    return content;
+  } catch (fallbackError) {
+    console.warn(
+      formatLlmStageLogLine({
+        taskType,
+        provider: kimiClient.provider,
+        model: kimiClient.model,
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        fallbackReason: `Kimi fallback failed after ${formatErrorSummary(originalError)}; ${formatErrorSummary(fallbackError)}`
+      })
+    );
+    return undefined;
+  }
+}
+
+function isKimiFallbackEligible(error: unknown): boolean {
+  return /LLM_EMPTY_RESPONSE|LLM_TIMEOUT|LLM_TASK_TIMEOUT|LLM_JSON_PARSE_FAILED|timed out|empty response|did not include content|invalid json|did not contain a JSON object/i.test(
+    formatErrorSummary(error)
+  );
+}
+
 async function runIntentExpandStage(
   query: string,
   userContext?: UserContext,
@@ -752,36 +932,49 @@ async function runIntentExpandStage(
     };
   }
 
-  try {
-    const content = await runJsonTaskWithStageTimeout("intent_expand", {
-      temperature: 0.1,
-      maxTokens: 1200,
-      messages: [
-        {
-          role: "system",
-          content: INTENT_EXPAND_SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            query: truncateText(query, 120),
-            clarificationContext: clarificationContext
-              ? {
-                  answerSummary: clarificationContext.answerSummary,
-                  searchHints: clarificationContext.searchHints
-                }
-              : null,
-            userContext: buildPromptUserContext(userContext)
-          })
-        }
-      ]
-    });
+  const completionInput: Omit<JsonCompletionInput, "taskType"> = {
+    temperature: 0.1,
+    maxTokens: 1200,
+    messages: [
+      {
+        role: "system",
+        content: INTENT_EXPAND_SYSTEM_PROMPT
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          query: truncateText(query, 120),
+          clarificationContext: clarificationContext
+            ? {
+                answerSummary: clarificationContext.answerSummary,
+                searchHints: clarificationContext.searchHints
+              }
+            : null,
+          userContext: buildPromptUserContext(userContext)
+        })
+      }
+    ]
+  };
 
+  try {
+    const content = await runJsonTaskWithStageTimeout("intent_expand", completionInput);
     return {
       output: parseIntentExpandOutput(content, query),
       stageResult: createSuccessStage("intent_expand")
     };
   } catch (error) {
+    const fallbackContent = await runKimiFallbackJsonTask("intent_expand", completionInput, error);
+    if (fallbackContent) {
+      try {
+        return {
+          output: parseIntentExpandOutput(fallbackContent, query),
+          stageResult: createSuccessStage("intent_expand", kimiClient.provider, kimiClient.model)
+        };
+      } catch {
+        // Fall through to deterministic intent fallback below.
+      }
+    }
+
     return {
       output: fallback,
       stageResult: createFallbackStage("intent_expand", error)
@@ -817,11 +1010,12 @@ async function runEvidenceExtractStage(
     };
   }
 
+  let completionInput: Omit<JsonCompletionInput, "taskType"> | undefined;
   try {
     const promptCandidates = toEvidenceExtractPromptCandidates(candidates);
-    const content = await runJsonTaskWithStageTimeout("evidence_extract", {
+    completionInput = {
       temperature: 0.1,
-      maxTokens: 3000,
+      maxTokens: 500,
       messages: [
         {
           role: "system",
@@ -834,7 +1028,7 @@ async function runEvidenceExtractStage(
             intent,
             promptBudget: {
               model: llmRouter.getModelForTask("evidence_extract"),
-              maxContextTokens: 6500,
+              maxContextTokens: 3500,
               candidateCount: promptCandidates.length,
               evidenceCharBudget: EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET
             },
@@ -842,13 +1036,50 @@ async function runEvidenceExtractStage(
           })
         }
       ]
-    });
+    };
+    let content: string;
+    let completionProvider: string | undefined;
+    let completionModel: string | undefined;
+    try {
+      const completion = await runPreferredJsonTaskWithStageTimeout(
+        "evidence_extract",
+        completionInput
+      );
+      content = completion.content;
+      completionProvider = completion.provider;
+      completionModel = completion.model;
+    } catch (error) {
+      const fallbackContent = await runKimiFallbackJsonTask("evidence_extract", completionInput, error);
+      if (!fallbackContent) {
+        throw error;
+      }
+      content = fallbackContent;
+      completionProvider = kimiClient.provider;
+      completionModel = kimiClient.model;
+    }
 
     return {
       output: parseEvidenceExtractOutput(content, new Set(candidates.map((item) => item.sourceRefId))),
-      stageResult: createSuccessStage("evidence_extract")
+      stageResult: createSuccessStage("evidence_extract", completionProvider, completionModel)
     };
   } catch (error) {
+    const fallbackContent = completionInput
+      ? await runKimiFallbackJsonTask("evidence_extract", completionInput, error)
+      : undefined;
+    if (fallbackContent) {
+      try {
+        return {
+          output: parseEvidenceExtractOutput(
+            fallbackContent,
+            new Set(candidates.map((item) => item.sourceRefId))
+          ),
+          stageResult: createSuccessStage("evidence_extract", kimiClient.provider, kimiClient.model)
+        };
+      } catch {
+        // Fall through to raw snippet fallback below.
+      }
+    }
+
     return {
       output: fallback,
       stageResult: createFallbackStage("evidence_extract", error)
@@ -883,10 +1114,26 @@ async function runDemoResponseComposeStage(
     };
   }
 
+  let composePathIds: string[] = [];
+  let composePersonIds: string[] = [];
+  let completionInput: Omit<JsonCompletionInput, "taskType"> | undefined;
+
   try {
-    const content = await runJsonTaskWithStageTimeout("demo_response_compose", {
+    composePathIds = response.paths.slice(0, MAX_DEMO_COMPOSE_PATHS).map((path) => path.id);
+    composePersonIds = response.people.slice(0, MAX_DEMO_COMPOSE_PEOPLE).map((person) => person.id);
+    const finalCandidates = candidates
+      .filter(
+        (candidate) =>
+          composePersonIds.includes(candidate.personId) ||
+          response.paths
+            .filter((path) => composePathIds.includes(path.id))
+            .some((path) => path.sourceRefs.includes(candidate.sourceRefId))
+      )
+      .slice(0, Math.max(MAX_DEMO_COMPOSE_PEOPLE, MAX_DEMO_COMPOSE_PATHS))
+      .map(toDemoResponseComposeFinalCandidate);
+    completionInput = {
       temperature: 0.2,
-      maxTokens: 3600,
+      maxTokens: 700,
       messages: [
         {
           role: "system",
@@ -904,26 +1151,82 @@ async function runDemoResponseComposeStage(
             intent,
             evidenceExtract: evidence,
             allowedIds: {
-              pathIds: response.paths.map((path) => path.id),
-              personIds: response.people.map((person) => person.id),
+              pathIds: composePathIds,
+              personIds: composePersonIds,
               sourceRefs: response.meta.sourceRefs.map((sourceRef) => sourceRef.id)
             },
-            baseResponse: toDemoComposeContext(response),
-            finalCandidates: candidates.map(toDemoResponseComposeFinalCandidate),
-            candidates
+            promptBudget: {
+              maxPaths: composePathIds.length,
+              maxPeople: composePersonIds.length,
+              finalCandidateCount: finalCandidates.length
+            },
+            baseResponse: toDemoComposeContext(response, {
+              pathIds: new Set(composePathIds),
+              personIds: new Set(composePersonIds)
+            }),
+            finalCandidates
           })
         }
       ]
-    });
+    };
+    let content: string;
+    let completionProvider: string | undefined;
+    let completionModel: string | undefined;
+    try {
+      const completion = await runPreferredJsonTaskWithStageTimeout(
+        "demo_response_compose",
+        completionInput
+      );
+      content = completion.content;
+      completionProvider = completion.provider;
+      completionModel = completion.model;
+    } catch (error) {
+      const fallbackContent = await runKimiFallbackJsonTask(
+        "demo_response_compose",
+        completionInput,
+        error
+      );
+      if (!fallbackContent) {
+        throw error;
+      }
+      content = fallbackContent;
+      completionProvider = kimiClient.provider;
+      completionModel = kimiClient.model;
+    }
 
     return {
       output: parseDemoResponseComposeOutput(content, {
-        pathIds: new Set(response.paths.map((path) => path.id)),
-        personIds: new Set(response.people.map((person) => person.id))
+        pathIds: new Set(composePathIds),
+        personIds: new Set(composePersonIds)
       }),
-      stageResult: createSuccessStage("demo_response_compose")
+      stageResult: createSuccessStage(
+        "demo_response_compose",
+        completionProvider,
+        completionModel
+      )
     };
   } catch (error) {
+    const fallbackContent = completionInput
+      ? await runKimiFallbackJsonTask("demo_response_compose", completionInput, error)
+      : undefined;
+    if (fallbackContent) {
+      try {
+        return {
+          output: parseDemoResponseComposeOutput(fallbackContent, {
+            pathIds: new Set(composePathIds),
+            personIds: new Set(composePersonIds)
+          }),
+          stageResult: createSuccessStage(
+            "demo_response_compose",
+            kimiClient.provider,
+            kimiClient.model
+          )
+        };
+      } catch {
+        // Fall through to the deterministic compose fallback below.
+      }
+    }
+
     return {
       output: fallback,
       stageResult: createFallbackStage("demo_response_compose", error)
@@ -1035,9 +1338,9 @@ async function runExperienceSummaryStage(
   }
 
   try {
-    const content = await runJsonTaskWithStageTimeout("experience_summary", {
+    const completionInput: Omit<JsonCompletionInput, "taskType"> = {
       temperature: 0.15,
-      maxTokens: 1800,
+      maxTokens: 1000,
       messages: [
         {
           role: "system",
@@ -1051,7 +1354,31 @@ async function runExperienceSummaryStage(
           })
         }
       ]
-    });
+    };
+    let content: string;
+    let completionProvider: string | undefined;
+    let completionModel: string | undefined;
+    try {
+      const completion = await runPreferredJsonTaskWithStageTimeout(
+        "experience_summary",
+        completionInput
+      );
+      content = completion.content;
+      completionProvider = completion.provider;
+      completionModel = completion.model;
+    } catch (error) {
+      const fallbackContent = await runKimiFallbackJsonTask(
+        "experience_summary",
+        completionInput,
+        error
+      );
+      if (!fallbackContent) {
+        throw error;
+      }
+      content = fallbackContent;
+      completionProvider = kimiClient.provider;
+      completionModel = kimiClient.model;
+    }
     const parsed = parseExperienceSummaryOutput(
       content,
       new Set(uncachedCandidates.map((candidate) => candidate.personId))
@@ -1078,6 +1405,8 @@ async function runExperienceSummaryStage(
         failed: missingCount,
         repairUsed: 0,
         repairFailed: 0,
+        ...(completionProvider ? { provider: completionProvider } : {}),
+        ...(completionModel ? { model: completionModel } : {}),
         fallbackReasons:
           missingCount > 0
             ? ["some experienceSummary items were missing, null, or advice-style"]
@@ -1125,9 +1454,9 @@ async function runGroundingGuardStage(
   }
 
   try {
-    const content = await runJsonTaskWithStageTimeout("grounding_guard", {
+    const completionInput: Omit<JsonCompletionInput, "taskType"> = {
       temperature: 0,
-      maxTokens: 1400,
+      maxTokens: 700,
       messages: [
         {
           role: "system",
@@ -1141,7 +1470,27 @@ async function runGroundingGuardStage(
           })
         }
       ]
-    });
+    };
+    let content: string;
+    let completionProvider: string | undefined;
+    let completionModel: string | undefined;
+    try {
+      const completion = await runPreferredJsonTaskWithStageTimeout(
+        "grounding_guard",
+        completionInput
+      );
+      content = completion.content;
+      completionProvider = completion.provider;
+      completionModel = completion.model;
+    } catch (error) {
+      const fallbackContent = await runKimiFallbackJsonTask("grounding_guard", completionInput, error);
+      if (!fallbackContent) {
+        throw error;
+      }
+      content = fallbackContent;
+      completionProvider = kimiClient.provider;
+      completionModel = kimiClient.model;
+    }
 
     const output = parseGroundingGuardOutput(content, {
       personIds: new Set(response.people.map((person) => person.id)),
@@ -1151,7 +1500,7 @@ async function runGroundingGuardStage(
     return {
       output,
       stageResult: output.valid
-        ? createSuccessStage("grounding_guard")
+        ? createSuccessStage("grounding_guard", completionProvider, completionModel)
         : createInvalidGroundingGuardStage(output)
     };
   } catch (error) {
@@ -1465,10 +1814,13 @@ async function runCandidatePipeline(
       "request budget has insufficient remaining time for candidate_rerank; rule rerank fallback used";
     stageResult = createBudgetSkippedStage("candidate_rerank");
   } else {
+    let completionInput: Omit<JsonCompletionInput, "taskType"> | undefined;
     try {
-      const content = await runJsonTaskWithStageTimeout("candidate_rerank", {
+      const promptCandidates = selectCompactRerankPromptCandidates(rerankCandidates)
+        .map(toCandidateRerankPromptItem);
+      completionInput = {
         temperature: 0.1,
-        maxTokens: 2200,
+        maxTokens: 420,
         messages: [
           {
             role: "system",
@@ -1479,22 +1831,50 @@ async function runCandidatePipeline(
             content: JSON.stringify({
               originalQuery: truncateText(query, 120),
               userCoreQuestion: intent.userCoreQuestion,
-              focusTags: intent.focusTags,
-              topicSignals: intent.topicSignals,
-              searchQueries: recalledSearch.searchQueries,
-              candidates: rerankCandidates.slice(0, MAX_RERANK_CANDIDATES).map(toCandidateRerankPromptItem)
+              focusTags: intent.focusTags.slice(0, 5),
+              topicSignals: intent.topicSignals.slice(0, 8),
+              searchQueries: recalledSearch.searchQueries.slice(0, 4).map((item) => ({
+                query: item.query,
+                type: item.type,
+                purpose: item.purpose
+              })),
+              promptBudget: {
+                maxCandidates: promptCandidates.length,
+                selectedTarget: "1-2",
+                maxSelected: 2
+              },
+              candidates: promptCandidates
             })
           }
         ]
-      });
+      };
+      const completion = await runPreferredJsonTaskWithStageTimeout(
+        "candidate_rerank",
+        completionInput
+      );
       rerankOutput = parseCandidateRerankOutput(
-        content,
+        completion.content,
         new Set(rerankCandidates.map((candidate) => candidate.candidateId))
       );
-      stageResult = createSuccessStage("candidate_rerank");
+      stageResult = createSuccessStage(
+        "candidate_rerank",
+        completion.provider,
+        completion.model
+      );
     } catch (error) {
-      rerankFailedReason = formatErrorSummary(error);
-      stageResult = createFallbackStage("candidate_rerank", error);
+      const fallbackContent = completionInput
+        ? await runKimiFallbackJsonTask("candidate_rerank", completionInput, error)
+        : undefined;
+      if (fallbackContent) {
+        rerankOutput = parseCandidateRerankOutput(
+          fallbackContent,
+          new Set(rerankCandidates.map((candidate) => candidate.candidateId))
+        );
+        stageResult = createSuccessStage("candidate_rerank", kimiClient.provider, kimiClient.model);
+      } else {
+        rerankFailedReason = formatErrorSummary(error);
+        stageResult = createFallbackStage("candidate_rerank", error);
+      }
     }
   }
 
@@ -1509,7 +1889,7 @@ async function runCandidatePipeline(
   let refillQueries: DemoSearchQueryPlan[] = [];
   let refillCandidateCount = 0;
 
-  if (selectedAssessments.length < MIN_EFFECTIVE_CANDIDATES && MAX_REFILL_ROUNDS > 0) {
+  if (!rerankOutput && selectedAssessments.length < MIN_EFFECTIVE_CANDIDATES && MAX_REFILL_ROUNDS > 0) {
     refillTriggered = true;
     refillReason = `selectedCandidates=${selectedAssessments.length} below MIN_EFFECTIVE_CANDIDATES=${MIN_EFFECTIVE_CANDIDATES}`;
     refillQueries = buildRefillQueries(intent, selectedAssessments, recalledSearch.searchQueries);
@@ -1539,7 +1919,7 @@ async function runCandidatePipeline(
     }
   }
 
-  if (selectedAssessments.length < MIN_EFFECTIVE_CANDIDATES) {
+  if (!rerankOutput && selectedAssessments.length < MIN_EFFECTIVE_CANDIDATES) {
     const selectedIds = new Set(selectedAssessments.map((assessment) => assessment.candidateId));
     const backup = selectRuleFallbackAssessments(
       assessments.filter((assessment) => !selectedIds.has(assessment.candidateId)),
@@ -1688,18 +2068,59 @@ function attachMatchedQuery(
   };
 }
 
+function selectCompactRerankPromptCandidates(
+  candidates: CandidateAssessment[]
+): CandidateAssessment[] {
+  return [...candidates]
+    .sort((left, right) => scoreRerankPromptCandidate(right) - scoreRerankPromptCandidate(left))
+    .slice(0, MAX_RERANK_PROMPT_CANDIDATES);
+}
+
+function scoreRerankPromptCandidate(candidate: CandidateAssessment): number {
+  const text = normalizeText([
+    candidate.title,
+    candidate.summary,
+    candidate.item.text,
+    candidate.item.evidence.text,
+    candidate.matchedQuery,
+    candidate.queryPurpose,
+    ...(candidate.relevanceSignals ?? [])
+  ].join("\n"));
+  const hasBigTech = /互联网|大厂|字节|腾讯|阿里|百度|美团|京东/.test(text);
+  const hasStartup = /创业|合伙|小生意|客户|现金流|投资|项目|商业|试错|验证/.test(text);
+  const hasAgeOrExit = /35|三十五|裸辞|离职|辞职|被裁/.test(text);
+  const penalties = candidate.penaltySignals.length * 18 +
+    (/广告营销|疑似机构|课程|训练营|加微信|私信|咨询|报名|证书|招聘|法律|财会/.test(text) ? 35 : 0);
+
+  return (
+    candidate.roughScore +
+    (hasBigTech ? 28 : 0) +
+    (hasStartup ? 28 : 0) +
+    (hasAgeOrExit ? 18 : 0) +
+    candidate.topicHitScore * 2 +
+    candidate.experienceSignalScore * 30 -
+    penalties
+  );
+}
+
 function toCandidateRerankPromptItem(candidate: CandidateAssessment): Record<string, unknown> {
   return {
     candidateId: candidate.candidateId,
-    title: truncateText(candidate.title, 90),
+    title: truncateText(candidate.title, 72),
     author: truncateText(candidate.author, 40),
-    summary: truncateText(candidate.summary, 160),
-    contentSnippet: truncateText(candidate.item.text || candidate.item.evidence.text || candidate.title, 320),
+    summary: truncateText(candidate.summary, 96),
+    contentSnippet: truncateText(candidate.item.text || candidate.item.evidence.text || candidate.title, 180),
     matchedQuery: candidate.matchedQuery,
     queryType: candidate.queryType,
     queryPurpose: candidate.queryPurpose,
     roughScore: candidate.roughScore,
-    roughReason: candidate.roughReason
+    roughTier: candidate.roughTier,
+    roughReason: truncateText(candidate.roughReason, 100),
+    signals: {
+      relevance: candidate.relevanceSignals.slice(0, 3),
+      narrative: candidate.narrativeSignals.slice(0, 3),
+      penalties: candidate.penaltySignals.slice(0, 3)
+    }
   };
 }
 
@@ -1708,8 +2129,8 @@ function toEvidenceExtractPromptCandidates(
 ): Array<Record<string, unknown>> {
   const selected = candidates.slice(0, MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES);
   const perCandidateEvidenceChars = Math.min(
-    1000,
-    Math.max(800, Math.floor(EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET / Math.max(selected.length, 1)))
+    700,
+    Math.max(480, Math.floor(EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET / Math.max(selected.length, 1)))
   );
 
   return selected.map((candidate) => ({
@@ -1734,7 +2155,7 @@ function toEvidenceExtractPromptCandidates(
     experienceSignalScore: candidate.experienceSignalScore,
     contentLength: candidate.contentLength,
     filterReason: truncateText(candidate.filterReason, 120),
-    text: truncateText(candidate.text, 240),
+    text: truncateText(candidate.text, 120),
     evidenceText: truncateText(
       candidate.text || candidate.evidenceText || candidate.title,
       perCandidateEvidenceChars
@@ -1747,19 +2168,19 @@ function toDemoResponseComposeFinalCandidate(candidate: CleanedCandidate): Recor
     candidateId: candidate.candidateId,
     personId: candidate.personId,
     articleId: candidate.articleId,
-    title: candidate.title,
-    author: candidate.author,
-    summary: truncateText(candidate.text, 240),
-    contentSnippet: truncateText(candidate.text, 520),
+    title: truncateText(candidate.title, 80),
+    author: truncateText(candidate.author, 32),
+    summary: truncateText(candidate.text, 140),
+    contentSnippet: truncateText(candidate.text, 220),
     contentRole: candidate.contentRole,
-    relationToUserIntent: candidate.relationToUserIntent,
-    summaryAngle: candidate.summaryAngle,
-    diversityKey: candidate.diversityKey,
+    relationToUserIntent: truncateText(candidate.relationToUserIntent ?? "", 100),
+    summaryAngle: truncateText(candidate.summaryAngle ?? "", 70),
+    diversityKey: truncateText(candidate.diversityKey ?? "", 32),
     matchedQuery: candidate.matchedQuery,
     queryType: candidate.queryType,
-    keepReason: candidate.keepReason,
+    keepReason: truncateText(candidate.keepReason ?? "", 100),
     sourceRefs: [candidate.sourceRefId],
-    evidenceText: candidate.evidenceText
+    evidenceText: truncateText(candidate.evidenceText, 150)
   };
 }
 
@@ -1777,7 +2198,11 @@ function applyCandidateRerankOutput(
       continue;
     }
 
-    assessment.relevanceScore = Number((item.relevanceScore / 100).toFixed(2));
+    assessment.relevanceScore = Math.max(
+      assessment.relevanceScore,
+      Number((item.relevanceScore / 100).toFixed(2)),
+      0.36
+    );
     assessment.contentRole = item.contentRole;
     assessment.relationToUserIntent = item.relationToUserIntent;
     assessment.summaryAngle = item.summaryAngle;
@@ -2434,12 +2859,12 @@ function toExperienceSummaryPromptCandidate(
     articleId: candidate.articleId,
     sourceRefId: candidate.sourceRefId,
     title: truncateText(candidate.title, 100),
-    content: truncateText(candidate.content, 900),
-    summary: truncateText(candidate.summary, 240),
+    content: truncateText(candidate.content, 520),
+    summary: truncateText(candidate.summary, 180),
     evidence: candidate.evidence.map((evidence) => ({
       id: evidence.id,
       label: evidence.label,
-      text: truncateText(evidence.text, 180)
+      text: truncateText(evidence.text, 140)
     })),
     candidateQuality: candidate.candidateQuality,
     matchedQuery: candidate.matchedQuery,
@@ -2971,66 +3396,57 @@ function buildDisplaySections(response: DemoSearchResponse): DemoSearchResponse[
   ];
 }
 
-function toDemoComposeContext(response: DemoSearchResponse): Record<string, unknown> {
+function toDemoComposeContext(
+  response: DemoSearchResponse,
+  allowed: {
+    pathIds: Set<string>;
+    personIds: Set<string>;
+  }
+): Record<string, unknown> {
   return {
-    analysis: response.analysis,
-    paths: response.paths.map((path) => ({
+    analysis: {
+      intent: response.analysis.intent,
+      focusTags: response.analysis.focusTags
+    },
+    paths: response.paths.filter((path) => allowed.pathIds.has(path.id)).map((path) => ({
       id: path.id,
       title: path.title,
       summary: path.summary,
       whyRelevant: path.whyRelevant,
       tradeoff: path.tradeoff,
-      fitReason: path.fitReason,
       diversityKey: path.diversityKey,
       stance: path.stance,
-      personRefs: path.personRefs,
-      sourceRefs: path.sourceRefs,
-      evidenceIds: path.evidenceIds
+      sourceRefs: path.sourceRefs
     })),
-    people: response.people.map((person) => ({
+    people: response.people.filter((person) => allowed.personIds.has(person.id)).map((person) => ({
       id: person.id,
       name: person.name,
       sampleType: person.sampleType,
       pathId: person.pathId,
       role: person.role,
-      roleLabel: person.roleLabel,
       badge: person.badge,
       oneLine: person.oneLine,
       matchedPathTitle: person.matchedPathTitle,
-      relevanceReason: person.relevanceReason,
       fitReason: person.fitReason,
       who: person.who,
       overlaps: person.overlaps,
-      lesson: person.lesson,
       match: {
         reasons: person.match.reasons,
         matchedVariables: person.match.matchedVariables,
-        riskNotes: person.match.riskNotes,
-        sourceRefs: person.match.sourceRefs,
-        evidenceIds: person.match.evidenceIds
-      },
-      aiPersona: {
-        enabled: person.aiPersona.enabled,
-        personaId: person.aiPersona.personaId,
-        openingLine: person.aiPersona.openingLine,
-        suggestedQuestions: person.aiPersona.suggestedQuestions,
-        sourceRefs: person.aiPersona.grounding.sourceRefs
+        sourceRefs: person.match.sourceRefs
       },
       articles: person.articles.map((article) => ({
         id: article.id,
         title: article.title,
         summary: article.summary,
-        text: truncateText(article.text, 500),
         sourceRefs: article.sourceRefs,
         evidence: article.evidence.map((evidence) => ({
           id: evidence.id,
-          label: evidence.label,
-          text: truncateText(evidence.text, 160),
+          text: truncateText(evidence.text, 120),
           sourceRefId: evidence.sourceRefId
         }))
       })),
-      sourceRefs: person.sourceRefs,
-      evidenceIds: person.evidenceIds
+      sourceRefs: person.sourceRefs
     }))
   };
 }
@@ -3052,12 +3468,24 @@ function toGroundingGuardContext(response: DemoSearchResponse): Record<string, u
       role: person.role,
       oneLine: person.oneLine,
       who: person.who,
-      lesson: person.lesson,
       sourceRefs: person.sourceRefs,
       evidenceIds: person.evidenceIds,
-      aiPersona: person.aiPersona
+      aiPersona: {
+        personaId: person.aiPersona.personaId,
+        enabled: person.aiPersona.enabled,
+        boundary: person.aiPersona.boundary,
+        grounding: {
+          sourceRefs: person.aiPersona.grounding.sourceRefs,
+          articleIds: person.aiPersona.grounding.articleIds
+        }
+      }
     })),
-    personas: response.personas ?? []
+    personas: (response.personas ?? []).map((persona) => ({
+      id: persona.id,
+      personId: persona.personId,
+      boundaryNotice: persona.boundaryNotice,
+      sourceRefs: persona.sourceRefs
+    }))
   };
 }
 
@@ -3079,7 +3507,11 @@ function filterEvidenceIds(
   return unique(evidenceIds.filter((evidenceId) => allowedEvidenceIds.has(evidenceId)));
 }
 
-function createSuccessStage(stage: LlmTaskType): DemoDebugLlmStageResult {
+function createSuccessStage(
+  stage: LlmTaskType,
+  provider?: string,
+  model?: string
+): DemoDebugLlmStageResult {
   return {
     stage,
     attempted: 1,
@@ -3087,7 +3519,9 @@ function createSuccessStage(stage: LlmTaskType): DemoDebugLlmStageResult {
     failed: 0,
     repairUsed: 0,
     repairFailed: 0,
-    fallbackReasons: []
+    fallbackReasons: [],
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {})
   };
 }
 
@@ -3376,7 +3810,7 @@ function isExperiencePathTitle(value: string): boolean {
   ];
 
   return (
-    (value.includes("有人") || value.includes("有些人")) &&
+    /有人|有些人|这个样本|这段经历|作者|裸辞|离职|创业|试错|验证/.test(value) &&
     !adviceTitleFragments.some((fragment) => value.includes(fragment))
   );
 }
