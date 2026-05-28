@@ -57,7 +57,7 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || "http://127.0.0.1:5173",
   sessionSecret: process.env.SESSION_SECRET || "dev-session-secret",
   demoSearch: {
-    requestBudgetMs: parsePositiveInteger(process.env.DEMO_SEARCH_BUDGET_MS, 75000)
+    requestBudgetMs: parsePositiveInteger(process.env.DEMO_SEARCH_BUDGET_MS, 90000)
   },
   agentTask: {
     store: parseAgentTaskStore(process.env.AGENT_TASK_STORE),
@@ -109,11 +109,11 @@ export const config = {
       ),
       candidateRerankMs: parsePositiveInteger(
         process.env.CANDIDATE_RERANK_TIMEOUT_MS,
-        12000
+        18000
       ),
       evidenceExtractMs: parsePositiveInteger(
         process.env.EVIDENCE_EXTRACT_TIMEOUT_MS,
-        12000
+        18000
       ),
       demoResponseComposeMs: parsePositiveInteger(
         process.env.DEMO_RESPONSE_COMPOSE_TIMEOUT_MS,
@@ -125,7 +125,7 @@ export const config = {
       ),
       groundingGuardMs: parsePositiveInteger(
         process.env.GROUNDING_GUARD_TIMEOUT_MS,
-        8000
+        12000
       ),
       personaChatMs: parsePositiveInteger(
         process.env.PERSONA_CHAT_TIMEOUT_MS,

@@ -10,7 +10,7 @@ export const EVIDENCE_EXTRACT_SYSTEM_PROMPT = String.raw`
 6. 正文字数过少、信息量低、缺少亲历经验、纯建议/纯观点/纯鸡汤内容只能降级为观点或线索，不要作为核心经历 evidence。
 7. 不得编造作者经历、身份、地点、收入、动机和结果。
 8. 不得把观点型内容包装成作者亲历。
-9. 最多输出 4 条 evidenceRefs。
+9. 最多输出 3 条 evidenceRefs，优先覆盖不同 sourceRefId。
 10. 只输出严格 JSON，不要 Markdown，不要解释。
 
 输出结构：

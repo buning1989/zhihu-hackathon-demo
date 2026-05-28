@@ -218,11 +218,12 @@ const MAX_SEARCH_PLAN_QUERIES = 12;
 const MIN_SEARCH_ROUNDS = 3;
 const MAX_SEARCH_ROUNDS = 6;
 const MAX_REAL_ITEMS = 12;
-const MAX_RERANK_PROMPT_CANDIDATES = 2;
+const MAX_RERANK_PROMPT_CANDIDATES = 5;
+const MIN_RERANK_SELECTED_CANDIDATES = 5;
 const MAX_DEMO_COMPOSE_PATHS = 1;
 const MAX_DEMO_COMPOSE_PEOPLE = 1;
-const MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES = 1;
-const EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET = 650;
+const MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES = 3;
+const EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET = 1800;
 const MAX_EXPERIENCE_SUMMARY_PEOPLE = 3;
 const MIN_CONTENT_LENGTH = 8;
 const EXPERIENCE_SUMMARY_MIN_CONTENT_LENGTH = 60;
@@ -503,6 +504,8 @@ export async function composeMultiLlmDemoSearchResponse(
           ]
   };
 
+  markRawSnippetOnlyArtifactSources(response);
+
   return response;
 }
 
@@ -685,6 +688,27 @@ function buildLlmArtifactSources(
   }
 
   return result;
+}
+
+function markRawSnippetOnlyArtifactSources(response: DemoSearchResponse): void {
+  const artifactSources = response.debug.llmArtifactSources;
+  if (!artifactSources || artifactSources.evidence_extract.source !== "llm") {
+    return;
+  }
+
+  const hasAnyPerson = response.people.length > 0;
+  const hasLlmEvidence = response.people.some((person) => person.evidenceStatus === "llm_extracted");
+  if (!hasAnyPerson || hasLlmEvidence) {
+    return;
+  }
+
+  const reason = "evidence_extract succeeded but feed evidence stayed raw_snippet_only";
+  artifactSources.evidence_extract = {
+    source: "rule_fallback",
+    stageStatus: "fallback",
+    fallbackReason: reason
+  };
+  response.debug.guardWarnings = unique([...(response.debug.guardWarnings ?? []), reason]);
 }
 
 function isTimeoutFallbackReason(reason: string): boolean {
@@ -1015,7 +1039,8 @@ async function runEvidenceExtractStage(
     const promptCandidates = toEvidenceExtractPromptCandidates(candidates);
     completionInput = {
       temperature: 0.1,
-      maxTokens: 500,
+      maxTokens: 720,
+      responseFormat: { type: "json_object" },
       messages: [
         {
           role: "system",
@@ -1820,7 +1845,8 @@ async function runCandidatePipeline(
         .map(toCandidateRerankPromptItem);
       completionInput = {
         temperature: 0.1,
-        maxTokens: 420,
+        maxTokens: 560,
+        responseFormat: { type: "json_object" },
         messages: [
           {
             role: "system",
@@ -1840,8 +1866,8 @@ async function runCandidatePipeline(
               })),
               promptBudget: {
                 maxCandidates: promptCandidates.length,
-                selectedTarget: "1-2",
-                maxSelected: 2
+                selectedTarget: "3-5",
+                maxSelected: 5
               },
               candidates: promptCandidates
             })
@@ -1883,6 +1909,7 @@ async function runCandidatePipeline(
     : selectRuleFallbackAssessments(assessments, TARGET_EFFECTIVE_CANDIDATES);
   if (rerankOutput) {
     rerankDropReasonById = markRerankDroppedCandidates(rerankCandidates, rerankOutput);
+    selectedAssessments = supplementRerankSelectedAssessments(selectedAssessments, assessments);
   }
   let refillTriggered = false;
   let refillReason = "";
@@ -2129,7 +2156,7 @@ function toEvidenceExtractPromptCandidates(
 ): Array<Record<string, unknown>> {
   const selected = candidates.slice(0, MAX_EVIDENCE_EXTRACT_PROMPT_CANDIDATES);
   const perCandidateEvidenceChars = Math.min(
-    700,
+    760,
     Math.max(480, Math.floor(EVIDENCE_EXTRACT_CONTEXT_CHAR_BUDGET / Math.max(selected.length, 1)))
   );
 
@@ -2182,6 +2209,70 @@ function toDemoResponseComposeFinalCandidate(candidate: CleanedCandidate): Recor
     sourceRefs: [candidate.sourceRefId],
     evidenceText: truncateText(candidate.evidenceText, 150)
   };
+}
+
+function supplementRerankSelectedAssessments(
+  selected: CandidateAssessment[],
+  assessments: CandidateAssessment[]
+): CandidateAssessment[] {
+  if (selected.length >= MIN_RERANK_SELECTED_CANDIDATES) {
+    return selected;
+  }
+
+  const selectedIds = new Set(selected.map((assessment) => assessment.candidateId));
+  const supplements = assessments
+    .filter((assessment) => !selectedIds.has(assessment.candidateId))
+    .filter(isStrictRuleSupplementCandidate)
+    .sort(compareStrictRuleSupplementCandidates)
+    .slice(0, MIN_RERANK_SELECTED_CANDIDATES - selected.length);
+
+  return [...selected, ...supplements].slice(0, MIN_RERANK_SELECTED_CANDIDATES);
+}
+
+function isStrictRuleSupplementCandidate(assessment: CandidateAssessment): boolean {
+  if (assessment.hardFiltered || assessment.roughTier === "drop") {
+    return false;
+  }
+
+  const text = normalizeText([
+    assessment.title,
+    assessment.author,
+    assessment.summary,
+    assessment.item.text,
+    assessment.item.evidence.text,
+    assessment.filterReason,
+    ...(assessment.penaltySignals ?? [])
+  ].join("\n"));
+  if (/广告营销|疑似机构|课程|训练营|加微信|私信|咨询|报名|推广|证书|法律|财会|招聘|指南\/教程型标题/.test(text)) {
+    return false;
+  }
+
+  const contentRole = assessment.contentRole ?? "real_experience";
+  if (contentRole === "viewpoint") {
+    return false;
+  }
+
+  const signalRich =
+    assessment.roughTier === "strong" ||
+    (
+      assessment.qualityScore >= 0.55 &&
+      assessment.experienceSignalScore >= 0.24 &&
+      assessment.relevanceScore >= 0.18
+    ) ||
+    (
+      assessment.qualityScore >= 0.62 &&
+      assessment.experienceSignalScore >= 0.35 &&
+      assessment.topicHitScore >= 6
+    );
+
+  return signalRich;
+}
+
+function compareStrictRuleSupplementCandidates(
+  left: CandidateAssessment,
+  right: CandidateAssessment
+): number {
+  return scoreRerankPromptCandidate(right) - scoreRerankPromptCandidate(left);
 }
 
 function applyCandidateRerankOutput(
@@ -3078,25 +3169,29 @@ function applyEvidenceExtractDisplayStatus(
   llmExtracted: boolean
 ): void {
   const evidenceBySourceRef = new Map(output.evidenceRefs.map((item) => [item.sourceRefId, item]));
-  const evidenceStatus: DemoEvidenceStatus = llmExtracted ? "llm_extracted" : "raw_snippet_only";
-
   for (const person of response.people) {
-    person.evidenceStatus = evidenceStatus;
+    let personHasLlmEvidence = false;
 
     for (const article of person.articles) {
       const sourceRefId = article.sourceRefs[0] || person.sourceRefs[0] || article.evidence[0]?.sourceRefId || "";
       const extracted = sourceRefId ? evidenceBySourceRef.get(sourceRefId) : undefined;
-      const evidenceText = llmExtracted && extracted?.evidenceText
-        ? extracted.evidenceText
+      const extractedText = extracted?.evidenceText;
+      const articleHasLlmEvidence = Boolean(llmExtracted && extractedText);
+      const evidenceStatus: DemoEvidenceStatus = articleHasLlmEvidence ? "llm_extracted" : "raw_snippet_only";
+      const evidenceText = articleHasLlmEvidence
+        ? extractedText ?? ""
         : buildFallbackEvidenceText(article);
       article.evidenceStatus = evidenceStatus;
       article.evidenceText = evidenceText;
+      personHasLlmEvidence = personHasLlmEvidence || articleHasLlmEvidence;
 
       if (article.evidence[0]) {
-        article.evidence[0].label = llmExtracted ? "AI 证据提炼" : "来源片段";
+        article.evidence[0].label = articleHasLlmEvidence ? "AI 证据提炼" : "来源片段";
         article.evidence[0].text = evidenceText;
       }
     }
+
+    person.evidenceStatus = personHasLlmEvidence ? "llm_extracted" : "raw_snippet_only";
   }
 }
 

@@ -1,4 +1,5 @@
 import type {
+  DemoCandidateQuality,
   DemoDebug,
   DemoFeedItem,
   DemoFeedSummaryPayload,
@@ -16,10 +17,17 @@ export function projectDemoFeedResponse(
   options: ProjectDemoFeedOptions = {}
 ): DemoSearchResponse {
   const pathById = new Map(response.paths.map((path) => [path.id, path]));
-  const people = response.people
+  const originalPeople = response.people;
+  let people = originalPeople
     .filter(isExperienceFeedPerson)
     .filter((person) => hasUsableSource(person))
     .filter((person) => !isMarketingSuspect(person));
+  if (people.length === 0 && response.dataMode === "real") {
+    people = selectRawSnippetFallbackPeople(response, originalPeople);
+    if (people.length > 0) {
+      markRawSnippetFeedFallback(response.debug, "public feed projection kept raw_snippet_only fallback people");
+    }
+  }
 
   response.people = people;
   response.feedItems = people.map((person) => {
@@ -94,6 +102,104 @@ function isMarketingSuspect(person: DemoPerson): boolean {
   return /(加微信|私信|课程|训练营|报名|推广|付费咨询|预约咨询|转行辅导|简历辅导|面试辅导|就业班|机构培训|培训机构|带过[几数百千\d]+人)/.test(text);
 }
 
+function selectRawSnippetFallbackPeople(
+  response: DemoSearchResponse,
+  people: DemoPerson[]
+): DemoPerson[] {
+  const qualityBySourceRef = new Map(
+    (response.debug.candidateQuality ?? [])
+      .filter((item): item is DemoCandidateQuality & { sourceRefId: string } =>
+        Boolean(item.sourceRefId)
+      )
+      .map((item) => [item.sourceRefId, item])
+  );
+
+  return people
+    .filter(isExperienceFeedPerson)
+    .filter((person) => hasUsableSource(person))
+    .filter((person) => !isMarketingSuspect(person))
+    .filter((person) => {
+      const sourceRefId = person.sourceRefs[0] || person.articles[0]?.sourceRefs[0] || "";
+      const quality = sourceRefId ? qualityBySourceRef.get(sourceRefId) : undefined;
+      return !quality || !isWeakOrUnsafeFeedQuality(quality);
+    })
+    .sort((left, right) =>
+      scoreRawSnippetFallbackPerson(right, qualityBySourceRef) -
+        scoreRawSnippetFallbackPerson(left, qualityBySourceRef)
+    )
+    .slice(0, 3)
+    .map(markPersonRawSnippetOnly);
+}
+
+function isWeakOrUnsafeFeedQuality(
+  quality: DemoCandidateQuality
+): boolean {
+  const text = [
+    quality.title,
+    quality.filterReason,
+    quality.roughReason,
+    ...(quality.penaltySignals ?? [])
+  ].join("\n");
+  const hasObviousWeakSignal =
+    /广告营销|疑似机构|课程|训练营|加微信|私信|咨询|报名|推广|证书|法律|财会|招聘|指南\/教程型标题/.test(text);
+  const scoreTooWeak =
+    quality.relevanceScore < 0.1 &&
+    quality.qualityScore < 0.55 &&
+    quality.contentRole !== "real_experience";
+  return (
+    hasObviousWeakSignal ||
+    quality.contentRole === "viewpoint" ||
+    scoreTooWeak
+  );
+}
+
+function scoreRawSnippetFallbackPerson(
+  person: DemoPerson,
+  qualityBySourceRef: Map<string, DemoCandidateQuality>
+): number {
+  const sourceRefId = person.sourceRefs[0] || person.articles[0]?.sourceRefs[0] || "";
+  const quality = sourceRefId ? qualityBySourceRef.get(sourceRefId) : undefined;
+  return (
+    (quality?.roughScore ?? 0) +
+    (quality?.relevanceScore ?? person.match.contentRelevance) * 80 +
+    (quality?.qualityScore ?? person.match.evidenceQuality) * 30 +
+    (quality?.experienceSignalScore ?? person.match.experienceSimilarity) * 40
+  );
+}
+
+function markPersonRawSnippetOnly(person: DemoPerson): DemoPerson {
+  person.evidenceStatus = "raw_snippet_only";
+  person.canChat = false;
+  person.aiPersona.enabled = false;
+  person.aiPersona.canChat = false;
+  person.aiPersona.evidenceStatus = "raw_snippet_only";
+  person.aiPersona.displayLabel = "仅查看来源片段";
+  person.aiPersona.openingLine = "这段公开内容目前只适合查看来源片段，暂不开放追问。";
+  person.aiPersona.suggestedQuestions = ["这段公开内容里，哪些信息是确定的？"];
+
+  for (const article of person.articles) {
+    article.evidenceStatus = "raw_snippet_only";
+    article.evidenceText = buildFallbackEvidenceText(article);
+    if (article.evidence[0]) {
+      article.evidence[0].label = "来源片段";
+      article.evidence[0].text = article.evidenceText;
+    }
+  }
+
+  return person;
+}
+
+function markRawSnippetFeedFallback(debug: DemoDebug, reason: string): void {
+  if (debug.llmArtifactSources) {
+    debug.llmArtifactSources.evidence_extract = {
+      source: "rule_fallback",
+      stageStatus: "fallback",
+      fallbackReason: reason
+    };
+  }
+  debug.guardWarnings = Array.from(new Set([...(debug.guardWarnings ?? []), reason]));
+}
+
 function toFeedItem(person: DemoPerson, path: DemoPath | undefined): DemoFeedItem {
   const article = person.articles[0];
   const sourceUrl = article?.sourceUrl || article?.url || "";
@@ -166,6 +272,19 @@ function selectSnippet(person: DemoPerson): string {
       article?.summary,
       article?.text,
       person.oneLine
+    ),
+    220
+  );
+}
+
+function buildFallbackEvidenceText(article: DemoPerson["articles"][number]): string {
+  return truncateText(
+    firstNonEmpty(
+      article.evidenceText,
+      article.evidence[0]?.text,
+      article.summary,
+      article.text,
+      article.title
     ),
     220
   );

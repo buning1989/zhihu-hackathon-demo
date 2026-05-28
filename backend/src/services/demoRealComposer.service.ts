@@ -95,6 +95,9 @@ const PATH_DISPLAY_COPY: Record<DemoContentRole, {
   }
 };
 
+const MIN_PUBLIC_FEED_ITEMS = 3;
+const MAX_PUBLIC_FEED_ITEMS = 5;
+
 export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSearchResponse {
   const limitedItems = input.items.slice(0, Math.min(Math.max(input.count, 10), 12));
   const identity = createDemoSearchIdentity(input.query, {
@@ -174,6 +177,58 @@ export function composeRealDemoSearchResponse(input: ComposeRealInput): DemoSear
         pathByItemId.set(item.id, fallbackPath.id);
       }
       experienceFeedItems = fallbackFeedItems;
+    }
+  }
+
+  if (experienceFeedItems.length === 0) {
+    const rawSnippetFallbackItems = selectRawSnippetFeedFallbackItems(
+      input.query,
+      limitedItems,
+      qualityByItemId,
+      Math.min(Math.max(input.count, 3), 5)
+    );
+    const fallbackPath = buildFallbackExperienceFeedPath({
+      query: input.query,
+      items: rawSnippetFallbackItems,
+      sourceByItemId,
+      qualityByItemId,
+      userContext: input.userContext
+    });
+
+    if (fallbackPath) {
+      paths = [fallbackPath, ...paths];
+      for (const item of rawSnippetFallbackItems) {
+        pathByItemId.set(item.id, fallbackPath.id);
+      }
+      experienceFeedItems = rawSnippetFallbackItems;
+    }
+  }
+
+  experienceFeedItems = filterItemsWithReturnedExperiencePath(experienceFeedItems, pathByItemId, paths);
+
+  const targetFeedItems = Math.min(Math.max(input.count, MIN_PUBLIC_FEED_ITEMS), MAX_PUBLIC_FEED_ITEMS);
+  if (experienceFeedItems.length < MIN_PUBLIC_FEED_ITEMS) {
+    const selectedItemIds = new Set(experienceFeedItems.map((item) => item.id));
+    const supplementalItems = selectRawSnippetFeedFallbackItems(
+      input.query,
+      limitedItems.filter((item) => !selectedItemIds.has(item.id)),
+      qualityByItemId,
+      targetFeedItems - experienceFeedItems.length
+    );
+    const fallbackPath = buildFallbackExperienceFeedPath({
+      query: input.query,
+      items: supplementalItems,
+      sourceByItemId,
+      qualityByItemId,
+      userContext: input.userContext
+    });
+
+    if (fallbackPath) {
+      paths = [fallbackPath, ...paths];
+      for (const item of supplementalItems) {
+        pathByItemId.set(item.id, fallbackPath.id);
+      }
+      experienceFeedItems = mergeUniqueSearchItems([...experienceFeedItems, ...supplementalItems]);
     }
   }
 
@@ -1082,6 +1137,10 @@ function isExperienceFeedItem(
   item: SearchItem,
   quality?: DemoCandidateQuality
 ): boolean {
+  if (isLocalReplayOnlyItem(item)) {
+    return false;
+  }
+
   if (classifySampleType(item, quality) !== "experience_sample") {
     return false;
   }
@@ -1130,7 +1189,15 @@ function isExperienceFeedCandidate(
   item: SearchItem,
   quality?: DemoCandidateQuality
 ): boolean {
+  if (isLocalReplayOnlyItem(item)) {
+    return false;
+  }
+
   if (isExperienceFeedItem(query, item, quality)) {
+    return true;
+  }
+
+  if (isHighQualityRealExperienceFallbackCandidate(query, item, quality)) {
     return true;
   }
 
@@ -1163,6 +1230,123 @@ function isExperienceFeedCandidate(
     (quality?.specificitySignals?.length ?? 0) > 0;
 
   return sourceBacked && scenarioBacked && hasEvidenceSignal;
+}
+
+function selectRawSnippetFeedFallbackItems(
+  query: string,
+  items: SearchItem[],
+  qualityByItemId: Map<string, DemoCandidateQuality>,
+  maxCount: number
+): SearchItem[] {
+  return items
+    .filter((item) =>
+      isHighQualityRealExperienceFallbackCandidate(query, item, qualityByItemId.get(item.id))
+    )
+    .sort((left, right) =>
+      scoreRawSnippetFallbackCandidate(right, qualityByItemId.get(right.id)) -
+        scoreRawSnippetFallbackCandidate(left, qualityByItemId.get(left.id))
+    )
+    .slice(0, maxCount);
+}
+
+function mergeUniqueSearchItems(items: SearchItem[]): SearchItem[] {
+  const seen = new Set<string>();
+  const result: SearchItem[] = [];
+
+  for (const item of items) {
+    if (seen.has(item.id)) {
+      continue;
+    }
+
+    seen.add(item.id);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function filterItemsWithReturnedExperiencePath(
+  items: SearchItem[],
+  pathByItemId: Map<string, string>,
+  paths: DemoPath[]
+): SearchItem[] {
+  const returnedPathById = new Map(paths.map((path) => [path.id, path]));
+  return items.filter((item) => {
+    const pathId = pathByItemId.get(item.id);
+    const path = pathId ? returnedPathById.get(pathId) : undefined;
+    return Boolean(path && path.contentRole !== "viewpoint" && path.stance !== "viewpoint");
+  });
+}
+
+function isHighQualityRealExperienceFallbackCandidate(
+  query: string,
+  item: SearchItem,
+  quality?: DemoCandidateQuality
+): boolean {
+  if (isLocalReplayOnlyItem(item)) {
+    return false;
+  }
+
+  if (!quality || quality.contentRole === "viewpoint" || isGuideMarketingOrOpinionOnly(item, quality)) {
+    return false;
+  }
+
+  const penaltyText = normalizeText([
+    item.title,
+    item.author.name,
+    quality.filterReason,
+    ...(quality.penaltySignals ?? [])
+  ].join("\n"));
+  if (/广告营销|疑似机构|课程|训练营|加微信|私信|咨询|报名|推广|证书|法律|财会|招聘|指南\/教程型标题/.test(penaltyText)) {
+    return false;
+  }
+
+  const text = normalizeText([
+    item.title,
+    item.text,
+    item.evidence.text,
+    quality.relationToUserIntent ?? "",
+    quality.summaryAngle ?? "",
+    quality.keepReason ?? "",
+    ...(quality.relevanceSignals ?? [])
+  ].join("\n"));
+  const sourceBacked = Boolean(item.url && (item.text || item.evidence.text || item.title));
+  const scenarioBacked = hasQueryScenarioOverlap(query, text) ||
+    (quality.relevanceSignals ?? []).some((signal) => text.includes(signal));
+  const signalRich =
+    quality.roughTier === "strong" ||
+    (
+      quality.qualityScore >= 0.55 &&
+      quality.experienceSignalScore >= 0.24 &&
+      quality.relevanceScore >= 0.18
+    ) ||
+    (
+      quality.qualityScore >= 0.62 &&
+      quality.experienceSignalScore >= 0.35 &&
+      scenarioBacked
+    );
+
+  return sourceBacked && scenarioBacked && signalRich;
+}
+
+function isLocalReplayOnlyItem(item: SearchItem): boolean {
+  const text = normalizeText([
+    item.title,
+    item.author.name,
+    item.text,
+    item.evidence.text
+  ].join("\n"));
+  return /本地回放|非真实召回|fixture/i.test(text);
+}
+
+function scoreRawSnippetFallbackCandidate(item: SearchItem, quality?: DemoCandidateQuality): number {
+  return (
+    (quality?.roughScore ?? 0) +
+    (quality?.relevanceScore ?? 0) * 80 +
+    (quality?.qualityScore ?? 0) * 30 +
+    (quality?.experienceSignalScore ?? 0) * 40 +
+    Math.min(normalizeText(item.text || item.evidence.text).length, 500) / 25
+  );
 }
 
 function isSourceBackedRealExperienceCandidate(
