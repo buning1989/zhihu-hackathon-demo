@@ -16,6 +16,7 @@ export type AgentStageName = (typeof AGENT_STAGE_ORDER)[number];
 
 export type AgentTaskStatus =
   | "queued"
+  | "need_input"
   | "running"
   | "partial_ready"
   | "succeeded"
@@ -67,6 +68,34 @@ export interface AgentStageRecord {
   retryable: boolean;
 }
 
+export interface AgentNeedInputOption {
+  id: string;
+  label: string;
+  refineHint?: string;
+}
+
+export interface AgentNeedInputCard {
+  id: string;
+  title: string;
+  question: string;
+  type: string;
+  required: boolean;
+  options: AgentNeedInputOption[];
+}
+
+export interface AgentNeedInput {
+  reason: string;
+  title: string;
+  description: string;
+  primaryActionText: string;
+  skipActionText: string;
+  source: "similarity_clarification_planner";
+  llmUsed: boolean;
+  fallbackReason?: string;
+  cards: AgentNeedInputCard[];
+  questions: AgentNeedInputCard[];
+}
+
 export interface AgentTaskRecord {
   taskId: string;
   query: string;
@@ -85,6 +114,7 @@ export interface AgentTaskRecord {
     code: string;
     message: string;
   };
+  needInput?: AgentNeedInput | null;
   readToken: string;
   input: AgentTaskInput;
   intent?: AgentIntentResult;

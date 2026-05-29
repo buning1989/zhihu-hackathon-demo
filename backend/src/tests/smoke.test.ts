@@ -268,12 +268,37 @@ interface RequestOptions {
 }
 
 async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
-  const createMockTask = await requestJson(`${baseUrl}/api/agent/tasks`, {
+  const createNeedInputTask = await requestJson(`${baseUrl}/api/agent/tasks`, {
     method: "POST",
     body: {
       query: "不工作了能去哪儿",
       count: 3,
       dataMode: "mock"
+    }
+  });
+
+  assertEqual(createNeedInputTask.status, 200, "POST /api/agent/tasks need_input status");
+  assertEqual(createNeedInputTask.body.success, true, "POST /api/agent/tasks need_input success");
+  assertNonEmptyString(createNeedInputTask.body.data.taskId, "agent need_input taskId");
+
+  const needInputTaskId = String(createNeedInputTask.body.data.taskId);
+  const needInputStatus = await waitForAgentTask(baseUrl, needInputTaskId, "agent need_input task", (data) =>
+    data.status === "need_input"
+  );
+  assertEqual(needInputStatus.status, "need_input", "agent task asks for clarification");
+  assertEqual(needInputStatus.hasPartialResult, false, "agent need_input has no partial result");
+  assertAgentNeedInput(needInputStatus, "agent need_input");
+  assertAgentStage(needInputStatus, "intent_expand", ["pending"]);
+
+  const createMockTask = await requestJson(`${baseUrl}/api/agent/tasks`, {
+    method: "POST",
+    body: {
+      query: "不工作了能去哪儿",
+      count: 3,
+      dataMode: "mock",
+      metadata: {
+        skipNeedInput: true
+      }
     }
   });
 
@@ -348,7 +373,10 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
       body: {
         query: "真实模式不允许静默 mock",
         count: 3,
-        dataMode: "real"
+        dataMode: "real",
+        metadata: {
+          skipNeedInput: true
+        }
       }
     });
 
@@ -379,6 +407,24 @@ async function assertAgentTasksMvp(baseUrl: string): Promise<void> {
   } finally {
     searchService.search = originalSearch;
   }
+}
+
+function assertAgentNeedInput(taskData: unknown, label: string): void {
+  if (!isRecord(taskData) || !isRecord(taskData.needInput)) {
+    throw new Error(`${label}: expected needInput object`);
+  }
+
+  const questions = Array.isArray(taskData.needInput.questions)
+    ? taskData.needInput.questions
+    : [];
+  assertNonEmptyArray(questions, `${label} questions`);
+  const firstQuestion = questions[0];
+  if (!isRecord(firstQuestion)) {
+    throw new Error(`${label}: expected first needInput question object`);
+  }
+  assertNonEmptyString(String(firstQuestion.id || ""), `${label} first question id`);
+  assertNonEmptyString(String(firstQuestion.question || firstQuestion.title || ""), `${label} first question text`);
+  assertNonEmptyArray(firstQuestion.options, `${label} first question options`);
 }
 
 async function waitForAgentTask(

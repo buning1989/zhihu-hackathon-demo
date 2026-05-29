@@ -38,6 +38,7 @@ export interface AgentTaskStatusView {
   retryableStages: AgentStageName[];
   hasPartialResult: boolean;
   hasFinalResult: boolean;
+  needInput: AgentTaskRecord["needInput"] | null;
   stages: AgentStageRecord[];
   readToken?: string;
   pollAfterMs: number;
@@ -194,6 +195,7 @@ function toTaskStatusView(
     retryableStages: task.retryableStages,
     hasPartialResult: snapshot.partialResult !== undefined,
     hasFinalResult: snapshot.finalResult !== undefined,
+    needInput: task.needInput ?? null,
     stages: snapshot.stages,
     ...(options.includeReadToken ? { readToken: task.readToken } : {}),
     pollAfterMs: task.status === "queued" || task.status === "running" || task.status === "partial_ready" ? 700 : 0,
@@ -209,6 +211,10 @@ function toTaskStatusView(
 function toFrontendStatus(task: AgentTaskRecord, stages: AgentStageRecord[]): string {
   if (task.status === "queued") {
     return "准备创建任务";
+  }
+
+  if (task.status === "need_input") {
+    return task.needInput?.reason || "先补充一点背景，帮你找到更像你的人";
   }
 
   if (task.status === "failed") {

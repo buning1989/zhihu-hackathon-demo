@@ -789,6 +789,8 @@
       if (source === "local") {
         draft.search.hasShownInitialClarify = true;
         draft.search.initialClarifySkipped = false;
+      } else if (source === "backend" || source === "backend_demo") {
+        draft.search.hasShownInitialClarify = true;
       }
       if (taskStatus) {
         applyTaskState(draft, taskStatus, {

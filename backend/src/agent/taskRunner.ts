@@ -30,13 +30,16 @@ import {
   buildFallbackSearchQueryPlan,
   buildTargetedSupplementalSearchQueries
 } from "../llm/searchQueryPlan.js";
+import { similarityClarificationPlanner } from "../llm/similarityClarificationPlanner.js";
 import { getProfileSignals } from "../services/userContext.service.js";
 import { agentTaskStore } from "./taskStoreFactory.js";
 import type { AgentTaskStore } from "./taskStore.js";
 import {
+  type AgentNeedInput,
   type AgentIntentResult,
   type AgentStageName,
   type AgentStageStatus,
+  type AgentTaskRecord,
   type AgentTaskStatus,
   type AgentTaskSnapshot
 } from "./taskTypes.js";
@@ -137,6 +140,10 @@ export class AgentTaskRunner {
       });
 
       const task = snapshot.task;
+      if (await this.pauseForClarificationIfNeeded(taskId, task)) {
+        return;
+      }
+
       const intent = await this.runIntentStage(taskId, task.query);
       this.store.setIntent(taskId, intent);
 
@@ -192,6 +199,32 @@ export class AgentTaskRunner {
     } catch (error) {
       this.failTask(taskId, error);
     }
+  }
+
+  private async pauseForClarificationIfNeeded(
+    taskId: string,
+    task: AgentTaskRecord
+  ): Promise<boolean> {
+    if (!shouldRequestClarification(task.input.metadata)) {
+      return false;
+    }
+
+    const plan = await similarityClarificationPlanner.create({
+      query: task.query,
+      useLlm: false
+    });
+    const needInput = toAgentNeedInput(plan);
+    if (!needInput) {
+      return false;
+    }
+
+    this.store.patchTask(taskId, {
+      status: "need_input",
+      currentStage: null,
+      progress: 0.05,
+      needInput
+    });
+    return true;
   }
 
   private async runIntentStage(taskId: string, query: string): Promise<AgentIntentResult> {
@@ -1029,6 +1062,71 @@ export class AgentTaskRunner {
 }
 
 export const agentTaskRunner = new AgentTaskRunner(agentTaskStore);
+
+function shouldRequestClarification(metadata: Record<string, unknown> | undefined): boolean {
+  if (!metadata) {
+    return true;
+  }
+
+  if (
+    readBooleanMetadata(metadata.skipNeedInput)
+    || readBooleanMetadata(metadata.hasShownInitialClarify)
+    || readBooleanMetadata(metadata.hasClarifyAnswers)
+  ) {
+    return false;
+  }
+
+  const answers = readRecordMetadata(metadata.clarificationAnswers);
+  return !Object.values(answers).some((value) => String(value ?? "").trim().length > 0);
+}
+
+function readBooleanMetadata(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function readRecordMetadata(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function toAgentNeedInput(
+  plan: Awaited<ReturnType<typeof similarityClarificationPlanner.create>>
+): AgentNeedInput | null {
+  if (!plan.card.show || plan.card.questions.length === 0) {
+    return null;
+  }
+
+  const cards = plan.card.questions.slice(0, 3).map((question) => ({
+    id: question.id,
+    title: question.label || question.question || question.id,
+    question: question.question || question.label || question.id,
+    type: question.type || "single_select",
+    required: question.required !== false,
+    options: (question.options ?? []).slice(0, 6).map((option) => ({
+      id: option.id,
+      label: option.label,
+      refineHint: option.queryTokens?.length ? option.queryTokens.join(" ") : option.label
+    })).filter((option) => option.id && option.label)
+  })).filter((card) => card.id && card.question && card.options.length > 0);
+
+  if (cards.length === 0) {
+    return null;
+  }
+
+  return {
+    reason: plan.card.description,
+    title: plan.card.title,
+    description: plan.card.description,
+    primaryActionText: plan.card.primaryActionText,
+    skipActionText: plan.card.skipActionText,
+    source: "similarity_clarification_planner",
+    llmUsed: plan.llmUsed,
+    ...(plan.fallbackReason ? { fallbackReason: plan.fallbackReason } : {}),
+    cards,
+    questions: cards
+  };
+}
 
 function attachSearchPlanMetadata(
   item: SearchItem,

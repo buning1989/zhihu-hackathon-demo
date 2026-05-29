@@ -33,6 +33,7 @@ interface TaskRow {
   read_token: string;
   input_json: string;
   intent_json: string | null;
+  need_input_json: string | null;
   error_json: string | null;
   created_at: string;
   updated_at: string;
@@ -210,6 +211,7 @@ export class SqliteAgentTaskStore implements AgentTaskStore {
         read_token TEXT NOT NULL,
         input_json TEXT NOT NULL,
         intent_json TEXT,
+        need_input_json TEXT,
         error_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -251,6 +253,7 @@ export class SqliteAgentTaskStore implements AgentTaskStore {
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_status_updated_at
         ON agent_tasks(status, updated_at);
     `);
+    this.ensureColumn("agent_tasks", "need_input_json", "TEXT");
   }
 
   private recoverInterruptedTasks(): void {
@@ -317,12 +320,12 @@ export class SqliteAgentTaskStore implements AgentTaskStore {
       INSERT INTO agent_tasks (
         task_id, query, status, current_stage, progress, degraded, degraded_reason,
         degraded_reasons_json, failed_stages_json, retryable, retryable_stages_json,
-        data_mode, requested_data_mode, read_token, input_json, intent_json, error_json,
+        data_mode, requested_data_mode, read_token, input_json, intent_json, need_input_json, error_json,
         created_at, updated_at, partial_ready_at, finished_at
       ) VALUES (
         @taskId, @query, @status, @currentStage, @progress, @degraded, @degradedReason,
         @degradedReasonsJson, @failedStagesJson, @retryable, @retryableStagesJson,
-        @dataMode, @requestedDataMode, @readToken, @inputJson, @intentJson, @errorJson,
+        @dataMode, @requestedDataMode, @readToken, @inputJson, @intentJson, @needInputJson, @errorJson,
         @createdAt, @updatedAt, @partialReadyAt, @finishedAt
       )
     `).run(taskParams(task));
@@ -345,6 +348,7 @@ export class SqliteAgentTaskStore implements AgentTaskStore {
         requested_data_mode = @requestedDataMode,
         input_json = @inputJson,
         intent_json = @intentJson,
+        need_input_json = @needInputJson,
         error_json = @errorJson,
         updated_at = @updatedAt,
         partial_ready_at = @partialReadyAt,
@@ -432,6 +436,15 @@ export class SqliteAgentTaskStore implements AgentTaskStore {
     }
   }
 
+  private ensureColumn(tableName: string, columnName: string, definition: string): void {
+    const rows = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    if (rows.some((row) => row.name === columnName)) {
+      return;
+    }
+
+    this.db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+
   private requireTask(taskId: string): AgentTaskSnapshot {
     const snapshot = this.getTask(taskId);
     if (!snapshot) {
@@ -460,6 +473,7 @@ function taskParams(task: AgentTaskRecord): Record<string, unknown> {
     readToken: task.readToken,
     inputJson: toJson(task.input),
     intentJson: optionalJson(task.intent),
+    needInputJson: optionalJson(task.needInput),
     errorJson: optionalJson(task.error),
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
@@ -506,6 +520,7 @@ function taskFromRow(row: TaskRow): AgentTaskRecord {
     dataMode: row.data_mode,
     requestedDataMode: row.requested_data_mode,
     ...(row.error_json ? { error: parseJson<AgentTaskRecord["error"]>(row.error_json, undefined) } : {}),
+    ...(row.need_input_json ? { needInput: parseJson<AgentTaskRecord["needInput"]>(row.need_input_json, null) } : {}),
     readToken: row.read_token,
     input: parseJson<AgentTaskRecord["input"]>(row.input_json, {
       query: row.query,

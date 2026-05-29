@@ -36,10 +36,29 @@ async function main() {
     }
 
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const mockTask = await createTask(baseUrl, {
+    const needInputTask = await createTask(baseUrl, {
       query: "35岁裸辞之后还能去哪儿",
       count: 3,
       dataMode: "mock"
+    });
+    assertNonEmptyString(needInputTask.taskId, "need input taskId");
+    assertEqual(needInputTask.status, "queued", "need input initial status");
+
+    const needInputStatus = await waitForTask(baseUrl, needInputTask.taskId, (data) =>
+      data.status === "need_input"
+    );
+    assertEqual(needInputStatus.status, "need_input", "need input task status");
+    assertEqual(needInputStatus.hasPartialResult, false, "need input has no partial result");
+    assertNeedInput(needInputStatus, "need input");
+    assertStage(needInputStatus, "intent_expand", ["pending"]);
+
+    const mockTask = await createTask(baseUrl, {
+      query: "35岁裸辞之后还能去哪儿",
+      count: 3,
+      dataMode: "mock",
+      metadata: {
+        skipNeedInput: true
+      }
     });
     assertNonEmptyString(mockTask.taskId, "mock taskId");
     assertEqual(mockTask.status, "queued", "mock initial status");
@@ -90,7 +109,10 @@ async function main() {
     const realTask = await createTask(baseUrl, {
       query: dataMode === "real" ? "真实模式失败时不能静默返回 mock" : "不工作了能去哪儿",
       count: 3,
-      dataMode
+      dataMode,
+      metadata: {
+        skipNeedInput: true
+      }
     });
     const realFinal = await waitForTask(baseUrl, realTask.taskId, (data) =>
       ["succeeded", "degraded", "failed"].includes(String(data.status))
@@ -188,7 +210,10 @@ async function assertSqliteTaskPersistenceAcrossRestart(repoRoot) {
     const created = await createTask(baseUrl, {
       query: "SQLite 重启恢复验证",
       count: 3,
-      dataMode: "mock"
+      dataMode: "mock",
+      metadata: {
+        skipNeedInput: true
+      }
     });
     const final = await waitForTask(baseUrl, created.taskId, (data) =>
       ["succeeded", "degraded", "failed"].includes(String(data.status))
@@ -462,6 +487,18 @@ function assertStage(taskData, stageName, allowedStatuses) {
   }
 
   return stage;
+}
+
+function assertNeedInput(taskData, label) {
+  const needInput = readRecord(taskData.needInput, `${label} needInput`);
+  const questions = assertNonEmptyArray(needInput.questions, `${label} questions`);
+  const firstQuestion = readRecord(questions[0], `${label} first question`);
+  assertNonEmptyString(firstQuestion.id, `${label} first question id`);
+  assertNonEmptyString(
+    firstQuestion.question || firstQuestion.title,
+    `${label} first question text`
+  );
+  assertNonEmptyArray(firstQuestion.options, `${label} first question options`);
 }
 
 function assertEvidenceResult(result, stageStatus, label) {
