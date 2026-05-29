@@ -117,7 +117,9 @@
       : deriveSections(paths, people, personas);
 
     ensurePeoplePathIds(people, paths);
-    const displayFeedItems = feedItems.length ? feedItems : people.map((person, index) => feedItemFromPerson(person, index));
+    const displayFeedItems = feedItems.length
+      ? alignFeedItemsWithPeople(feedItems, people)
+      : people.map((person, index) => feedItemFromPerson(person, index));
 
     return {
       schemaVersion: stringOf(result.schemaVersion || "frontend-agent-adapter-v1"),
@@ -587,8 +589,8 @@
     const experienceSummary = normalizeExperienceSummary(person);
     const evidenceStatus = normalizeEvidenceStatus(person.evidenceStatus || person.aiPersona?.evidenceStatus);
     const aiPersona = guardPersonaByEvidenceStatus(normalizePersona(person.aiPersona, id), evidenceStatus);
-    const sourceTitle = cleanDisplayText(person.sourceTitle || article.title || source.title, "知乎公开内容");
-    const sourcePlatform = stringOf(person.sourcePlatform || article.sourceName || "知乎");
+    const sourceTitle = cleanSourceTitle(person.sourceTitle || article.title || source.title, "知乎公开内容");
+    const sourcePlatform = normalizeSourcePlatform(person.sourcePlatform || article.sourceName || source.provider);
     const sourceUrl = stringOf(person.sourceUrl || source.url || article.sourceUrl || "");
     const directionLabel = cleanDisplayText(person.directionLabel || person.match?.matchedVariables?.[0] || person.badge, "真实经历");
     const snippet = cleanDisplayText(person.snippet || article.evidenceText || source.evidence || article.lead || oneLine, oneLine);
@@ -643,7 +645,7 @@
     return {
       ...raw,
       id: stringOf(raw.id || `article_${index + 1}`),
-      title: cleanDisplayText(raw.title || raw.sourceName, "知乎公开内容"),
+      title: cleanSourceTitle(raw.title || raw.sourceName, "知乎公开内容"),
       author: cleanDisplayText(raw.author, "知乎用户"),
       avatar: stringOf(raw.avatar || ""),
       lead: cleanDisplayText(raw.lead || raw.summary || raw.text || firstEvidence?.text || paragraphs[0], ""),
@@ -659,7 +661,7 @@
     const raw = isRecord(source) ? source : {};
     const firstEvidence = Array.isArray(article.evidence) ? article.evidence[0] : null;
     return {
-      title: cleanDisplayText(raw.title || article.title || person.badge, "知乎公开内容"),
+      title: cleanSourceTitle(raw.title || article.title || person.badge, "知乎公开内容"),
       evidence: cleanDisplayText(raw.evidence || firstEvidence?.text || article.lead || person.oneLine || person.experienceSummary, ""),
       url: stringOf(raw.url || article.sourceUrl || firstEvidence?.sourceUrl || "")
     };
@@ -702,6 +704,21 @@
     const text = stringOf(value).trim();
     if (!text || templateDisplayPattern.test(text)) {
       return fallback;
+    }
+    return text;
+  }
+
+  function cleanSourceTitle(value, fallback = "知乎公开内容") {
+    const text = cleanDisplayText(value, fallback)
+      .replace(/\s*[-|｜]\s*知乎\s*$/i, "")
+      .trim();
+    return text || fallback;
+  }
+
+  function normalizeSourcePlatform(value) {
+    const text = stringOf(value).trim();
+    if (!text || /^(answer|article|question)$/i.test(text) || /知乎/.test(text)) {
+      return "知乎";
     }
     return text;
   }
@@ -774,8 +791,8 @@
       personId,
       authorName: cleanDisplayText(raw.authorName || raw.name, "知乎用户"),
       authorAvatar: stringOf(raw.authorAvatar || raw.avatar || ""),
-      sourceTitle: cleanDisplayText(raw.sourceTitle || raw.title, "知乎公开内容"),
-      sourcePlatform: stringOf(raw.sourcePlatform || raw.sourceName || "知乎"),
+      sourceTitle: cleanSourceTitle(raw.sourceTitle || raw.title, "知乎公开内容"),
+      sourcePlatform: normalizeSourcePlatform(raw.sourcePlatform || raw.sourceName || raw.type),
       sourceUrl: stringOf(raw.sourceUrl || raw.url || ""),
       directionLabel: cleanDisplayText(raw.directionLabel, "真实经历"),
       snippet: cleanDisplayText(raw.snippet || raw.summaryText, ""),
@@ -849,6 +866,30 @@
       sourceRefs: feedItem.sourceRefs,
       evidenceIds: feedItem.evidenceIds
     }, index);
+  }
+
+  function alignFeedItemsWithPeople(feedItems, people) {
+    const peopleById = new Map(people.map((person) => [person.id, person]));
+    return feedItems.map((feedItem) => {
+      const person = peopleById.get(feedItem.personId);
+      if (!person) {
+        return feedItem;
+      }
+      const evidenceStatus = person.evidenceStatus === rawSnippetEvidenceStatus
+        ? rawSnippetEvidenceStatus
+        : normalizeEvidenceStatus(feedItem.evidenceStatus || person.evidenceStatus);
+      return {
+        ...feedItem,
+        evidenceStatus,
+        authorName: feedItem.authorName || person.name,
+        authorAvatar: feedItem.authorAvatar || person.avatar,
+        sourceTitle: feedItem.sourceTitle || person.sourceTitle,
+        sourcePlatform: feedItem.sourcePlatform || person.sourcePlatform,
+        sourceUrl: feedItem.sourceUrl || person.sourceUrl,
+        directionLabel: feedItem.directionLabel || person.directionLabel,
+        snippet: feedItem.snippet || person.snippet
+      };
+    });
   }
 
   function feedItemFromPerson(person, index) {

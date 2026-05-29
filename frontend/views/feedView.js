@@ -99,6 +99,9 @@
     return feedItems.map((feedItem, index) => {
       const person = peopleById.get(feedItem.personId) || null;
       const fallbackId = feedItem.personId || feedItem.saveSampleId || feedItem.id || `feed_person_${index + 1}`;
+      const evidenceStatus = person?.evidenceStatus === "raw_snippet_only"
+        ? "raw_snippet_only"
+        : feedItem.evidenceStatus || person?.evidenceStatus || "llm_extracted";
       return {
         ...(person || {}),
         id: person?.id || fallbackId,
@@ -112,7 +115,7 @@
         snippet: feedItem.snippet || person?.snippet || person?.source?.evidence || person?.article?.lead || "",
         summaryText: feedItem.summaryText || person?.summaryText || "",
         summaryPayload: feedItem.summaryPayload || person?.summaryPayload || null,
-        evidenceStatus: feedItem.evidenceStatus || person?.evidenceStatus || "llm_extracted",
+        evidenceStatus,
         saveSampleId: feedItem.saveSampleId || person?.saveSampleId || fallbackId,
         article: person?.article || {
           title: feedItem.sourceTitle || "知乎公开内容",
@@ -129,9 +132,9 @@
           evidence: feedItem.snippet || "",
           url: feedItem.sourceUrl || ""
         },
-        canChat: feedItem.evidenceStatus === "raw_snippet_only" ? false : person?.canChat,
-        displayCanChat: feedItem.evidenceStatus === "raw_snippet_only" ? false : person?.displayCanChat,
-        aiPersona: feedItem.evidenceStatus === "raw_snippet_only"
+        canChat: evidenceStatus === "raw_snippet_only" ? false : person?.canChat,
+        displayCanChat: evidenceStatus === "raw_snippet_only" ? false : person?.displayCanChat,
+        aiPersona: evidenceStatus === "raw_snippet_only"
           ? { ...(person?.aiPersona || {}), enabled: false, canChat: false }
           : person?.aiPersona
       };
