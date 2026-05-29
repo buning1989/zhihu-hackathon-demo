@@ -99,7 +99,7 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 | `dataMode` | 本次数据来源策略：`mock`、`cache_first`、`replay` 或 `real`。 |
 | `features` | 能力开关，例如 AI 分身、聊天模式、服务端保存和正文可用性。 |
 | `analysis` | 问题理解、焦点标签、处理步骤，可用于顶部理解区或 loading 过程。 |
-| `feedItems[]` | 真实经历 Feed 主列表。头像/昵称、来源标题、来源平台、归属弱标签、片段、内容总结、原文链接和收藏 id 都从这里读。 |
+| `feedItems[]` | 真实经历 Feed 主列表。头像/昵称、来源标题、来源平台、归属弱标签、`displayExcerpt` 主文案、内容总结、原文链接和收藏 id 都从这里读。 |
 | `paths[]` | 兼容字段。主响应公开返回空数组，前端不要用它渲染分类导航。 |
 | `people[]` | 人物样本主数据，人物卡详情、LLM 经历总结、文章、匹配理由和 AI 分身入口都从这里读；主 Feed 只保留 `experience_sample`。 |
 | `personas[]` | 可选 AI 分身快捷索引，主响应默认省略；从 `people[].aiPersona` 派生。 |
@@ -109,7 +109,7 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 
 ## 渲染关系
 
-- `feedItems[]`：直接渲染真实经历 Feed。`directionLabel` 只是卡片弱标签，不是导航分类；`summaryPayload.markdown` 用于“内容总结”三段展示。
+- `feedItems[]`：直接渲染真实经历 Feed。`displayExcerpt` 是卡片主文案，优先展示完整原文段落摘录；`directionLabel` 只是卡片弱标签，不是导航分类；`summaryPayload.markdown` 用于“内容总结”三段展示。
 - `people[]`：渲染人物样本详情。`oneLine` 只做卡片一句话；`experienceSummaryStatus=ready` 且 `experienceSummarySource=llm` 时展示 `experienceSummary`；`lesson` 仅用于风险/提醒位；按 `articles[]` 展示原文入口；按 `match` 展示匹配解释。
 - `people[].aiPersona`：渲染单个人物卡上的 AI 分身入口。展示前检查 `enabled`、`personaId`、`boundary` 和 `grounding.articleIds[]`。
 - `personas[]`：兼容“可追问的经验回声”快捷入口。当前默认从 `people[].aiPersona` 派生；点击后用 `personId` 回查 `people[]`，不要从 `personas[]` 补全人物信息。

@@ -594,6 +594,10 @@
     const sourceUrl = stringOf(person.sourceUrl || source.url || article.sourceUrl || "");
     const directionLabel = cleanDisplayText(person.directionLabel || person.match?.matchedVariables?.[0] || person.badge, "真实经历");
     const snippet = cleanDisplayText(person.snippet || article.evidenceText || source.evidence || article.lead || oneLine, oneLine);
+    const displayExcerpt = cleanDisplayText(
+      person.displayExcerpt || article.displayExcerpt || person.summaryText || person.experienceSummary || "",
+      ""
+    );
     const displayCanChat = evidenceStatus === llmExtractedEvidenceStatus &&
       person.canChat !== false &&
       Boolean(aiPersona.enabled && aiPersona.canChat);
@@ -609,6 +613,9 @@
       sourceUrl,
       directionLabel,
       snippet,
+      displayExcerpt,
+      excerptSource: stringOf(person.excerptSource || ""),
+      excerptReason: stringOf(person.excerptReason || ""),
       evidenceStatus,
       summaryText: stringOf(person.summaryText || ""),
       summaryPayload: isRecord(person.summaryPayload) ? person.summaryPayload : null,
@@ -796,6 +803,9 @@
       sourceUrl: stringOf(raw.sourceUrl || raw.url || ""),
       directionLabel: cleanDisplayText(raw.directionLabel, "真实经历"),
       snippet: cleanDisplayText(raw.snippet || raw.summaryText, ""),
+      displayExcerpt: cleanDisplayText(raw.displayExcerpt || raw.summaryText || "", ""),
+      excerptSource: stringOf(raw.excerptSource || ""),
+      excerptReason: stringOf(raw.excerptReason || ""),
       summaryText: stringOf(raw.summaryText || ""),
       summaryPayload: isRecord(raw.summaryPayload) ? raw.summaryPayload : null,
       sampleType: "experience_sample",
@@ -825,6 +835,9 @@
       sourcePlatform: feedItem.sourcePlatform || person.sourcePlatform,
       sourceUrl: feedItem.sourceUrl || person.sourceUrl,
       snippet: feedItem.snippet || person.snippet,
+      displayExcerpt: feedItem.displayExcerpt || person.displayExcerpt || feedItem.summaryText || person.summaryText || "",
+      excerptSource: feedItem.excerptSource || person.excerptSource,
+      excerptReason: feedItem.excerptReason || person.excerptReason,
       evidenceStatus,
       aiPersona: guardPersonaByEvidenceStatus(person.aiPersona, evidenceStatus),
       canChat: evidenceStatus === rawSnippetEvidenceStatus ? false : person.canChat,
@@ -846,6 +859,9 @@
       sourcePlatform: feedItem.sourcePlatform,
       sourceUrl: feedItem.sourceUrl,
       snippet: feedItem.snippet,
+      displayExcerpt: feedItem.displayExcerpt || feedItem.summaryText || "",
+      excerptSource: feedItem.excerptSource,
+      excerptReason: feedItem.excerptReason,
       summaryText: feedItem.summaryText,
       summaryPayload: feedItem.summaryPayload,
       saveSampleId: feedItem.saveSampleId,
@@ -858,8 +874,8 @@
         avatar: feedItem.authorAvatar,
         sourceName: feedItem.sourcePlatform,
         sourceUrl: feedItem.sourceUrl,
-        summary: feedItem.snippet,
-        text: feedItem.snippet,
+        summary: feedItem.displayExcerpt || feedItem.snippet,
+        text: feedItem.displayExcerpt || feedItem.snippet,
         evidence: []
       }],
       aiPersona: { enabled: false, canChat: false, personaId: "" },
@@ -887,7 +903,10 @@
         sourcePlatform: feedItem.sourcePlatform || person.sourcePlatform,
         sourceUrl: feedItem.sourceUrl || person.sourceUrl,
         directionLabel: feedItem.directionLabel || person.directionLabel,
-        snippet: feedItem.snippet || person.snippet
+        snippet: feedItem.snippet || person.snippet,
+        displayExcerpt: feedItem.displayExcerpt || person.displayExcerpt || feedItem.summaryText || person.summaryText || "",
+        excerptSource: feedItem.excerptSource || person.excerptSource,
+        excerptReason: feedItem.excerptReason || person.excerptReason
       };
     });
   }
@@ -903,6 +922,9 @@
       sourceUrl: person.sourceUrl || person.source?.url || person.article?.sourceUrl,
       directionLabel: person.directionLabel || person.badge || "真实经历",
       snippet: person.snippet || person.article?.lead || person.oneLine,
+      displayExcerpt: person.displayExcerpt || person.summaryText || person.experienceSummary || "",
+      excerptSource: person.excerptSource || "",
+      excerptReason: person.excerptReason || "",
       summaryText: person.summaryText || person.experienceSummary || "",
       summaryPayload: person.summaryPayload || null,
       sampleType: "experience_sample",

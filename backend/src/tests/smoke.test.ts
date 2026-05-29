@@ -1153,6 +1153,9 @@ function assertFeedItemFields(feedItems: unknown, label: string): void {
     assertNonEmptyString(item.sourceUrl, `${label}[${index}].sourceUrl`);
     assertNonEmptyString(item.directionLabel, `${label}[${index}].directionLabel`);
     assertNonEmptyString(item.snippet, `${label}[${index}].snippet`);
+    assertNonEmptyString(item.displayExcerpt, `${label}[${index}].displayExcerpt`);
+    assertNonEmptyString(item.excerptSource, `${label}[${index}].excerptSource`);
+    assertNonEmptyString(item.excerptReason, `${label}[${index}].excerptReason`);
     assertEqual(item.sampleType, "experience_sample", `${label}[${index}].sampleType`);
     assertNonEmptyArray(item.sourceRefs, `${label}[${index}].sourceRefs`);
     assertNonEmptyArray(item.evidenceIds, `${label}[${index}].evidenceIds`);

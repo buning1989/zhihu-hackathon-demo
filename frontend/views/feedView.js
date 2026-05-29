@@ -113,6 +113,9 @@
         sourcePlatform: feedItem.sourcePlatform || person?.sourcePlatform || person?.article?.sourceName || "知乎",
         sourceUrl: feedItem.sourceUrl || person?.sourceUrl || person?.source?.url || person?.article?.sourceUrl || "",
         snippet: feedItem.snippet || person?.snippet || person?.source?.evidence || person?.article?.lead || "",
+        displayExcerpt: feedItem.displayExcerpt || person?.displayExcerpt || feedItem.summaryText || person?.summaryText || "",
+        excerptSource: feedItem.excerptSource || person?.excerptSource || "",
+        excerptReason: feedItem.excerptReason || person?.excerptReason || "",
         summaryText: feedItem.summaryText || person?.summaryText || "",
         summaryPayload: feedItem.summaryPayload || person?.summaryPayload || null,
         evidenceStatus,
@@ -123,13 +126,13 @@
           avatar: feedItem.authorAvatar || "",
           sourceName: feedItem.sourcePlatform || "知乎",
           sourceUrl: feedItem.sourceUrl || "",
-          lead: feedItem.snippet || "",
-          paragraphs: feedItem.snippet ? [feedItem.snippet] : [],
+          lead: feedItem.displayExcerpt || feedItem.snippet || "",
+          paragraphs: feedItem.displayExcerpt || feedItem.snippet ? [feedItem.displayExcerpt || feedItem.snippet] : [],
           evidence: []
         },
         source: person?.source || {
           title: feedItem.sourceTitle || "知乎公开内容",
-          evidence: feedItem.snippet || "",
+          evidence: feedItem.displayExcerpt || feedItem.snippet || "",
           url: feedItem.sourceUrl || ""
         },
         canChat: evidenceStatus === "raw_snippet_only" ? false : person?.canChat,

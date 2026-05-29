@@ -18,6 +18,11 @@
 
   function sourceParagraphs(person) {
     const article = person.article || {};
+    const displayExcerpt = textOf(person.displayExcerpt);
+    if (displayExcerpt) {
+      return [displayExcerpt];
+    }
+
     const feedSnippet = textOf(person.snippet);
     if (feedSnippet) {
       return [feedSnippet];

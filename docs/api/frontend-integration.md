@@ -226,6 +226,9 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
   "sourceUrl": "https://www.zhihu.com/question/mock/answer/1",
   "directionLabel": "生活节奏",
   "snippet": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+  "displayExcerpt": "公开回答样本提到，离开原来的工作节奏后，先把现金流、休整期限和回撤条件列清楚，再决定下一步去哪里验证。这个判断不只是换城市，也包括能否承受几个月没有稳定收入，以及什么时候必须重新找工作。",
+  "excerptSource": "paragraph_rule_selected",
+  "excerptReason": "matched=不工作/现金流; personal_experience; result_or_condition",
   "sampleType": "experience_sample",
   "evidenceIds": ["ev_city_daily", "ev_city_outdoor"],
   "sourceRefs": ["source_mock_city_walk"],
@@ -237,6 +240,8 @@ curl -s -X POST http://127.0.0.1:8000/api/demo/search \
 
 - 使用 `feedItems[].id` 作为 React key。
 - `directionLabel` 只作为卡片弱标签，不要做 tab、计数或导航。
+- 卡片主文案使用 `displayExcerpt`；`snippet` 只是兼容来源片段，不再作为主展示正文。
+- `excerptReason` 只放在 debug 面板或调试日志，不展示给普通用户。
 - “内容总结”展示 `summaryPayload.markdown` 的三段内容。
 - “查看原文”使用 `sourceUrl`。
 - “收藏样本”使用 `saveSampleId`。

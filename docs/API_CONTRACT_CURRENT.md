@@ -113,7 +113,10 @@ Content-Type: application/json
 | `sourcePlatform` | string | 来源平台，当前主要为知乎。 | 稳定 |
 | `sourceUrl` | string | 查看原文链接。 | 稳定 |
 | `directionLabel` | string | 卡片弱标签，不作为导航分类。 | 半稳定 |
-| `snippet` | string | 原文片段摘要。 | 稳定 |
+| `displayExcerpt` | string | Feed 卡片主文案，优先是能独立回应当前问题的完整原文段落摘录。 | 稳定 |
+| `excerptSource` | `llm_selected_paragraph`/`paragraph_rule_selected`/`summary_fallback` | `displayExcerpt` 的选择来源。 | 半稳定 |
+| `excerptReason` | string | 摘录选择原因，仅 debug 使用，普通用户界面不展示。 | 易变 |
+| `snippet` | string | 兼容字段，保留来源片段摘要；有 `displayExcerpt` 时不要作为主文案。 | 稳定 |
 | `summaryPayload` | object | 内容总结三段所需数据和 markdown。 | 稳定 |
 | `sampleType` | `experience_sample` | 主 Feed 只接收真实经历样本。 | 稳定 |
 | `evidenceIds/sourceRefs` | string[] | 关联证据和来源。 | 稳定 |

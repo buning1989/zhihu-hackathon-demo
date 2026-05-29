@@ -45,6 +45,9 @@
         "sourceUrl": "https://www.zhihu.com/question/mock/answer/1",
         "directionLabel": "生活节奏",
         "snippet": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+        "displayExcerpt": "公开回答样本提到，离开原来的工作节奏后，先把现金流、休整期限和回撤条件列清楚，再决定下一步去哪里验证。这个判断不只是换城市，也包括能否承受几个月没有稳定收入，以及什么时候必须重新找工作。",
+        "excerptSource": "paragraph_rule_selected",
+        "excerptReason": "matched=不工作/现金流; personal_experience; result_or_condition",
         "summaryText": "### 这个样本讲了什么\n公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。\n\n### 这个人的关键选择或变化\n样本把休整、现金流和回撤条件放在同一张表里判断。\n\n### 对当前问题有什么参考价值\n它只能作为可回到原文核对的对照样本，不代表作者完整人生。",
         "summaryPayload": {
           "whatHappened": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
@@ -70,6 +73,9 @@
         "sourcePlatform": "知乎回答样本",
         "sourceUrl": "https://www.zhihu.com/question/mock/answer/1",
         "snippet": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",
+        "displayExcerpt": "公开回答样本提到，离开原来的工作节奏后，先把现金流、休整期限和回撤条件列清楚，再决定下一步去哪里验证。这个判断不只是换城市，也包括能否承受几个月没有稳定收入，以及什么时候必须重新找工作。",
+        "excerptSource": "paragraph_rule_selected",
+        "excerptReason": "matched=不工作/现金流; personal_experience; result_or_condition",
         "summaryText": "### 这个样本讲了什么\n公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。\n\n### 这个人的关键选择或变化\n样本把休整、现金流和回撤条件放在同一张表里判断。\n\n### 对当前问题有什么参考价值\n它只能作为可回到原文核对的对照样本，不代表作者完整人生。",
         "summaryPayload": {
           "whatHappened": "公开回答样本提到，先把关键变量拆清楚，再决定下一步怎么验证。",

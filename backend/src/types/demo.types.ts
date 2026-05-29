@@ -11,6 +11,7 @@ export type DemoExperienceSummarySource = "llm" | "fallback" | "none";
 export type DemoExperienceSummaryStatus = "ready" | "pending" | "failed";
 export type DemoDisplayTier = "core" | "supplement";
 export type DemoEvidenceStatus = "llm_extracted" | "raw_snippet_only";
+export type DemoExcerptSource = "llm_selected_paragraph" | "paragraph_rule_selected" | "summary_fallback";
 export type DemoSearchQueryType =
   | "original"
   | "real_experience"
@@ -217,6 +218,9 @@ export interface DemoFeedItem {
   sourceUrl: string;
   directionLabel: string;
   snippet: string;
+  displayExcerpt: string;
+  excerptSource: DemoExcerptSource;
+  excerptReason: string;
   summaryText: string | null;
   summaryPayload: DemoFeedSummaryPayload;
   sampleType: "experience_sample";
@@ -243,6 +247,9 @@ export interface DemoPerson {
   sourcePlatform?: string;
   sourceUrl?: string;
   snippet?: string;
+  displayExcerpt?: string;
+  excerptSource?: DemoExcerptSource;
+  excerptReason?: string;
   summaryText?: string | null;
   summaryPayload?: DemoFeedSummaryPayload;
   saveSampleId?: string;

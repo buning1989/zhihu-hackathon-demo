@@ -115,7 +115,10 @@ Content-Type: application/json
 - `authorName` / `authorAvatar`：头像和昵称。
 - `sourceTitle` / `sourcePlatform` / `sourceUrl`：来源标题、平台和查看原文链接。
 - `directionLabel`：卡片弱标签，不是导航分类。
-- `snippet`：原文片段摘要，必须来自来源或 evidence。
+- `displayExcerpt`：Feed 卡片主文案，优先是能独立回应当前问题的完整原文段落摘录；前端主卡正文读这个字段。
+- `excerptSource`：`llm_selected_paragraph | paragraph_rule_selected | summary_fallback`，用于调试或降级判断。
+- `excerptReason`：摘录选择原因，仅 debug 面板可见，普通用户界面不展示。
+- `snippet`：兼容字段，保留来源片段摘要；有 `displayExcerpt` 时不要作为卡片主文案。
 - `summaryText` / `summaryPayload.markdown`：内容总结，展示为三段 markdown：这个样本讲了什么、这个人的关键选择或变化、对当前问题有什么参考价值。
 
 ## paths[] 兼容字段
@@ -134,7 +137,7 @@ Content-Type: application/json
 - `people[].name`：展示名，可来自 `author.name`，缺失时展示“知乎用户”。
 - `people[].pathId`：内部兼容字段；主 Feed 不再依赖它。卡片归属显示读 `people[].directionLabel` 或 `feedItems[].directionLabel`。
 - `people[].directionLabel`：卡片弱方向标签，不是导航分类。
-- `people[].sourceTitle/sourcePlatform/sourceUrl/snippet/summaryPayload/saveSampleId`：与 `feedItems[]` 同步的卡片字段。
+- `people[].sourceTitle/sourcePlatform/sourceUrl/displayExcerpt/snippet/summaryPayload/saveSampleId`：与 `feedItems[]` 同步的卡片字段；主文案优先读 `displayExcerpt`。
 - `people[].avatar`：头像，缺失时用默认头像。
 - `people[].displayTier`：`core | supplement`。`core` 表示匹配等级、证据质量和内容相关度都达到主展示门槛；其他样本继续展示为“补充参考样本”。
 - `people[].evidenceStatus`：`llm_extracted | raw_snippet_only`。`raw_snippet_only` 时，前端文案显示“来源片段”，不要显示“AI 证据提炼”。

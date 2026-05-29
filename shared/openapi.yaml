@@ -1965,6 +1965,9 @@ components:
         - sourceUrl
         - directionLabel
         - snippet
+        - displayExcerpt
+        - excerptSource
+        - excerptReason
         - summaryPayload
         - sampleType
         - evidenceIds
@@ -1991,7 +1994,20 @@ components:
           description: Weak card label only; not a path navigation category.
         snippet:
           type: string
-          description: Grounded source snippet for the card.
+          description: Legacy grounded source snippet kept for compatibility. Do not use as the main Feed card copy when displayExcerpt is present.
+        displayExcerpt:
+          type: string
+          description: Main Feed card copy. Prefer a complete original paragraph excerpt that can independently respond to the query; falls back to a summary only when no qualified paragraph exists.
+        excerptSource:
+          type: string
+          enum:
+            - llm_selected_paragraph
+            - paragraph_rule_selected
+            - summary_fallback
+          description: How displayExcerpt was selected.
+        excerptReason:
+          type: string
+          description: Debug-only explanation for excerpt selection. Do not show in ordinary user UI.
         summaryText:
           type: string
           nullable: true
@@ -2108,6 +2124,20 @@ components:
           format: uri
         snippet:
           type: string
+          description: Legacy grounded source snippet kept for compatibility.
+        displayExcerpt:
+          type: string
+          description: Main Feed card copy mirrored from feedItems[].displayExcerpt when this person is rendered as a Feed card.
+        excerptSource:
+          type: string
+          enum:
+            - llm_selected_paragraph
+            - paragraph_rule_selected
+            - summary_fallback
+          description: How displayExcerpt was selected.
+        excerptReason:
+          type: string
+          description: Debug-only explanation for excerpt selection. Do not show in ordinary user UI.
         summaryText:
           type: string
           nullable: true
