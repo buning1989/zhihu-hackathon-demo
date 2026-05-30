@@ -24,7 +24,7 @@
 
 - 新增 `dataMode=replay`：`/api/demo/search` 和 Agent 任务会走真实产品层组合链路，但知乎搜索只读 `backend/fixtures/zhihu-search`，缺 fixture 返回 `ZHIHU_REPLAY_FIXTURE_MISSING`。
 - `ZhihuProvider.searchRaw` 增加 fixture-first 保护：real/cache_first 命中本地 fixture 时不请求知乎；真实请求成功后自动写入 `recorded-*.json` fixture。
-- 增加真实调用日志和预算：默认写入 `data/zhihu-api-usage/YYYY-MM-DD.jsonl`，日志包含 query、normalizedQuery、fixture hit/real request、consumed、usedToday、budget；`ZH_API_DAILY_DEV_BUDGET` 默认 50。
+- 增加真实调用日志：默认写入 `data/zhihu-api-usage/YYYY-MM-DD.jsonl`，日志包含 query、normalizedQuery、fixture hit/real request、consumed、usedToday；当前不再做本地每日预算拦截。
 - 默认脚本防护：
   - `npm run smoke:demo-replay` / `npm run smoke:demo-real` 默认 `replay`。
   - `smoke-agent-tasks` 和 `agent-task-real-eval` 默认不消耗真实知乎 API。

@@ -9,7 +9,6 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../config/env.js";
-import { HttpError } from "../../utils/httpError.js";
 import type {
   ZhihuSearchDataMode,
   ZhihuSearchOptions,
@@ -121,12 +120,10 @@ export function writeZhihuSearchFixture(
 
 export function logZhihuSearchUsage(input: ZhihuUsageLogInput): void {
   const usedToday = input.usedToday ?? readTodayRealUsageCount();
-  const budget = input.budget ?? config.zhihu.dailyDevBudget;
   const payload = {
     timestamp: new Date().toISOString(),
     ...input,
-    usedToday,
-    budget
+    usedToday
   };
 
   mkdirSync(config.zhihu.usageLogDir, { recursive: true });
@@ -158,27 +155,7 @@ export function consumeZhihuRealApiBudget(input: {
   count: number;
 }): void {
   const normalizedQuery = normalizeZhihuSearchQuery(input.query);
-  const budget = config.zhihu.dailyDevBudget;
   const usedToday = readTodayRealUsageCount();
-
-  if (usedToday >= budget) {
-    logZhihuSearchUsage({
-      mode: input.mode,
-      query: input.query,
-      normalizedQuery,
-      count: input.count,
-      action: "real_blocked",
-      consumed: 0,
-      usedToday,
-      budget,
-      reason: "daily_budget_exceeded"
-    });
-    throw new HttpError(
-      429,
-      "ZHIHU_DAILY_BUDGET_EXCEEDED",
-      `知乎 API 本地每日真实调用预算已用完：${usedToday}/${budget}`
-    );
-  }
 
   logZhihuSearchUsage({
     mode: input.mode,
@@ -187,8 +164,7 @@ export function consumeZhihuRealApiBudget(input: {
     count: input.count,
     action: "real_request",
     consumed: 1,
-    usedToday: usedToday + 1,
-    budget
+    usedToday: usedToday + 1
   });
 }
 

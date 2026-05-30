@@ -237,7 +237,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 20
-            default: 5
+            default: 10
           example: 1
         - name: dataMode
           in: query
@@ -251,7 +251,7 @@ paths:
           description: >
             Search data mode for this debug endpoint. replay requires a local
             fixture and never calls Zhihu. real may call Zhihu only when
-            credentials and real-call guardrails allow it.
+            credentials and data-mode guardrails allow it.
       responses:
         "200":
           description: Search succeeded and was mapped into frontend-friendly fields.
@@ -339,7 +339,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 20
-            default: 5
+            default: 10
           example: 1
         - name: dataMode
           in: query

@@ -99,7 +99,7 @@ curl "http://127.0.0.1:8000/api/health"
 ### GET /api/zhihu/search
 
 ```bash
-curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=10"
 ```
 
 底层调试接口，会真实调用知乎搜索 API，并保留原始 `Code` / `Message` / `Data` 结构。
@@ -129,7 +129,7 @@ curl -X POST "http://127.0.0.1:8000/api/zhihu/ring/publish" \
 ### GET /api/search
 
 ```bash
-curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=10"
 ```
 
 当前前端 P0 主接口。业务搜索接口会把知乎原始响应映射为前端更容易消费的标准结构：
@@ -139,7 +139,7 @@ curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
   "success": true,
   "data": {
     "query": "不工作了能去哪儿",
-    "count": 5,
+    "count": 10,
     "hasMore": false,
     "searchHashId": "",
     "items": []
@@ -203,7 +203,7 @@ npm run build
 npm run dev
 curl "http://127.0.0.1:8000/health"
 curl "http://127.0.0.1:8000/api/health"
-curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=5"
-curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=5"
+curl "http://127.0.0.1:8000/api/zhihu/search?query=不工作了能去哪儿&count=10"
+curl "http://127.0.0.1:8000/api/search?query=不工作了能去哪儿&count=10"
 curl -i "http://127.0.0.1:8000/auth/zhihu/login"
 ```
