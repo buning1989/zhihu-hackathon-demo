@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "intent-expand-fixture.v1",
+  "id": "intent_3b91a89bd1da",
+  "recordedAt": "2026-05-30T04:18:51.051Z",
+  "query": "异地恋三年要不要为对方放弃北京的工作",
+  "normalizedQuery": "异地恋三年要不要为对方放弃北京的工作",
+  "provider": "kimi",
+  "model": "moonshot-v1-8k",
+  "output": {
+    "intent": "life_path_exploration",
+    "userCoreQuestion": "是否应该为维持异地恋而放弃北京的工作",
+    "focusTags": [
+      "异地恋",
+      "工作",
+      "北京"
+    ],
+    "topicSignals": [
+      "异地恋",
+      "放弃",
+      "工作",
+      "北京",
+      "职业选择",
+      "感情",
+      "生活平衡",
+      "异地恋北京工作放弃",
+      "异地恋职业发展后悔吗",
+      "长期异地恋工作选择",
+      "异地恋职业选择",
+      "北京工作机会"
+    ],
+    "searchQueries": [
+      {
+        "query": "异地恋三年要不要为对方放弃北京的工作",
+        "type": "original",
+        "purpose": "保留用户原始表达",
+        "priority": 1
+      },
+      {
+        "query": "异地恋 北京 工作放弃",
+        "type": "real_experience",
+        "purpose": "召回相似经历",
+        "priority": 2
+      },
+      {
+        "query": "异地恋 职业发展 后悔吗",
+        "type": "failure_review",
+        "purpose": "召回职业发展与关系代价复盘",
+        "priority": 2
+      },
+      {
+        "query": "长期异地恋 工作选择",
+        "type": "decision_conflict",
+        "purpose": "召回异地恋和工作取舍",
+        "priority": 2
+      },
+      {
+        "query": "异地恋 职业选择",
+        "type": "life_path",
+        "purpose": "探索职业与感情的平衡",
+        "priority": 3
+      },
+      {
+        "query": "北京 工作机会",
+        "type": "real_experience",
+        "purpose": "了解北京工作市场",
+        "priority": 4
+      },
+      {
+        "query": "失败 复盘",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 4
+      },
+      {
+        "query": "异地恋 感情维持",
+        "type": "failure_review",
+        "purpose": "分析异地恋失败案例",
+        "priority": 5
+      },
+      {
+        "query": "异地恋 工作 北京 真实经历",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 5
+      },
+      {
+        "query": "异地恋 感情与工作",
+        "type": "real_experience",
+        "purpose": "召回异地恋与工作的真实经历",
+        "priority": 6
+      },
+      {
+        "query": "放弃工作 异地恋",
+        "type": "decision_conflict",
+        "purpose": "探讨工作与感情的决策冲突",
+        "priority": 6
+      },
+      {
+        "query": "异地恋 生活平衡",
+        "type": "alternative_solution",
+        "purpose": "寻找生活与感情的平衡方案",
+        "priority": 6
+      }
+    ],
+    "objectiveSlots": {
+      "age": null,
+      "industry": null,
+      "companyType": null,
+      "role": null,
+      "city": "北京",
+      "status": null,
+      "direction": null,
+      "constraint": "异地恋"
+    },
+    "missingSlots": [
+      "role",
+      "status",
+      "direction"
+    ],
+    "queryPlan": {
+      "primary": [],
+      "secondary": [],
+      "fallback": [
+        "失败 复盘",
+        "异地恋 工作 北京 真实经历"
+      ]
+    },
+    "intentTags": [
+      "异地恋",
+      "工作",
+      "北京"
+    ],
+    "userNeedSummary": "是否应该为维持异地恋而放弃北京的工作"
+  }
+}

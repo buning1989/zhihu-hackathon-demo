@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "intent-expand-fixture.v1",
+  "id": "intent_b29c8c415888",
+  "recordedAt": "2026-05-30T04:19:59.546Z",
+  "query": "三十五岁被裁员后怎么重新开始",
+  "normalizedQuery": "三十五岁被裁员后怎么重新开始",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "output": {
+    "intent": "life_path_exploration",
+    "userCoreQuestion": "三十五岁被裁员后如何规划重新开始的路径",
+    "focusTags": [
+      "职业转型",
+      "中年危机",
+      "失业重来"
+    ],
+    "topicSignals": [
+      "35岁",
+      "被裁员",
+      "重新开始",
+      "职业规划",
+      "转型",
+      "就业",
+      "中年人",
+      "职业转型",
+      "中年危机",
+      "失业重来",
+      "35被裁",
+      "35重新开始"
+    ],
+    "searchQueries": [
+      {
+        "query": "三十五岁被裁员后怎么重新开始",
+        "type": "original",
+        "purpose": "保留用户原始表达",
+        "priority": 1
+      },
+      {
+        "query": "35 被裁",
+        "type": "real_experience",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "35 重新开始",
+        "type": "real_experience",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "被裁 重新开始",
+        "type": "life_path",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "35岁 裁员 职业转型",
+        "type": "real_experience",
+        "purpose": "召回同龄裁员转型经历",
+        "priority": 2
+      },
+      {
+        "query": "35 被裁 重新开始",
+        "type": "life_path",
+        "purpose": "补充召回选择方向相似的内容",
+        "priority": 2
+      },
+      {
+        "query": "35岁 被裁 重新规划",
+        "type": "life_path",
+        "purpose": "探索人生路径调整",
+        "priority": 3
+      },
+      {
+        "query": "被裁 重新开始 后悔",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 4
+      },
+      {
+        "query": "三十五岁被裁员后怎么重新开始 怎么选",
+        "type": "decision_conflict",
+        "purpose": "召回决策困境",
+        "priority": 5
+      },
+      {
+        "query": "被裁 复盘",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 5
+      },
+      {
+        "query": "重新开始 失败 复盘",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 6
+      },
+      {
+        "query": "三十五岁被裁员后怎么重新开始 真实经历",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 6
+      }
+    ],
+    "objectiveSlots": {
+      "age": "35",
+      "industry": null,
+      "companyType": null,
+      "role": null,
+      "city": null,
+      "status": "被裁",
+      "direction": "重新开始",
+      "constraint": null
+    },
+    "missingSlots": [
+      "role",
+      "constraint"
+    ],
+    "queryPlan": {
+      "primary": [
+        "35 被裁",
+        "被裁 重新开始",
+        "35 重新开始"
+      ],
+      "secondary": [
+        "35 被裁 重新开始",
+        "被裁 重新开始"
+      ],
+      "fallback": [
+        "被裁 重新开始 后悔",
+        "被裁 复盘",
+        "重新开始 失败 复盘",
+        "三十五岁被裁员后怎么重新开始 真实经历"
+      ]
+    },
+    "intentTags": [
+      "职业转型",
+      "中年危机",
+      "失业重来"
+    ],
+    "userNeedSummary": "三十五岁被裁员后如何规划重新开始的路径"
+  }
+}

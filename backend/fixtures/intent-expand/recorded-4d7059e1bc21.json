@@ -1,0 +1,138 @@
+{
+  "schemaVersion": "intent-expand-fixture.v1",
+  "id": "intent_4d7059e1bc21",
+  "recordedAt": "2026-05-30T04:20:27.875Z",
+  "query": "从大城市回到老家小县城生活是种什么体验",
+  "normalizedQuery": "从大城市回到老家小县城生活是种什么体验",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "output": {
+    "intent": "life_path_exploration",
+    "userCoreQuestion": "从大城市回到老家小县城生活的真实体验与得失权衡",
+    "focusTags": [
+      "城市选择",
+      "生活方式",
+      "个人发展",
+      "归属感"
+    ],
+    "topicSignals": [
+      "回老家",
+      "小县城",
+      "大城市",
+      "生活体验",
+      "落差",
+      "适应",
+      "职业发展",
+      "生活节奏",
+      "城市选择",
+      "生活方式",
+      "个人发展",
+      "归属感"
+    ],
+    "searchQueries": [
+      {
+        "query": "从大城市回到老家小县城生活是种什么体验",
+        "type": "original",
+        "purpose": "保留用户原始表达",
+        "priority": 1
+      },
+      {
+        "query": "回小县城 工作 生活",
+        "type": "real_experience",
+        "purpose": "召回相似经历",
+        "priority": 2
+      },
+      {
+        "query": "毕业后 大城市 回老家",
+        "type": "real_experience",
+        "purpose": "召回毕业后城市去留经历",
+        "priority": 2
+      },
+      {
+        "query": "大城市回老家 职业发展",
+        "type": "life_path",
+        "purpose": "探索人生路径",
+        "priority": 2
+      },
+      {
+        "query": "回老家小县城 后悔",
+        "type": "failure_review",
+        "purpose": "了解负面体验",
+        "priority": 2
+      },
+      {
+        "query": "离开大城市 回县城 决定",
+        "type": "decision_conflict",
+        "purpose": "决策冲突分析",
+        "priority": 2
+      },
+      {
+        "query": "毕业 去大城市 还是回老家",
+        "type": "decision_conflict",
+        "purpose": "召回毕业后城市选择冲突",
+        "priority": 2
+      },
+      {
+        "query": "大城市 机会 老家 成本",
+        "type": "life_path",
+        "purpose": "召回机会和生活成本对照",
+        "priority": 3
+      },
+      {
+        "query": "留在大城市 回老家 后悔吗",
+        "type": "failure_review",
+        "purpose": "召回城市去留后悔复盘",
+        "priority": 3
+      },
+      {
+        "query": "小县城 生活 适应 建议",
+        "type": "alternative_solution",
+        "purpose": "寻找替代方案",
+        "priority": 3
+      },
+      {
+        "query": "失败 复盘",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 4
+      },
+      {
+        "query": "从大城市回到老家小县城生活是种什么体 真实经历",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 5
+      }
+    ],
+    "objectiveSlots": {
+      "age": null,
+      "industry": null,
+      "companyType": null,
+      "role": null,
+      "city": "老家",
+      "status": null,
+      "direction": null,
+      "constraint": null
+    },
+    "missingSlots": [
+      "role",
+      "status",
+      "direction",
+      "constraint"
+    ],
+    "queryPlan": {
+      "primary": [],
+      "secondary": [],
+      "fallback": [
+        "失败 复盘",
+        "从大城市回到老家小县城生活是种什么体 真实经历"
+      ]
+    },
+    "intentTags": [
+      "城市选择",
+      "生活方式",
+      "个人发展",
+      "归属感"
+    ],
+    "userNeedSummary": "从大城市回到老家小县城生活的真实体验与得失权衡"
+  }
+}

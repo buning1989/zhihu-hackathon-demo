@@ -67,6 +67,10 @@ export const config = {
       experienceSummaryMs: parsePositiveInteger(process.env.AGENT_EXPERIENCE_SUMMARY_TIMEOUT_MS, 18000)
     }
   },
+  intentExpand: {
+    fixtureDir:
+      firstNonEmpty(process.env.INTENT_EXPAND_FIXTURE_DIR) || defaultIntentExpandFixtureDir()
+  },
   zhihu: {
     accessSecret: zhihuAccessSecret,
     appId: process.env.ZHIHU_APP_ID || "",
@@ -215,6 +219,12 @@ function defaultZhihuFixtureDir(): string {
   const cwd = process.cwd();
   const repoRoot = basename(cwd) === "backend" ? resolve(cwd, "..") : cwd;
   return resolve(repoRoot, "backend", "fixtures", "zhihu-search");
+}
+
+function defaultIntentExpandFixtureDir(): string {
+  const cwd = process.cwd();
+  const repoRoot = basename(cwd) === "backend" ? resolve(cwd, "..") : cwd;
+  return resolve(repoRoot, "backend", "fixtures", "intent-expand");
 }
 
 function defaultZhihuUsageLogDir(): string {

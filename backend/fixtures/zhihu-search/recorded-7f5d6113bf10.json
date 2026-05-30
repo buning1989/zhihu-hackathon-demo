@@ -1,0 +1,220 @@
+{
+  "schemaVersion": "zhihu-search-fixture.v1",
+  "id": "recorded_7f5d6113bf10",
+  "recordedAt": "2026-05-30T02:01:11.961Z",
+  "query": "异地恋三年要不要为对方放弃北京的工作",
+  "normalizedQuery": "异地恋三年要不要为对方放弃北京的工作",
+  "aliases": [],
+  "params": {
+    "query": "异地恋三年要不要为对方放弃北京的工作",
+    "count": 10
+  },
+  "response": {
+    "Code": 0,
+    "Message": "success",
+    "Data": {
+      "HasMore": false,
+      "SearchHashId": "f1d53f69bd8ae7796adf6edeb3ab3374",
+      "Items": [
+        {
+          "Title": "3年的异地,该怎么抉择? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "5909220391229444564",
+          "ContentText": "作为一个过来人，真诚地向你怒吼三连发。我不管你们之后感情什么走向，我只是求你，千万不要放弃自己的一切跟着对方去一个陌生城市。\n过去十年来，我和我身边的朋友都犯过这种错误，结果都是惨痛教训。这还是已婚的，并且对方已经在另一个城市有了稳定的工作。而你男友现在只有被欲望牵着鼻子的幻想，更不可能给你任何保证。\n当然，这个问题你想的很清楚，很好。我在这里这么多废话，只是要你知道，这种妥协，一丝都不能有。\n至于要不要等，你们自己的感情，别人是无法体会的，也没办法帮你作出判断。但是可以有一句忠告：不要为对方无谓地牺牲自己。什么是无谓的牺牲？在危难中你可以为对方付出自己的生命，情深之至，这没什么可说的。但是有些牺牲是没有价值的，对你不公平的，因为对方已经先采取了有利于自己的行动，你的牺牲是被动的，这时候就是无谓的。\n比如你放弃一切，跟着他去了一线城市，这时候你的价值是大幅降低了的，而他不仅没有任何损失，还获得了追求欲望的机会。\n这时候你们原来的感情平衡被打破了，天平严重倾斜，感情危机会如约而至。\n简单来说，你把自己都牺牲没了，对方还去爱谁呀？\n这时候你没有任何东西再来保障自己的感情稳固，主动权完全在他手里，所以你只能是一个受伤害者，而且很难再回到之前你已放弃的人生轨道上去。",
+          "Url": "https://www.zhihu.com/question/348318714/answer/839446435?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 14,
+          "VoteUpCount": 107,
+          "AuthorName": "无夜",
+          "AuthorAvatar": "https://pica.zhimg.com/50/v2-8b36527e15b6bbb43a7243677d5535a3_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1569735028,
+          "CommentInfoList": [
+            {
+              "Content": "？26岁就大龄剩女了？大龄剩女年龄门槛真低。。。。。"
+            },
+            {
+              "Content": "分人好吧 你这么说 太偏激 让看到这个的人怎么想 这种偏激的想法又会影响多少人"
+            },
+            {
+              "Content": "这时候你们原来的感情平衡被打破了，天平严重倾斜，感情危机会如约而至。简单来说，你把自己都牺牲没了，对方还去爱谁呀？  说的真好"
+            }
+          ],
+          "AuthorityLevel": "1",
+          "RankingScore": 1.2299781
+        },
+        {
+          "Title": "异地恋三年,该不该为爱情放弃现有工作去对方城市? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "3698460632638176080",
+          "ContentText": "对方不愿意放弃，不建议你放弃。",
+          "Url": "https://www.zhihu.com/question/1963923799574553869/answer/1965530023986430283?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 0,
+          "VoteUpCount": 0,
+          "AuthorName": "每天都有变优秀",
+          "AuthorAvatar": "https://picx.zhimg.com/50/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1761398875,
+          "AuthorityLevel": "1",
+          "RankingScore": 1.1248286
+        },
+        {
+          "Title": "异地恋三年,该不该为爱情放弃现有工作去对方城市? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "239447803264086377",
+          "ContentText": "不建议放弃已经有稳定人脉和经验的工作，你一旦去了对方的城市两眼一抹黑，如果对方家庭有点能量能给你安排好工作问题，那么婚后你必然矮一头，要是不能忍气吞声大吵大闹就很难免。\n如果对方家没什么能量不能安排好工作，那更糟，你要自己找工作，开始收入必然不高，如果结婚了，你这收入怎么养家糊口？\n要想升职加薪就要更多的精力和时间放在工作上，对方但凡有点不懂事见你收入不高，还不能陪伴提供情绪价值，在家里你就别想安生，最后大概率散伙。\n工作是赚钱的途径，钱是男人胆，也是你说话的底气。\n自己好好想想吧。",
+          "Url": "https://www.zhihu.com/question/1963923799574553869/answer/1965369721743442821?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 0,
+          "VoteUpCount": 1,
+          "AuthorName": "江太公",
+          "AuthorAvatar": "https://pica.zhimg.com/50/v2-29c4643b75855075ac62219fad650d02_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1761360656,
+          "AuthorityLevel": "1",
+          "RankingScore": 1.1033902
+        },
+        {
+          "Title": "异地恋三年,该不该为爱情放弃现有工作去对方城市? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "1107655620707842038",
+          "ContentText": "能感受到你正处在一个重要的人生十字路口，面对爱情与事业的抉择，你这样的情况需要考虑的事情挺多的。\n有几个核心的问题值得你思考：如果你离开了本地去外地，则你的职业发展是如何走向的，外地是否有同样的机会和条件？\n你的家人支持你离开本地吗？\n 如果外地发展的不好，又该如何去应对？\n最主要的还是你对象如何考虑，那他有没有考虑来到你的城市？\n还是要看你自己的决定，如果你想稳定的确定的生活，那么可以不用选择去冒险。\n如果你想尝试去冒险的话，也许会有更好的发展，爱情和事业双丰收这种概率也是有的。",
+          "Url": "https://www.zhihu.com/question/1963923799574553869/answer/1964031285036037201?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 0,
+          "VoteUpCount": 1,
+          "AuthorName": "释梦师",
+          "AuthorAvatar": "https://pica.zhimg.com/50/v2-d0e3577c54601de369567118b97f22c0_l.jpg?source=bbf6831d",
+          "AuthorBadge": "https://picx.zhimg.com/v2-2ddc5cc683982648f6f123616fb4ec09_l.png?source=32738c0c",
+          "AuthorBadgeText": "心理咨询师资格证持证人",
+          "EditTime": 1761041548,
+          "AuthorityLevel": "1",
+          "RankingScore": 1.1017686
+        },
+        {
+          "Title": "因工作而异地的职场恋人该如何权衡取舍? - 知乎",
+          "ContentType": "Article",
+          "ContentID": "-1084802969163349161",
+          "ContentText": "1.看追求 你们是否都以事业为第一位？你们是否有认为家庭更重要的？是追求稳定还是追求时代机遇\n\n2.看城市 你们谁的城市更宜居？房价两家是否能承受\n\n3.看现状 两人的工作前景？两人的关系与感情深浅？\n\n思考的问题很多，但是总有几个因素对异地的恋人来说特别重要。\n\n据统计，异地恋人的分手几率比非异地的低很多很多，异地恋人很多都会修成正果的。我们都应该思考，撇去恋人幻想的美好，真实的他/她值得你牺牲多少？ \n03\n很多宝宝之所以纠结的原因在于，到底这份“恋情”值不值得你做出“取舍”。\n\n如果两人感情确实深厚，彼此珍惜、雷打不动，奔着结婚，那就两人商量和评估未来在哪里发展更好，哪一方当下的情况更有利于未来的日子相对更宽裕，然后另一方舍弃工作就可以，毕竟心爱的人不常有，工作却是在哪都能做。\n\n但如果觉得感情还没到那程度，不稳定因素还在，那就不用纠结，也不要急于做出决定，时间可以印证很多东西，也可以看清一个人。但是不能故意拿时间去考验对方，没多少恋人经得起时间考验的。\n\n说得再多，还需要宝宝们自身感知和判断。异地相恋，最终要在一起，势必有一方要舍弃一些东西，但是舍弃是为了和相爱的人在一起生活得更好。\n04\n我更倾向于工作。现在的女性都应该独立起来，必须要有自己独立的经济地位，能够自立自强，把自己变得更优秀了，再找一个更优秀的伴侣 。\n如果我真的特别热爱那份工作，但对象又不支持的话，我会选择分开。如果我因为对象而去放弃自己喜欢的工作，我会遗憾一辈子。也许这个对象很好，分开了再也找不到。但是我宁愿后悔也不愿意遗憾。 \n05\n对于这个问题，我会选择放弃工作。\n本人目前就处于异地恋的状态，不过并没有大多数人讲的那么虐心。我们的感情基础很好，我在北京，他在老家（我们是一个地方的），一个月见面两三次，他很爱我，我也很爱他。\n之所以会放弃工作选择爱情是因为：\n首先在老家有一定的经济基础，我未来也打算回到家里，毕竟婚后肯定是要在一起的！\n其次北京的生活压力比较大。\n第三，找个谈得来的恋人真的很难，他对我很好，我也不想放弃他。\n其实这个问题在当今社会很普遍，因异地恋也导致许多有情人难以抉择，亲人，恋人，工作哪个都不想舍弃！\n我觉得现在国内找个合适的工作跟找个谈得来的恋人一样的不易。",
+          "Url": "https://zhuanlan.zhihu.com/p/39882313?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 4,
+          "VoteUpCount": 46,
+          "AuthorName": "小趴菜努力中",
+          "AuthorAvatar": "https://pic1.zhimg.com/50/v2-a6c2057c8e08ae5566e6423356b0af3d_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1533000547,
+          "CommentInfoList": [
+            {
+              "Content": "打破0回复😁，我认为对象比喜欢的工作重要"
+            },
+            {
+              "Content": "我是因为项目去，最长三个月，中间因为考试不断，所以会回来考试，大概半个月可以见一次，可是还是好舍不得[大哭]"
+            },
+            {
+              "Content": "难"
+            }
+          ],
+          "AuthorityLevel": "1",
+          "RankingScore": 1.099615
+        },
+        {
+          "Title": "该不该为了异地的男友放弃目前稳定的工作? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "2668696927286105146",
+          "ContentText": "作为亲身经历过这样事情的人来说，我建议不要为了一个人而放弃自己的工作。\n即使你很爱他，都不要轻易放弃自己工作，工作对于任何人来说都是立身之本。\n曾经我以为只要两个人好相爱，为了对方我也愿意放弃一切，甚至更好的机会和工作。\n我以为自己这样做会有好的结果，可我忘记了，人都是会变得，人心也是会变得。\n面对着好的工作机会，我毅然决然的放弃，去到一个小城市，找到一份不是很喜欢的工作，就是为了和他在一起。\n三年后 我俩分手了。\n现在我的处境很艰难。\n不想继续呆在小城市，因为这里没有我喜欢的工作，去大城市的话，年龄又有些尴尬，到了适婚年龄。\n很迷茫也很惆怅，可以说一无所有。\n我承认我很后悔不应该为了一个不确定的人放弃成长的机会。",
+          "Url": "https://www.zhihu.com/question/319244620/answer/648542424?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 21,
+          "VoteUpCount": 12,
+          "AuthorName": "淡淡柳如烟",
+          "AuthorAvatar": "https://picx.zhimg.com/50/v2-185a7c6c2a2dbad44f83f698307b4cd5_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1555029260,
+          "CommentInfoList": [
+            {
+              "Content": "我也是，辞去了一线城市四大行的工作，去到他那边一年了，但是没有工作。起先他说他有朋友可以托关系进一个股份银行，后来不了了之，也去找过工作，一直没有理想的。因为我父母一直不同意，两人现在也经常吵架。也不知道怎么办，回去了也没有工作。"
+            },
+            {
+              "Content": "正好相反，我这边是小城市。他那边是大城市。本来想考公务员 ，但是又不想呆在小城市里。挺迷茫的吧。问了他，他说我过去了公务员工作怎么办"
+            },
+            {
+              "Content": "那就分手吧，各自开始适合自己的生活"
+            }
+          ],
+          "AuthorityLevel": "1",
+          "RankingScore": 1.0781791
+        },
+        {
+          "Title": "为感情放弃工作值得吗? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "2558770939142050338",
+          "ContentText": "需要综合评估吧，\n一、首先问题简化如下：\n1\t分手：各自保住自己稳定的工作，感情上一别两宽，不再牵扯，各自寻找自己的幸福，并且不再后悔，别给未来伴侣找事儿埋雷。\n2\t男友投奔你：想办法重新找/考/调工作，你包容体谅他“适应期”间的各种问题，未来考虑男友的远地生活工作，多包容体谅男友的父母家人（具体节假日的陪伴，金钱上）。\n3\t你投奔男友：想办法重新找/考/调工作，他包容体谅你“适应期”间的各种问题，未来他考虑你的远嫁生活工作，多包容体谅你的父母家人（具体节假日的陪伴，金钱上）。\n二、具体综合评估，拿张纸或者Excel，统一分数标准:\n1、双方的感情：你们感情很好，看你的理智是否能战胜感情，如果你守住自己稳定的工作，能否承担失去他的痛苦，如果你重感情导致后来一直不找，或者找不到合适的，你会不会后悔？\n实际评估自己的理性和感性，问心+问脑之后，给1、2、3评分（倾向于哪个，哪个项目分值高）\n",
+          "Url": "https://www.zhihu.com/question/652467244/answer/3461259836?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 0,
+          "VoteUpCount": 3,
+          "AuthorName": "索尼娅的世界",
+          "AuthorAvatar": "https://pic1.zhimg.com/50/v2-764f2a3ddc173c95c604b3048b5d80e3_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1712744162,
+          "AuthorityLevel": "1",
+          "RankingScore": 1.0432035
+        },
+        {
+          "Title": "为了异国恋放弃国内稳定工作值得吗? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "-6455797802407665656",
+          "ContentText": "这种事儿对于你个人来讲有一定的风险，因为你们俩能不能修成正果是一个问号，一个人无论男女，要有立命的基础，而你基础很好，你为什么要自毁长城呢？\n所以你举棋不定是正确的，你周围的朋友褒贬不一也是正常的，正常的情况下，一件事犹豫不决，就说明这件事预感不好应该舍掉。",
+          "Url": "https://www.zhihu.com/question/1974799110017135314/answer/1975358973671650324?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 0,
+          "VoteUpCount": 0,
+          "AuthorName": "走进温馨与宁静",
+          "AuthorAvatar": "https://picx.zhimg.com/50/v2-a420a802976e8cc91ffde249089ba025_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1778437212,
+          "AuthorityLevel": "1",
+          "RankingScore": 1.0187618
+        },
+        {
+          "Title": "应该为男朋友,放弃自己的工作,去他的城市嘛? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "-4598721586866100009",
+          "ContentText": "茫茫人海中能遇到自己喜欢的人非常难得，在两个人的相处过程中一定会碰到一些困难和挫折。\n当遇到问题的时候，两个人都不选择牺牲的话很难会有好的结果。\n我的工作虽然稳定，但是长期的异地恋会让两个人的心越来越远，所以我愿意牺牲我的工作。",
+          "Url": "https://www.zhihu.com/question/541091225/answer/2556286667?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 0,
+          "VoteUpCount": 0,
+          "AuthorName": "忆往昔",
+          "AuthorAvatar": "https://picx.zhimg.com/50/v2-783a5ca4c3a3437c139856f9ee42cd60_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1656816954,
+          "AuthorityLevel": "1",
+          "RankingScore": 1.0161686
+        },
+        {
+          "Title": "异地恋无法在一个城市工作,又无法为对象放弃工作规划,真的只能分手吗? - 知乎",
+          "ContentType": "Answer",
+          "ContentID": "7366901361030084643",
+          "ContentText": "不过挑战自我也行，你能接受未来结婚之后你们一直保持远距离相处和生活不？如果打算要孩子的话，孩子跟谁住呢？\n不就是舍不得嘛。\n我就是远嫁上千公里外省的，给你看看我丢掉了啥。\n我放弃编制和现有的父母留的房子（小区三房两厅的套房，我自己住，距离我当时的工作单位只有不到5km），然后放弃工作之后因此刚毕业不久就背了将近十万的外债，去到现在的老公那边，租房子，然后重新找工作。\n然后现在的老公愿意跟我分担我的债务，来到完全陌生的省份和城市，甚至连当地人都话都只能听懂几句。他就非常乐意的担任了为我找工作啊，帮我租房子，教我学本地话，他年龄比我大几岁他妈妈和亲戚老催他结婚生娃，这种情况下我也从没受到过来自他的家庭他父母亲戚那边任何的催婚催生的话，而且我说要假期出去玩他父母也都是说赶紧安排出去玩。他的父母跟我说话都防止我听不懂，很努力的跟我说普通话。\n还有帮我托运我的猫猫狗狗的很多杂活琐事，并且哪怕他有过敏性鼻炎的情况下，他依然很愿意帮我照顾我的猫猫狗狗们。\n在之后老公也非常的支持我去考研，并且我们两个都是有能力自己生活工作的人了。\n他就说考研让我去考，我们两个人总不能都去考吧，那不又得依托父母继续给我们出学费生活费了，但毕竟我们两边的父母都已经到了退休的年纪了，老公的父母还得供他的妹妹生活费，所以就更不想麻烦他们了。",
+          "Url": "https://www.zhihu.com/question/534891620/answer/2504761829?utm_medium=openapi_platform&utm_source=3d61c",
+          "CommentCount": 8,
+          "VoteUpCount": 26,
+          "AuthorName": "约瑟菲娜",
+          "AuthorAvatar": "https://picx.zhimg.com/50/v2-324d761b4e9a46fe2a0826deb94450e9_l.jpg?source=bbf6831d",
+          "AuthorBadge": "",
+          "AuthorBadgeText": "",
+          "EditTime": 1653688568,
+          "CommentInfoList": [
+            {
+              "Content": "\n理智告诉这样子的感情不长久，但两个人感情未出现任何问题，目前就只能拖着[捂脸]现在提总觉得太残忍了\n"
+            }
+          ],
+          "AuthorityLevel": "1",
+          "RankingScore": 0.9977443
+        }
+      ]
+    }
+  }
+}

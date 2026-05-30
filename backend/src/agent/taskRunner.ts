@@ -25,6 +25,10 @@ import {
   runAgentExperienceSummary
 } from "../llm/agentExperienceSummary.js";
 import { runIntentExpandStage } from "../llm/demoSearchOrchestrator.js";
+import {
+  readIntentExpandFixture,
+  writeIntentExpandFixture
+} from "../llm/intentExpandFixtures.js";
 import { llmRouter } from "../llm/llmRouter.js";
 import {
   getAgentLlmTaskTimeoutMs,
@@ -261,6 +265,36 @@ export class AgentTaskRunner {
 
     const provider = llmRouter.getProviderForTask("intent_expand");
     const model = llmRouter.getModelForTask("intent_expand");
+
+    if (task.dataMode === "replay") {
+      const fixture = readIntentExpandFixture(query);
+      if (!fixture) {
+        throw new HttpError(
+          404,
+          "INTENT_REPLAY_FIXTURE_MISSING",
+          `intent_expand replay fixture 缺失：query="${query}"`
+        );
+      }
+
+      const intent = buildLlmAgentIntent(query, fixture.output, fallbackIntent);
+      this.finishStage(taskId, "intent_expand", "succeeded", {
+        provider: fixture.provider ?? provider,
+        model: fixture.model ?? model,
+        outputSummary: {
+          intent: intent.intent,
+          focusTagCount: intent.focusTags.length,
+          topicSignalCount: intent.topicSignals.length,
+          searchQueryCount: intent.searchQueries.length,
+          fixtureId: fixture.id,
+          fixtureSource: "intent_expand_replay",
+          fallbackUsed: false
+        },
+        fallbackUsed: false
+      });
+
+      return intent;
+    }
+
     if (!llmRouter.isTaskConfigured("intent_expand")) {
       this.finishStage(taskId, "intent_expand", "degraded", {
         provider,
@@ -287,6 +321,14 @@ export class AgentTaskRunner {
       const fallbackUsed =
         stageResult.attempted === 0 || stageResult.failed > 0 || stageResult.succeeded === 0;
       const intent = buildLlmAgentIntent(query, result.output, fallbackIntent);
+      const fixture = task.dataMode === "real" && stageResult.succeeded > 0
+        ? writeIntentExpandFixture({
+            query,
+            output: result.output,
+            provider: stageResult.provider ?? provider,
+            model: stageResult.model ?? model
+          })
+        : null;
 
       this.finishStage(taskId, "intent_expand", fallbackUsed ? "degraded" : "succeeded", {
         provider: stageResult.provider ?? provider,
@@ -296,6 +338,7 @@ export class AgentTaskRunner {
           focusTagCount: intent.focusTags.length,
           topicSignalCount: intent.topicSignals.length,
           searchQueryCount: intent.searchQueries.length,
+          ...(fixture ? { fixtureId: fixture.id, fixtureSource: "intent_expand_real" } : {}),
           fallbackUsed
         },
         fallbackUsed,

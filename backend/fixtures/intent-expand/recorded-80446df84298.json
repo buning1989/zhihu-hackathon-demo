@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "intent-expand-fixture.v1",
+  "id": "intent_80446df84298",
+  "recordedAt": "2026-05-30T04:18:03.894Z",
+  "query": "不工作了能去哪儿",
+  "normalizedQuery": "不工作了能去哪儿",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "output": {
+    "intent": "life_path_exploration",
+    "userCoreQuestion": "离开职场后有哪些可行的生活方向或去处",
+    "focusTags": [
+      "职业中断",
+      "生活方式",
+      "人生选择",
+      "自由职业",
+      "心理调适"
+    ],
+    "topicSignals": [
+      "不工作了",
+      "去哪儿",
+      "辞职",
+      "失业",
+      "gapyear",
+      "隐居",
+      "小城市",
+      "自由职业",
+      "职业中断",
+      "生活方式",
+      "人生选择",
+      "心理调适"
+    ],
+    "searchQueries": [
+      {
+        "query": "不工作了能去哪儿",
+        "type": "original",
+        "purpose": "保留用户原始表达",
+        "priority": 1
+      },
+      {
+        "query": "不工作 出路",
+        "type": "real_experience",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "辞职 不工作 生活 去向",
+        "type": "life_path",
+        "purpose": "召回类似困惑",
+        "priority": 2
+      },
+      {
+        "query": "失业 后 怎么 生活",
+        "type": "failure_review",
+        "purpose": "寻找失败后应对经历",
+        "priority": 3
+      },
+      {
+        "query": "gap year 做什么 经历",
+        "type": "real_experience",
+        "purpose": "召回真实经历",
+        "priority": 4
+      },
+      {
+        "query": "不工作 出路 后悔",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 4
+      },
+      {
+        "query": "自由职业 可行 吗",
+        "type": "decision_conflict",
+        "purpose": "探讨决策矛盾",
+        "priority": 5
+      },
+      {
+        "query": "不工作 复盘",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 5
+      },
+      {
+        "query": "长期 不工作 心理 调整",
+        "type": "real_experience",
+        "purpose": "了解心理适应",
+        "priority": 6
+      },
+      {
+        "query": "出路 失败 复盘",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 6
+      },
+      {
+        "query": "离职 后 后悔 经历",
+        "type": "failure_review",
+        "purpose": "查看后悔案例",
+        "priority": 6
+      },
+      {
+        "query": "工作 不工作 真实经历",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 6
+      }
+    ],
+    "objectiveSlots": {
+      "age": null,
+      "industry": null,
+      "companyType": null,
+      "role": null,
+      "city": null,
+      "status": "不工作",
+      "direction": "出路",
+      "constraint": null
+    },
+    "missingSlots": [
+      "role",
+      "constraint"
+    ],
+    "queryPlan": {
+      "primary": [
+        "不工作 出路"
+      ],
+      "secondary": [
+        "不工作 出路"
+      ],
+      "fallback": [
+        "不工作 出路 后悔",
+        "不工作 复盘",
+        "出路 失败 复盘",
+        "工作 不工作 真实经历"
+      ]
+    },
+    "intentTags": [
+      "职业中断",
+      "生活方式",
+      "人生选择",
+      "自由职业",
+      "心理调适"
+    ],
+    "userNeedSummary": "离开职场后有哪些可行的生活方向或去处"
+  }
+}
