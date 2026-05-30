@@ -215,7 +215,9 @@ export class AgentTaskRunner {
 
     const plan = await similarityClarificationPlanner.create({
       query: task.query,
-      useLlm: false
+      useLlm:
+        task.dataMode !== "mock" &&
+        llmRouter.isTaskConfigured("similarity_clarification_plan")
     });
     const needInput = toAgentNeedInput(plan);
     if (!needInput) {
@@ -414,6 +416,9 @@ export class AgentTaskRunner {
           )
         );
       } catch (error) {
+        if (dataMode === "replay" && toErrorCode(error) === "ZHIHU_REPLAY_FIXTURE_MISSING") {
+          throw error;
+        }
         failedQueries.push(`${plan.query}: ${toErrorMessage(error)}`);
       }
     }
