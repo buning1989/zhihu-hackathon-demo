@@ -59,6 +59,17 @@ function pct(n) {
   return Number.isFinite(n) ? (n * 100).toFixed(0) + "%" : "n/a";
 }
 
+function formatLevelDist(dist) {
+  const total = (dist?.high ?? 0) + (dist?.medium ?? 0) + (dist?.low ?? 0);
+  if (!total) return "high 0 / medium 0 / low 0";
+
+  return [
+    `high ${dist.high} (${pct(dist.high / total)})`,
+    `medium ${dist.medium} (${pct(dist.medium / total)})`,
+    `low ${dist.low} (${pct(dist.low / total)})`
+  ].join(" / ");
+}
+
 // 跑一次完整链路，返回该次原始观测
 async function runOnce(item) {
   const t0 = Date.now();
@@ -136,6 +147,10 @@ function metricsFromObservation(item, obs) {
   const topicKw = item.topicKeywords || item.subjectKeywords || [];
   const subjectHit = people.filter((p) => coreKw.some((kw) => textOf(p).includes(kw)));
   const topicHit = people.filter((p) => topicKw.some((kw) => textOf(p).includes(kw)));
+  const highLevelPeople = people.filter((p) => p.match?.level === "high");
+  const highLevelSubjectHit = highLevelPeople.filter((p) =>
+    coreKw.some((kw) => textOf(p).includes(kw))
+  );
   const summaryReady = expPeople.filter(
     (p) => p.experienceSummaryStatus === "ready" && p.experienceSummarySource === "llm"
   );
@@ -152,6 +167,11 @@ function metricsFromObservation(item, obs) {
   return {
     peopleCount: people.length,
     subjectMatchRate: people.length ? subjectHit.length / people.length : 0,
+    highLevelSubjectPrecision: highLevelPeople.length
+      ? highLevelSubjectHit.length / highLevelPeople.length
+      : NaN,
+    highLevelCount: highLevelPeople.length,
+    highLevelSubjectHitCount: highLevelSubjectHit.length,
     topicMatchRate: people.length ? topicHit.length / people.length : 0,
     experienceSampleRate: people.length ? expPeople.length / people.length : 0,
     summaryReadyRate: expPeople.length ? summaryReady.length / expPeople.length : 0,
@@ -188,6 +208,16 @@ function avg(nums) {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN;
 }
 
+function sum(nums) {
+  return nums
+    .filter((n) => Number.isFinite(n))
+    .reduce((total, n) => total + n, 0);
+}
+
+function ratio(numerator, denominator) {
+  return denominator > 0 ? numerator / denominator : NaN;
+}
+
 function aggregateRuns(item, runMetrics) {
   const ok = runMetrics.filter((m) => !m.error);
   if (ok.length === 0) return { id: item.id, query: item.query, error: runMetrics[0]?.error };
@@ -197,6 +227,12 @@ function aggregateRuns(item, runMetrics) {
     runs: ok.length,
     peopleCount: avg(ok.map((m) => m.peopleCount)),
     subjectMatchRate: avg(ok.map((m) => m.subjectMatchRate)),
+    highLevelSubjectPrecision: ratio(
+      sum(ok.map((m) => m.highLevelSubjectHitCount)),
+      sum(ok.map((m) => m.highLevelCount))
+    ),
+    highLevelCount: sum(ok.map((m) => m.highLevelCount)),
+    highLevelSubjectHitCount: sum(ok.map((m) => m.highLevelSubjectHitCount)),
     topicMatchRate: avg(ok.map((m) => m.topicMatchRate)),
     experienceSampleRate: avg(ok.map((m) => m.experienceSampleRate)),
     summaryReadyRate: avg(ok.map((m) => m.summaryReadyRate)),
@@ -227,10 +263,17 @@ function mergeLevels(dists) {
 
 function overall(perQuery) {
   const ok = perQuery.filter((q) => !q.error);
+  const matchLevelDist = mergeLevels(ok.map((q) => q.matchLevelDist));
   return {
     queries: perQuery.length,
     ok: ok.length,
     subjectMatchRate: avg(ok.map((q) => q.subjectMatchRate)),
+    highLevelSubjectPrecision: ratio(
+      sum(ok.map((q) => q.highLevelSubjectHitCount)),
+      sum(ok.map((q) => q.highLevelCount))
+    ),
+    highLevelCount: sum(ok.map((q) => q.highLevelCount)),
+    highLevelSubjectHitCount: sum(ok.map((q) => q.highLevelSubjectHitCount)),
     topicMatchRate: avg(ok.map((q) => q.topicMatchRate)),
     experienceSampleRate: avg(ok.map((q) => q.experienceSampleRate)),
     summaryReadyRate: avg(ok.map((q) => q.summaryReadyRate)),
@@ -238,6 +281,7 @@ function overall(perQuery) {
     clarifyLlmUsedRate: avg(ok.map((q) => (q.clarifyLlmUsed ? 1 : 0))),
     degradedRate: avg(ok.map((q) => q.degradedRate)),
     personaConsistency: avg(ok.map((q) => q.personaConsistency)),
+    matchLevelDist,
     latencyP50: median(ok.map((q) => q.latencyP50)),
     latencyMax: Math.max(...ok.map((q) => q.latencyMax))
   };
@@ -271,7 +315,7 @@ async function main() {
       console.log(`ERROR: ${agg.error}`);
     } else {
       console.log(
-        `subj=${pct(agg.subjectMatchRate)} topic=${pct(agg.topicMatchRate)} exp=${pct(agg.experienceSampleRate)} sum=${pct(agg.summaryReadyRate)} intentLLM=${agg.intentLlmUsed} clarifyLLM=${agg.clarifyLlmUsed} deg=${pct(agg.degradedRate)} p50=${(agg.latencyP50 / 1000).toFixed(1)}s`
+        `subj=${pct(agg.subjectMatchRate)} highSubj=${pct(agg.highLevelSubjectPrecision)} levels=[${formatLevelDist(agg.matchLevelDist)}] topic=${pct(agg.topicMatchRate)} exp=${pct(agg.experienceSampleRate)} sum=${pct(agg.summaryReadyRate)} intentLLM=${agg.intentLlmUsed} clarifyLLM=${agg.clarifyLlmUsed} deg=${pct(agg.degradedRate)} p50=${(agg.latencyP50 / 1000).toFixed(1)}s`
       );
     }
   }
@@ -285,6 +329,7 @@ async function main() {
   console.log("\n================ 汇总 ================");
   const b = baseline || {};
   console.log(`主体匹配率   subjectMatchRate     ${pct(summary.subjectMatchRate)}${fmtArrow(summary.subjectMatchRate, b.subjectMatchRate)}  (严格主体词，越高越切题)`);
+  console.log(`高档主体精度 highLevelSubjectPrecision ${pct(summary.highLevelSubjectPrecision)}${fmtArrow(summary.highLevelSubjectPrecision, b.highLevelSubjectPrecision)}  (high 档样本中主体命中占比)`);
   console.log(`话题匹配率   topicMatchRate       ${pct(summary.topicMatchRate)}${fmtArrow(summary.topicMatchRate, b.topicMatchRate)}  (宽松，仅参考)`);
   console.log(`经历样本率   experienceSampleRate ${pct(summary.experienceSampleRate)}${fmtArrow(summary.experienceSampleRate, b.experienceSampleRate)}`);
   console.log(`总结命中率   summaryReadyRate     ${pct(summary.summaryReadyRate)}${fmtArrow(summary.summaryReadyRate, b.summaryReadyRate)}  (目标≥80%)`);
@@ -292,6 +337,7 @@ async function main() {
   console.log(`澄清走LLM率  clarifyLlmUsedRate   ${pct(summary.clarifyLlmUsedRate)}${fmtArrow(summary.clarifyLlmUsedRate, b.clarifyLlmUsedRate)}`);
   console.log(`降级率       degradedRate         ${pct(summary.degradedRate)}${fmtArrow(summary.degradedRate, b.degradedRate, false)}`);
   console.log(`分身一致性   personaConsistency   ${pct(summary.personaConsistency)}${fmtArrow(summary.personaConsistency, b.personaConsistency)}`);
+  console.log(`匹配等级分布 matchLevelDist       ${formatLevelDist(summary.matchLevelDist)}`);
   console.log(`延迟 P50/Max latency             ${(summary.latencyP50 / 1000).toFixed(1)}s / ${(summary.latencyMax / 1000).toFixed(1)}s`);
   if (baseline) console.log("\n(对比对象：backend/eval/baseline.json)");
 
