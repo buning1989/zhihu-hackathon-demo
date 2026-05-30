@@ -1,6 +1,7 @@
 node_modules/
 dist/
 data/
+backend/eval/runs/
 .env
 .env.local
 npm-debug.log*

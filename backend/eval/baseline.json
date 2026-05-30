@@ -1,0 +1,229 @@
+{
+  "generatedAt": "2026-05-30T04:30:19.103Z",
+  "base": "http://127.0.0.1:8011",
+  "dataMode": "replay",
+  "runs": 1,
+  "summary": {
+    "queries": 6,
+    "ok": 6,
+    "subjectMatchRate": 0.9285714285714285,
+    "topicMatchRate": 0.7345238095238096,
+    "experienceSampleRate": 1,
+    "summaryReadyRate": 0.4462301587301587,
+    "intentLlmUsedRate": 1,
+    "clarifyLlmUsedRate": 1,
+    "degradedRate": 0.16666666666666666,
+    "personaConsistency": 1,
+    "latencyP50": 15722.5,
+    "latencyMax": 22072
+  },
+  "perQuery": [
+    {
+      "id": "career_switch_programmer",
+      "query": "三十岁从国企裸辞转行做程序员，晚不晚",
+      "runs": 1,
+      "peopleCount": 7,
+      "subjectMatchRate": 0.5714285714285714,
+      "topicMatchRate": 0.8571428571428571,
+      "experienceSampleRate": 1,
+      "summaryReadyRate": 0.2857142857142857,
+      "intentLlmUsed": true,
+      "clarifyLlmUsed": true,
+      "degradedRate": 0,
+      "personaConsistency": 1,
+      "latencyP50": 12214,
+      "latencyMax": 12214,
+      "matchLevelDist": {
+        "high": 0,
+        "medium": 7,
+        "low": 0
+      },
+      "focusTagsSample": [
+        "转行程序员",
+        "三十岁",
+        "国企裸辞",
+        "职业转型"
+      ],
+      "searchQueriesSample": [
+        "三十岁从国企裸辞转行做程序员，晚不晚",
+        "程序员 裸辞 转行",
+        "30 程序员 转行",
+        "程序员 转行",
+        "程序员 裸辞后",
+        "裸辞 空窗期",
+        "裸辞 后悔吗"
+      ]
+    },
+    {
+      "id": "work_pause_where",
+      "query": "不工作了能去哪儿",
+      "runs": 1,
+      "peopleCount": 4,
+      "subjectMatchRate": 1,
+      "topicMatchRate": 0.75,
+      "experienceSampleRate": 1,
+      "summaryReadyRate": 0.75,
+      "intentLlmUsed": true,
+      "clarifyLlmUsed": true,
+      "degradedRate": 0,
+      "personaConsistency": 1,
+      "latencyP50": 20671,
+      "latencyMax": 20671,
+      "matchLevelDist": {
+        "high": 1,
+        "medium": 3,
+        "low": 0
+      },
+      "focusTagsSample": [
+        "职业中断",
+        "生活方式",
+        "人生选择",
+        "自由职业",
+        "心理调适"
+      ],
+      "searchQueriesSample": [
+        "不工作了能去哪儿",
+        "不工作 出路",
+        "辞职 不工作 生活 去向",
+        "工作 不工作 后来怎么样",
+        "不工作后 生活",
+        "不上班之后 生活",
+        "长期不上班 状态"
+      ]
+    },
+    {
+      "id": "ldr_give_up_beijing",
+      "query": "异地恋三年要不要为对方放弃北京的工作",
+      "runs": 1,
+      "peopleCount": 8,
+      "subjectMatchRate": 1,
+      "topicMatchRate": 1,
+      "experienceSampleRate": 1,
+      "summaryReadyRate": 0.375,
+      "intentLlmUsed": true,
+      "clarifyLlmUsed": true,
+      "degradedRate": 0,
+      "personaConsistency": 1,
+      "latencyP50": 15024,
+      "latencyMax": 15024,
+      "matchLevelDist": {
+        "high": 8,
+        "medium": 0,
+        "low": 0
+      },
+      "focusTagsSample": [
+        "异地恋",
+        "工作",
+        "北京"
+      ],
+      "searchQueriesSample": [
+        "异地恋三年要不要为对方放弃北京的工作",
+        "异地恋 北京 工作放弃",
+        "异地恋 职业发展 后悔吗",
+        "异地恋 工作 北京 真实经历"
+      ]
+    },
+    {
+      "id": "postgrad_or_work",
+      "query": "考研失败后我该怎么办",
+      "runs": 1,
+      "peopleCount": 5,
+      "subjectMatchRate": 1,
+      "topicMatchRate": 0.8,
+      "experienceSampleRate": 1,
+      "summaryReadyRate": 0.2,
+      "intentLlmUsed": true,
+      "clarifyLlmUsed": true,
+      "degradedRate": 1,
+      "personaConsistency": 1,
+      "latencyP50": 13587,
+      "latencyMax": 13587,
+      "matchLevelDist": {
+        "high": 2,
+        "medium": 3,
+        "low": 0
+      },
+      "focusTagsSample": [
+        "考研",
+        "失败",
+        "人生规划",
+        "调剂",
+        "二战"
+      ],
+      "searchQueriesSample": [
+        "考研失败后我该怎么办",
+        "考研落榜 调剂 经验",
+        "考研失败后我该怎么办 真实经历",
+        "考研失败后我该怎么办 后来怎么样"
+      ]
+    },
+    {
+      "id": "layoff_restart_35",
+      "query": "三十五岁被裁员后怎么重新开始",
+      "runs": 1,
+      "peopleCount": 3,
+      "subjectMatchRate": 1,
+      "topicMatchRate": 0,
+      "experienceSampleRate": 1,
+      "summaryReadyRate": 0.6666666666666666,
+      "intentLlmUsed": true,
+      "clarifyLlmUsed": true,
+      "degradedRate": 0,
+      "personaConsistency": 1,
+      "latencyP50": 16421,
+      "latencyMax": 16421,
+      "matchLevelDist": {
+        "high": 0,
+        "medium": 3,
+        "low": 0
+      },
+      "focusTagsSample": [
+        "职业转型",
+        "中年危机",
+        "失业重来"
+      ],
+      "searchQueriesSample": [
+        "三十五岁被裁员后怎么重新开始",
+        "三十五岁被裁员后怎么重新开始 怎么选",
+        "三十五岁被裁员后怎么重新开始 真实经历",
+        "三十五岁被裁员后怎么重新开始 后来怎么样",
+        "不工作后 生活",
+        "不上班之后 生活",
+        "长期不上班 状态"
+      ]
+    },
+    {
+      "id": "back_to_hometown",
+      "query": "从大城市回到老家小县城生活是种什么体验",
+      "runs": 1,
+      "peopleCount": 5,
+      "subjectMatchRate": 1,
+      "topicMatchRate": 1,
+      "experienceSampleRate": 1,
+      "summaryReadyRate": 0.4,
+      "intentLlmUsed": true,
+      "clarifyLlmUsed": true,
+      "degradedRate": 0,
+      "personaConsistency": 1,
+      "latencyP50": 22072,
+      "latencyMax": 22072,
+      "matchLevelDist": {
+        "high": 5,
+        "medium": 0,
+        "low": 0
+      },
+      "focusTagsSample": [
+        "城市选择",
+        "生活方式",
+        "个人发展",
+        "归属感"
+      ],
+      "searchQueriesSample": [
+        "从大城市回到老家小县城生活是种什么体验",
+        "毕业后 大城市 回老家",
+        "大城市回老家 职业发展",
+        "大城市 机会 老家 成本"
+      ]
+    }
+  ]
+}

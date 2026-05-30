@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "intent-expand-fixture.v1",
+  "id": "intent_2a78da639287",
+  "recordedAt": "2026-05-30T04:19:15.759Z",
+  "query": "考研失败后我该怎么办",
+  "normalizedQuery": "考研失败后我该怎么办",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "output": {
+    "intent": "life_path_exploration",
+    "userCoreQuestion": "考研失败后如何规划下一步",
+    "focusTags": [
+      "考研",
+      "失败",
+      "人生规划",
+      "调剂",
+      "二战"
+    ],
+    "topicSignals": [
+      "考研失利",
+      "落榜",
+      "备选方案",
+      "就业",
+      "调剂",
+      "二战",
+      "职业规划",
+      "考研",
+      "失败",
+      "人生规划",
+      "考研失败后我该",
+      "考研失败后如何规划下一步"
+    ],
+    "searchQueries": [
+      {
+        "query": "考研失败后我该怎么办",
+        "type": "original",
+        "purpose": "保留用户原始表达",
+        "priority": 1
+      },
+      {
+        "query": "考研落榜 调剂 经验",
+        "type": "real_experience",
+        "purpose": "召回真实调剂经历",
+        "priority": 2
+      },
+      {
+        "query": "考研失败后我该怎么办 后来怎么样",
+        "type": "real_experience",
+        "purpose": "召回后续状态",
+        "priority": 2
+      },
+      {
+        "query": "考研失败 二战 调整",
+        "type": "life_path",
+        "purpose": "找回相似人生路径选择",
+        "priority": 2
+      },
+      {
+        "query": "考研失败 家人 压力",
+        "type": "real_experience",
+        "purpose": "类似处境经历",
+        "priority": 3
+      },
+      {
+        "query": "考研失利 找工作 规划",
+        "type": "alternative_solution",
+        "purpose": "探索替代方案",
+        "priority": 3
+      },
+      {
+        "query": "考研 失利 心理调整",
+        "type": "real_experience",
+        "purpose": "心理健康相关经历",
+        "priority": 4
+      },
+      {
+        "query": "读研 后悔",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 4
+      },
+      {
+        "query": "考研失败 后悔 反思",
+        "type": "failure_review",
+        "purpose": "获得失败回顾",
+        "priority": 4
+      },
+      {
+        "query": "考研 没考上 出路",
+        "type": "decision_conflict",
+        "purpose": "了解冲突决策",
+        "priority": 5
+      },
+      {
+        "query": "读研 失败 复盘",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 5
+      },
+      {
+        "query": "考研失败后我该怎么办 真实经历",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 6
+      }
+    ],
+    "objectiveSlots": {
+      "age": null,
+      "industry": null,
+      "companyType": null,
+      "role": null,
+      "city": null,
+      "status": null,
+      "direction": "读研",
+      "constraint": null
+    },
+    "missingSlots": [
+      "role",
+      "status",
+      "constraint"
+    ],
+    "queryPlan": {
+      "primary": [],
+      "secondary": [],
+      "fallback": [
+        "读研 后悔",
+        "读研 失败 复盘",
+        "考研失败后我该怎么办 真实经历"
+      ]
+    },
+    "intentTags": [
+      "考研",
+      "失败",
+      "人生规划",
+      "调剂",
+      "二战"
+    ],
+    "userNeedSummary": "考研失败后如何规划下一步"
+  }
+}

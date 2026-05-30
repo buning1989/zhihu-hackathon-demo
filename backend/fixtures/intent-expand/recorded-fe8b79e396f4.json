@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "intent-expand-fixture.v1",
+  "id": "intent_fe8b79e396f4",
+  "recordedAt": "2026-05-30T04:17:26.996Z",
+  "query": "三十岁从国企裸辞转行做程序员，晚不晚",
+  "normalizedQuery": "三十岁从国企裸辞转行做程序员，晚不晚",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "output": {
+    "intent": "life_path_exploration",
+    "userCoreQuestion": "三十岁从国企裸辞转行做程序员是否太晚？",
+    "focusTags": [
+      "转行程序员",
+      "三十岁",
+      "国企裸辞",
+      "职业转型"
+    ],
+    "topicSignals": [
+      "三十岁转行",
+      "国企离职",
+      "程序员学习",
+      "年龄门槛",
+      "裸辞风险",
+      "转行经验",
+      "转行程序员",
+      "三十岁",
+      "国企裸辞",
+      "职业转型",
+      "晚不晚",
+      "30国企裸辞"
+    ],
+    "searchQueries": [
+      {
+        "query": "三十岁从国企裸辞转行做程序员，晚不晚",
+        "type": "original",
+        "purpose": "保留用户原始表达",
+        "priority": 1
+      },
+      {
+        "query": "30 国企 裸辞",
+        "type": "real_experience",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "国企 裸辞 转行",
+        "type": "real_experience",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "30 程序员 转行",
+        "type": "real_experience",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "国企 裸辞",
+        "type": "life_path",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "程序员 裸辞 转行",
+        "type": "life_path",
+        "purpose": "优先召回客观背景相似的人和处境",
+        "priority": 1
+      },
+      {
+        "query": "30 裸辞 转行",
+        "type": "life_path",
+        "purpose": "补充召回选择方向相似的内容",
+        "priority": 2
+      },
+      {
+        "query": "程序员 国企 裸辞",
+        "type": "life_path",
+        "purpose": "补充召回选择方向相似的内容",
+        "priority": 2
+      },
+      {
+        "query": "裸辞 转行",
+        "type": "life_path",
+        "purpose": "补充召回选择方向相似的内容",
+        "priority": 2
+      },
+      {
+        "query": "程序员 转行",
+        "type": "decision_conflict",
+        "purpose": "补充召回选择方向相似的内容",
+        "priority": 2
+      },
+      {
+        "query": "裸辞 转行 后悔",
+        "type": "failure_review",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 4
+      },
+      {
+        "query": "国企裸辞 复盘",
+        "type": "alternative_solution",
+        "purpose": "补充召回后果、复盘和替代方案",
+        "priority": 5
+      }
+    ],
+    "objectiveSlots": {
+      "age": "30",
+      "industry": "国企",
+      "companyType": "国企",
+      "role": "程序员",
+      "city": null,
+      "status": "裸辞",
+      "direction": "转行",
+      "constraint": null
+    },
+    "missingSlots": [
+      "constraint"
+    ],
+    "queryPlan": {
+      "primary": [
+        "30 国企 裸辞",
+        "国企 裸辞",
+        "国企 裸辞 转行",
+        "程序员 裸辞 转行",
+        "30 程序员 转行"
+      ],
+      "secondary": [
+        "30 裸辞 转行",
+        "国企 裸辞 转行",
+        "程序员 国企 裸辞",
+        "程序员 转行",
+        "裸辞 转行"
+      ],
+      "fallback": [
+        "裸辞 转行 后悔",
+        "国企裸辞 复盘",
+        "转行 失败 复盘",
+        "程序员 裸辞 复盘"
+      ]
+    },
+    "intentTags": [
+      "转行程序员",
+      "三十岁",
+      "国企裸辞",
+      "职业转型"
+    ],
+    "userNeedSummary": "三十岁从国企裸辞转行做程序员是否太晚？"
+  }
+}

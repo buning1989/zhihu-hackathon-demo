@@ -162,8 +162,25 @@ function metricsFromObservation(item, obs) {
     personaConsistency: personas.length ? personaConsistent / personas.length : 1,
     personasCount: personas.length,
     latencyMs: obs.latencyMs,
-    focusTags: r.analysis?.focusTags || []
+    focusTags: r.analysis?.focusTags || [],
+    searchQueries: readSearchQueries(r)
   };
+}
+
+function readSearchQueries(result) {
+  const debugQueries = Array.isArray(result.debug?.searchQueries)
+    ? result.debug.searchQueries
+    : [];
+  const queries = debugQueries
+    .map((item) => typeof item === "string" ? item : item?.query)
+    .filter(Boolean);
+  if (queries.length > 0) {
+    return queries;
+  }
+
+  return Array.isArray(result.debug?.search?.queriesUsed)
+    ? result.debug.search.queriesUsed.filter(Boolean)
+    : [];
 }
 
 function avg(nums) {
@@ -190,7 +207,8 @@ function aggregateRuns(item, runMetrics) {
     latencyP50: median(ok.map((m) => m.latencyMs)),
     latencyMax: Math.max(...ok.map((m) => m.latencyMs)),
     matchLevelDist: mergeLevels(ok.map((m) => m.matchLevelDist)),
-    focusTagsSample: ok[0].focusTags
+    focusTagsSample: ok[0].focusTags,
+    searchQueriesSample: ok[0].searchQueries
   };
 }
 
