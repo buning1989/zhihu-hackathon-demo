@@ -289,7 +289,7 @@ function toSearchCandidateFallbackPerson(
     }],
     match: {
       score,
-      level: score >= 0.72 ? "high" : "medium",
+      level: score >= 0.82 ? "high" : score >= 0.58 ? "medium" : "low",
       reasons: ["搜索候选池中存在可独立展示的原文经历段落"],
       matchedVariables: ["真实经历", "阶段结果", "个人判断"],
       riskNotes: ["该卡片来自规则补足，只开放查看原文，不开放追问"],

@@ -360,13 +360,13 @@ Content-Type: application/json
 | `dataMode: "mock"` | 不调用知乎搜索和 demo search LLM；返回 query-aware deterministic mock 数据。`meta.sourceRefs[].provider` 为 `mock`，`debug.composer` 为 `mock`，`debug.llmUsed` 为 `false`，`debug.llmStageResults` 为空数组。 |
 | `dataMode: "cache_first"` | 当前 `/api/demo/search` 先查请求级内存缓存；未命中时生成 deterministic mock fallback，`dataMode` 仍为 `cache_first`。底层知乎 provider 的 cache_first 会先读 fixture，只有 `DATA_MODE=real` 或 `ALLOW_REAL_ZH_API=1` 时才允许真实请求。 |
 | `dataMode: "replay"` | 走真实搜索组合和多阶段 orchestration，但知乎搜索只读 `backend/fixtures/zhihu-search`。任一执行 query 缺 fixture 时返回 `ZHIHU_REPLAY_FIXTURE_MISSING`，不静默 fallback。 |
-| `dataMode: "real"` | 先查本地 fixture/cache；缺失时调用真实搜索并写入 fixture，同时记录每日预算日志。成功时来源为 `provider: "zhihu"`、`type: "zhihu_answer"`，并返回 `debug.llmStageResults`、`debug.timings`、`debug.searchQueries`、`debug.searchQueryResults`、`debug.candidateQuality`、`debug.experienceSummaryDebug`。任一关键 real 链路抛错时默认返回错误，不再静默 fallback 到 mock；只有请求显式传 `allowMockFallback: true` 才允许返回 mock 兜底。 |
+| `dataMode: "real"` | 先查本地 fixture/cache；缺失时调用真实搜索并写入 fixture，同时记录真实调用日志，不做本地每日预算拦截。成功时来源为 `provider: "zhihu"`、`type: "zhihu_answer"`，并返回 `debug.llmStageResults`、`debug.timings`、`debug.searchQueries`、`debug.searchQueryResults`、`debug.candidateQuality`、`debug.experienceSummaryDebug`。任一关键 real 链路抛错时默认返回错误，不再静默 fallback 到 mock；只有请求显式传 `allowMockFallback: true` 才允许返回 mock 兜底。 |
 
 补充：
 
 - demo search 响应会写入进程内 session cache，供 `/api/personas/chat` 按 `queryId` 读取。
 - 请求级内存缓存 TTL 当前为 15 分钟，key 包含 normalized query、dataMode、count、登录上下文摘要。
-- 知乎搜索 fixture 目录默认是 `backend/fixtures/zhihu-search`；真实调用日志默认写入 `data/zhihu-api-usage/YYYY-MM-DD.jsonl`，通过 `ZH_API_DAILY_DEV_BUDGET` 控制每日真实调用上限。
+- 知乎搜索 fixture 目录默认是 `backend/fixtures/zhihu-search`；真实调用日志默认写入 `data/zhihu-api-usage/YYYY-MM-DD.jsonl`，仅用于审计，不再控制每日真实调用上限。
 - 当前 real smoke 中，`intent_expand`、`experience_summary`、`grounding_guard` 可成功；`evidence_extract` 和 `demo_response_compose` 可能按 stage timeout fallback，但接口仍成功返回。
 - `features.personaChat` 由 persona chat LLM 是否配置决定。即使 search 使用 `dataMode: "mock"`，只要 persona chat LLM 可用，也可能返回 `"real"`。
 

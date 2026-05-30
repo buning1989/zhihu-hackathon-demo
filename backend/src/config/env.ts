@@ -88,7 +88,6 @@ export const config = {
     ),
     fixtureDir: firstNonEmpty(process.env.ZH_API_FIXTURE_DIR) || defaultZhihuFixtureDir(),
     usageLogDir: firstNonEmpty(process.env.ZH_API_USAGE_LOG_DIR) || defaultZhihuUsageLogDir(),
-    dailyDevBudget: parseNonNegativeInteger(process.env.ZH_API_DAILY_DEV_BUDGET, 50),
     allowRealApi: parseBoolean(process.env.ALLOW_REAL_ZH_API, false)
   },
   llm: {

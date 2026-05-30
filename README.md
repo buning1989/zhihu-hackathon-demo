@@ -67,7 +67,7 @@ docker compose -f infra/docker-compose.yml up
 - `shared/openapi.yaml` 是前后端协作的最小契约。当前已实现接口 `GET /api/search` 继续保留；AI 分身产品化主链路从 `POST /api/agent/tasks` 开始，任务创建后通过 task status/view/result 渐进获取结果。
 - `POST /api/demo/search` 继续保留为同步兼容入口和本地 demo/smoke 入口，不作为长期产品主链路。
 - `POST /api/demo/search` 在请求体包含 `clarificationAnswers` 时，会返回 `intent + focusTags + searchPlan + debug`，用于澄清卡后的知乎搜索计划生成；未包含澄清答案时继续返回完整 demo 结果结构。
-- 知乎搜索支持 `replay/cache_first/real` 防护：默认 smoke/eval 使用本地 fixture，不消耗真实知乎 API；只有显式设置 `DATA_MODE=real` 或 `ALLOW_REAL_ZH_API=1` 才允许真实请求，并受 `ZH_API_DAILY_DEV_BUDGET` 限制。
+- 知乎搜索支持 `replay/cache_first/real` 防护：默认 smoke/eval 使用本地 fixture，不消耗真实知乎 API；只有显式设置 `DATA_MODE=real` 或 `ALLOW_REAL_ZH_API=1` 才允许真实请求。真实请求会记录调用日志，但不再做本地每日预算拦截。
 - Agent Task 默认使用 SQLite 持久化 task/stage/result，默认数据库文件为 `./data/agent-tasks.sqlite`；可用 `AGENT_TASK_DB_PATH` 指定路径，或用 `AGENT_TASK_STORE=memory` 切回本地调试用内存模式。
 - Agent Task 支持 `POST /api/agent/tasks/:taskId/stages/evidence_extract/retry` 单阶段重试；当前只开放 `evidence_extract`，重试会保留已有 partial result，成功后更新 final result，失败时继续明确 degraded/retryable。
 - Agent Task 后台会在 `evidence_extract` 后执行 `experience_summary`，只基于有限 evidence/source 候选增强 `finalResult.meta.experienceSummary` 和人物/卡片短摘要；失败或超时只标记 degraded，不返回伪 summary。

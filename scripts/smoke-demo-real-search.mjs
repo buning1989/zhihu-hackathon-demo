@@ -131,9 +131,7 @@ function printZhihuRiskNotice(dataMode, queryCount) {
   console.warn(
     `Estimated upper bound: ${queryCount} demo queries * 6 search rounds = ${estimatedSearchRounds} real search attempts before fixture/cache hits.`
   );
-  console.warn(
-    `Budget: ZH_API_DAILY_DEV_BUDGET=${process.env.ZH_API_DAILY_DEV_BUDGET || "50"}; repeated normalized queries should hit local fixtures.`
-  );
+  console.warn("Real search calls are logged locally; no daily budget cap is enforced.");
 }
 
 function isTruthy(value) {
