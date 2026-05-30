@@ -146,7 +146,7 @@ interface ExperienceSummaryStageOutput {
   debug: DemoExperienceSummaryDebug[];
 }
 
-interface StageRunResult<T> {
+export interface StageRunResult<T> {
   output: T;
   stageResult: DemoDebugLlmStageResult;
 }
@@ -935,7 +935,7 @@ function isKimiFallbackEligible(error: unknown): boolean {
   );
 }
 
-async function runIntentExpandStage(
+export async function runIntentExpandStage(
   query: string,
   userContext?: UserContext,
   budget?: PipelineBudget,
@@ -957,7 +957,7 @@ async function runIntentExpandStage(
   }
 
   const completionInput: Omit<JsonCompletionInput, "taskType"> = {
-    temperature: 0.1,
+    temperature: 0,
     maxTokens: 1200,
     messages: [
       {

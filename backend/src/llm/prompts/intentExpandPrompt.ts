@@ -18,7 +18,9 @@ searchQueries 规则：
 3. 必须覆盖 type：real_experience、life_path、failure_review、decision_conflict、alternative_solution。
 4. 前 3 条非 original query 优先使用客观词，例如职业、行业、状态、方向、约束；不要出现“真实经历、后悔、怎么办、值得吗、迷茫”等泛词。
 5. 不要脑补用户没说过的年龄、城市、疾病、收入、家庭关系、真实经历。
-6. 只做搜索计划，不给建议，不把 userContext 当事实证据。
+6. 如果用户问题包含明确主体或方向（如转行程序员、考研失败、异地恋、被裁员、回老家小县城），前 4 条 query 必须保留这些核心主体词，不要扩散成泛话题。
+7. query 不要使用引号、斜杠、括号、AND/OR 等搜索语法，只写普通中文短句。
+8. 只做搜索计划，不给建议，不把 userContext 当事实证据。
 
 JSON 形状：
 {

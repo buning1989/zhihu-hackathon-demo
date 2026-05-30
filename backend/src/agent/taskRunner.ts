@@ -7,7 +7,9 @@ import { searchService } from "../services/search.service.js";
 import type { SearchItem, SearchMatchedQuery } from "../types/api.types.js";
 import {
   DEMO_SCHEMA_VERSION,
+  type DemoClarificationAnswers,
   type DemoDataMode,
+  type DemoDebugClarificationContext,
   type DemoSearchResponse,
   type DemoSearchQueryPlan
 } from "../types/demo.types.js";
@@ -22,6 +24,8 @@ import {
   buildExperienceSummaryCandidatesFromDemoResult,
   runAgentExperienceSummary
 } from "../llm/agentExperienceSummary.js";
+import { runIntentExpandStage } from "../llm/demoSearchOrchestrator.js";
+import { llmRouter } from "../llm/llmRouter.js";
 import {
   getAgentLlmTaskTimeoutMs,
   getLlmTaskTimeoutMs
@@ -144,7 +148,7 @@ export class AgentTaskRunner {
         return;
       }
 
-      const intent = await this.runIntentStage(taskId, task.query);
+      const intent = await this.runIntentStage(taskId, task);
       this.store.setIntent(taskId, intent);
 
       if (task.dataMode === "mock") {
@@ -227,31 +231,97 @@ export class AgentTaskRunner {
     return true;
   }
 
-  private async runIntentStage(taskId: string, query: string): Promise<AgentIntentResult> {
+  private async runIntentStage(taskId: string, task: AgentTaskRecord): Promise<AgentIntentResult> {
+    const query = task.query;
     this.startStage(taskId, "intent_expand", {
       timeoutMs: getLlmTaskTimeoutMs("intent_expand"),
-      inputSummary: { queryLength: query.length }
+      inputSummary: {
+        queryLength: query.length,
+        dataMode: task.dataMode,
+        hasClarificationAnswers: hasClarificationAnswers(task.input.metadata)
+      }
     });
 
-    const searchQueries = buildFallbackSearchQueryPlan(query);
-    const intent: AgentIntentResult = {
-      intent: "life_path_exploration",
-      userCoreQuestion: `用户在探索「${truncateText(query, 60)}」相关的公开经验。`,
-      focusTags: buildFocusTags(query, searchQueries),
-      topicSignals: buildTopicSignals(query, searchQueries),
-      searchQueries
-    };
+    const fallbackIntent = buildFallbackAgentIntent(query);
 
-    this.finishStage(taskId, "intent_expand", "succeeded", {
-      outputSummary: {
-        searchQueryCount: searchQueries.length,
-        fallbackUsed: true
-      },
-      fallbackUsed: true,
-      fallbackReason: "MVP uses deterministic query expansion before optional LLM intent planning"
-    });
+    if (task.dataMode === "mock") {
+      this.finishStage(taskId, "intent_expand", "succeeded", {
+        outputSummary: {
+          searchQueryCount: fallbackIntent.searchQueries.length,
+          fallbackUsed: true
+        },
+        fallbackUsed: true,
+        fallbackReason: "MVP uses deterministic query expansion before optional LLM intent planning"
+      });
 
-    return intent;
+      return fallbackIntent;
+    }
+
+    const provider = llmRouter.getProviderForTask("intent_expand");
+    const model = llmRouter.getModelForTask("intent_expand");
+    if (!llmRouter.isTaskConfigured("intent_expand")) {
+      this.finishStage(taskId, "intent_expand", "degraded", {
+        provider,
+        model,
+        outputSummary: {
+          searchQueryCount: fallbackIntent.searchQueries.length,
+          fallbackUsed: true
+        },
+        fallbackUsed: true,
+        fallbackReason: "intent_expand LLM not configured; deterministic query expansion used"
+      });
+
+      return fallbackIntent;
+    }
+
+    try {
+      const result = await runIntentExpandStage(
+        query,
+        task.input.userContext,
+        undefined,
+        buildAgentClarificationContext(query, task.input.metadata)
+      );
+      const stageResult = result.stageResult;
+      const fallbackUsed =
+        stageResult.attempted === 0 || stageResult.failed > 0 || stageResult.succeeded === 0;
+      const intent = buildLlmAgentIntent(query, result.output, fallbackIntent);
+
+      this.finishStage(taskId, "intent_expand", fallbackUsed ? "degraded" : "succeeded", {
+        provider: stageResult.provider ?? provider,
+        model: stageResult.model ?? model,
+        outputSummary: {
+          intent: intent.intent,
+          focusTagCount: intent.focusTags.length,
+          topicSignalCount: intent.topicSignals.length,
+          searchQueryCount: intent.searchQueries.length,
+          fallbackUsed
+        },
+        fallbackUsed,
+        fallbackReason: fallbackUsed
+          ? stageResult.fallbackReasons[0] ?? "intent_expand LLM failed; deterministic query expansion used"
+          : undefined,
+        retryable: fallbackUsed
+      });
+
+      return intent;
+    } catch (error) {
+      const message = toErrorMessage(error);
+      this.finishStage(taskId, "intent_expand", "degraded", {
+        provider,
+        model,
+        outputSummary: {
+          searchQueryCount: fallbackIntent.searchQueries.length,
+          fallbackUsed: true
+        },
+        errorCode: toErrorCode(error),
+        errorMessage: message,
+        fallbackUsed: true,
+        fallbackReason: message,
+        retryable: true
+      });
+
+      return fallbackIntent;
+    }
   }
 
   private async runMockPipeline(taskId: string): Promise<void> {
@@ -344,9 +414,6 @@ export class AgentTaskRunner {
           )
         );
       } catch (error) {
-        if (dataMode === "replay" && toErrorCode(error) === "ZHIHU_REPLAY_FIXTURE_MISSING") {
-          throw error;
-        }
         failedQueries.push(`${plan.query}: ${toErrorMessage(error)}`);
       }
     }
@@ -1088,6 +1155,249 @@ function readRecordMetadata(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function buildFallbackAgentIntent(query: string): AgentIntentResult {
+  const searchQueries = buildFallbackSearchQueryPlan(query);
+  return {
+    intent: "life_path_exploration",
+    userCoreQuestion: `用户在探索「${truncateText(query, 60)}」相关的公开经验。`,
+    focusTags: buildFocusTags(query, searchQueries),
+    topicSignals: buildTopicSignals(query, searchQueries),
+    searchQueries
+  };
+}
+
+function buildLlmAgentIntent(
+  query: string,
+  llmIntent: AgentIntentResult,
+  fallbackIntent: AgentIntentResult
+): AgentIntentResult {
+  return {
+    intent: llmIntent.intent,
+    userCoreQuestion: llmIntent.userCoreQuestion,
+    focusTags: llmIntent.focusTags,
+    topicSignals: llmIntent.topicSignals,
+    searchQueries: stabilizeAgentSearchQueries(
+      query,
+      llmIntent.searchQueries,
+      fallbackIntent.searchQueries
+    )
+  };
+}
+
+function stabilizeAgentSearchQueries(
+  originalQuery: string,
+  llmSearchQueries: DemoSearchQueryPlan[],
+  fallbackSearchQueries: DemoSearchQueryPlan[]
+): DemoSearchQueryPlan[] {
+  const originalPlan = sanitizeAgentSearchQueryPlan(fallbackSearchQueries[0] ?? llmSearchQueries[0]);
+  const result: DemoSearchQueryPlan[] = [];
+  if (originalPlan) {
+    appendAgentSearchQueryPlan(result, {
+      ...originalPlan,
+      query: originalQuery,
+      type: "original",
+      priority: 1
+    });
+  }
+
+  const llmCandidates = rankAgentSearchQueryPlans(
+    originalQuery,
+    llmSearchQueries.map(sanitizeAgentSearchQueryPlan).filter(isSearchQueryPlan)
+      .filter((plan) => plan.type !== "original")
+  );
+  const fallbackCandidates = rankAgentSearchQueryPlans(
+    originalQuery,
+    fallbackSearchQueries.map(sanitizeAgentSearchQueryPlan).filter(isSearchQueryPlan)
+      .filter((plan) => plan.type !== "original")
+  );
+
+  for (const plan of [
+    llmCandidates[0],
+    fallbackCandidates[0],
+    llmCandidates[1],
+    fallbackCandidates[1],
+    ...llmCandidates,
+    ...fallbackCandidates
+  ]) {
+    appendAgentSearchQueryPlan(result, plan);
+    if (result.length >= 12) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+function sanitizeAgentSearchQueryPlan(
+  plan: DemoSearchQueryPlan | undefined
+): DemoSearchQueryPlan | undefined {
+  if (!plan) {
+    return undefined;
+  }
+
+  const query = stripSearchQueryDecorations(plan.query);
+  if (!query) {
+    return undefined;
+  }
+
+  return {
+    ...plan,
+    query
+  };
+}
+
+function stripSearchQueryDecorations(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[`"'“”‘’]+/, "")
+    .replace(/[`"'“”‘’]+$/, "")
+    .trim();
+}
+
+function isSearchQueryPlan(
+  plan: DemoSearchQueryPlan | undefined
+): plan is DemoSearchQueryPlan {
+  return Boolean(plan);
+}
+
+function appendAgentSearchQueryPlan(
+  target: DemoSearchQueryPlan[],
+  plan: DemoSearchQueryPlan | undefined
+): void {
+  if (!plan) {
+    return;
+  }
+
+  const key = stripSearchQueryDecorations(plan.query).toLowerCase();
+  if (!key || target.some((item) => stripSearchQueryDecorations(item.query).toLowerCase() === key)) {
+    return;
+  }
+
+  target.push(plan);
+}
+
+function rankAgentSearchQueryPlans(
+  originalQuery: string,
+  plans: DemoSearchQueryPlan[]
+): DemoSearchQueryPlan[] {
+  const anchorGroups = buildSearchAnchorGroups(originalQuery);
+  return plans
+    .map((plan, index) => ({
+      plan,
+      index,
+      score: scoreAgentSearchQueryPlan(plan, anchorGroups)
+    }))
+    .sort((left, right) =>
+      right.score - left.score ||
+      left.plan.priority - right.plan.priority ||
+      left.index - right.index
+    )
+    .map((item) => item.plan);
+}
+
+function scoreAgentSearchQueryPlan(
+  plan: DemoSearchQueryPlan,
+  anchorGroups: SearchAnchorGroup[]
+): number {
+  const query = stripSearchQueryDecorations(plan.query).toLowerCase();
+  const anchorScore = anchorGroups.reduce((score, group) => (
+    group.terms.some((term) => query.includes(term.toLowerCase())) ? score + group.weight : score
+  ), 0);
+  const typeBonus = plan.type === "real_experience"
+    ? 3
+    : plan.type === "life_path"
+      ? 2
+      : plan.type === "failure_review"
+        ? 1
+        : 0;
+
+  return anchorScore * 10 + typeBonus + (7 - Math.min(Math.max(plan.priority, 1), 6));
+}
+
+interface SearchAnchorGroup {
+  terms: string[];
+  weight: number;
+}
+
+function buildSearchAnchorGroups(query: string): SearchAnchorGroup[] {
+  const groups: SearchAnchorGroup[] = [];
+  const normalized = query.toLowerCase();
+  const anchorPatterns: Array<[RegExp, string[], number]> = [
+    [/程序员|编程|代码|开发|软件|it|前端|后端|java|python/i, ["程序员", "编程", "代码", "开发", "软件", "it", "前端", "后端", "java", "python"], 4],
+    [/转行|换行业|转岗/, ["转行", "换行业", "转岗"], 4],
+    [/不工作|不上班/, ["不工作", "不上班"], 4],
+    [/被裁|裁员|下岗|优化/, ["被裁", "裁员", "下岗", "优化"], 4],
+    [/考研|读研|研究生|二战|调剂|上岸/, ["考研", "读研", "研究生", "二战", "调剂", "上岸"], 4],
+    [/异地恋|异地|两地/, ["异地恋", "异地", "两地"], 4],
+    [/老家|县城|小县城|返乡|回乡/, ["老家", "县城", "小县城", "返乡", "回乡"], 4],
+    [/裸辞|辞职|离职/, ["裸辞", "辞职", "离职"], 2],
+    [/北京/, ["北京"], 2],
+    [/大城市|一线城市|北上广/, ["大城市", "一线城市", "北上广"], 2],
+    [/国企|体制内|大厂/, ["国企", "体制内", "大厂"], 1],
+    [/35|三十五|中年/, ["35", "35岁", "三十五", "中年"], 1],
+    [/30|三十/, ["30", "30岁", "三十"], 1],
+    [/工作|职业|事业/, ["工作", "职业", "事业"], 1]
+  ];
+
+  for (const [pattern, terms, weight] of anchorPatterns) {
+    if (pattern.test(normalized)) {
+      groups.push({ terms, weight });
+    }
+  }
+
+  return groups;
+}
+
+function hasClarificationAnswers(metadata: Record<string, unknown> | undefined): boolean {
+  return Object.values(readRecordMetadata(metadata?.clarificationAnswers)).some(
+    (value) => String(value ?? "").trim().length > 0
+  );
+}
+
+function buildAgentClarificationContext(
+  query: string,
+  metadata: Record<string, unknown> | undefined
+): DemoDebugClarificationContext | undefined {
+  const entries = Object.entries(readRecordMetadata(metadata?.clarificationAnswers))
+    .map(([key, value]) => [key, truncateText(String(value ?? ""), 80).trim()] as const)
+    .filter(([key, value]) => key.trim().length > 0 && value.length > 0);
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  const answers: DemoClarificationAnswers = {};
+  for (const [key, value] of entries) {
+    answers[key] = value;
+  }
+
+  const answerParts = entries.map(([key, value]) => `${key}: ${value}`);
+  const compactAnswerText = Object.values(answers).join(" ");
+  const searchHints = unique(
+    [
+      `${query} ${compactAnswerText}`,
+      ...Object.values(answers).flatMap((label) => [
+        `${query} ${label}`,
+        `${label} 真实经历`,
+        `${label} 选择复盘`
+      ]),
+      ...answerParts.map((part) => `${query} ${part}`)
+    ]
+      .map((item) => truncateText(item, 120).trim())
+      .filter(Boolean)
+  ).slice(0, 8);
+
+  return {
+    originalQuery: query,
+    answers,
+    answerLabels: answers,
+    answerSummary: answerParts.join("；"),
+    searchHints,
+    applied: true,
+    searchHintCount: searchHints.length
+  };
 }
 
 function toAgentNeedInput(
