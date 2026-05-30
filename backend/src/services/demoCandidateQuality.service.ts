@@ -318,6 +318,92 @@ const PRODUCT_MANAGER_EVIDENCE_MARKERS = [
   "岗位门槛",
   "产品转行"
 ];
+const PROGRAMMER_TRANSITION_CONTEXT_MARKERS = [
+  "转行",
+  "转岗",
+  "换行业",
+  "职业转型",
+  "裸辞",
+  "三十岁",
+  "30岁",
+  "程序员",
+  "开发",
+  "代码",
+  "编程",
+  "计算机",
+  "软件",
+  "互联网",
+  "it",
+  "前端",
+  "后端",
+  "java",
+  "python",
+  "安卓"
+];
+const PROGRAMMER_EVIDENCE_MARKERS = [
+  "程序员",
+  "开发",
+  "开发工程师",
+  "代码",
+  "编程",
+  "计算机",
+  "软件",
+  "互联网",
+  "it",
+  "前端",
+  "后端",
+  "java",
+  "python",
+  "安卓",
+  "android",
+  "码农",
+  "敲代码",
+  "技术岗"
+];
+const TRANSITION_EVIDENCE_MARKERS = [
+  "转行",
+  "转岗",
+  "换行业",
+  "入行",
+  "零基础",
+  "自学",
+  "培训班",
+  "面试",
+  "入职",
+  "裸辞",
+  "辞职"
+];
+const POSTGRAD_CONTEXT_MARKERS = ["考研", "研究生", "读研", "二战", "调剂", "上岸", "初试", "复试", "落榜"];
+const POSTGRAD_EVIDENCE_MARKERS = [
+  "考研",
+  "研究生",
+  "读研",
+  "二战",
+  "调剂",
+  "上岸",
+  "初试",
+  "复试",
+  "落榜",
+  "考公",
+  "备考",
+  "失败"
+];
+const LAYOFF_RESTART_CONTEXT_MARKERS = ["裁员", "被裁", "下岗", "优化", "失业", "35岁", "三十五", "中年"];
+const LAYOFF_RESTART_EVIDENCE_MARKERS = [
+  "裁员",
+  "被裁",
+  "下岗",
+  "优化",
+  "失业",
+  "再就业",
+  "重新开始",
+  "中年",
+  "35岁",
+  "三十五",
+  "找工作",
+  "求职",
+  "n+1"
+];
 const GENERIC_TRANSITION_DRIFT_MARKERS = [
   "转it",
   "转 IT",
@@ -447,24 +533,28 @@ export function scoreSearchCandidate(
   const productManagerTransition = scoreProductManagerTransitionScenario(contextText, scenarioText);
   const cityHomeChoice = scoreCityHomeScenario(contextText, scenarioText);
   const stabilityPassion = scoreStabilityPassionScenario(contextText, scenarioText);
+  const strictSubject = scoreStrictSubjectScenario(contextText, scenarioText);
   const scenarioBoostScore =
     relationshipWork.boostScore +
     relationshipOnly.boostScore +
     productManagerTransition.boostScore +
     cityHomeChoice.boostScore +
-    stabilityPassion.boostScore;
+    stabilityPassion.boostScore +
+    strictSubject.boostScore;
   const scenarioPenaltyScore =
     relationshipWork.penaltyScore +
     relationshipOnly.penaltyScore +
     productManagerTransition.penaltyScore +
     cityHomeChoice.penaltyScore +
-    stabilityPassion.penaltyScore;
+    stabilityPassion.penaltyScore +
+    strictSubject.penaltyScore;
   const scenarioForceDrop =
     relationshipWork.forceDrop ||
     relationshipOnly.forceDrop ||
     productManagerTransition.forceDrop ||
     cityHomeChoice.forceDrop ||
-    stabilityPassion.forceDrop;
+    stabilityPassion.forceDrop ||
+    strictSubject.forceDrop;
   const topicAssessment = scoreTopicHit(textForScoring, topicSignals);
   const narrative = scoreNarrative(body);
   const specificity = scoreSpecificity(body);
@@ -484,7 +574,8 @@ export function scoreSearchCandidate(
     ...relationshipOnly.relevanceSignals,
     ...productManagerTransition.relevanceSignals,
     ...cityHomeChoice.relevanceSignals,
-    ...stabilityPassion.relevanceSignals
+    ...stabilityPassion.relevanceSignals,
+    ...strictSubject.relevanceSignals
   ]);
   const penaltySignals = unique([
     ...penalty.signals,
@@ -492,7 +583,8 @@ export function scoreSearchCandidate(
     ...relationshipOnly.penaltySignals,
     ...productManagerTransition.penaltySignals,
     ...cityHomeChoice.penaltySignals,
-    ...stabilityPassion.penaltySignals
+    ...stabilityPassion.penaltySignals,
+    ...strictSubject.penaltySignals
   ]);
   const roughScore = clampPercent(
     scenarioForceDrop
@@ -653,6 +745,9 @@ function isRescuableNarrativeCandidate(assessment: CandidateAssessment): boolean
       "product_manager_guide_or_training_title",
       "city_home_holiday_travel_drift",
       "stability_passion_romance_drift_penalty",
+      "strict_subject_missing_programmer_signal",
+      "strict_subject_missing_postgrad_signal",
+      "strict_subject_missing_layoff_signal",
       "指南/教程型标题",
       "广告营销",
       "疑似机构/营销作者"
@@ -930,6 +1025,91 @@ function scorePenalty(input: {
   return {
     score: Math.min(score, 35),
     signals
+  };
+}
+
+function scoreStrictSubjectScenario(contextText: string, candidateText: string): {
+  boostScore: number;
+  penaltyScore: number;
+  relevanceSignals: string[];
+  penaltySignals: string[];
+  forceDrop: boolean;
+} {
+  const normalizedContext = normalizeText(contextText).toLowerCase();
+  const normalizedCandidate = normalizeText(candidateText).toLowerCase();
+
+  const hasProgrammerTransitionContext =
+    hasAny(normalizedContext, PROGRAMMER_TRANSITION_CONTEXT_MARKERS, true) &&
+    /转行|转岗|换行业|职业转型|裸辞/.test(normalizedContext) &&
+    /程序员|开发|代码|编程|计算机|软件|互联网|it|前端|后端|java|python|安卓|android/.test(normalizedContext);
+  if (hasProgrammerTransitionContext) {
+    const roleHits = markerHits(normalizedCandidate, PROGRAMMER_EVIDENCE_MARKERS, true);
+    const transitionHits = markerHits(normalizedCandidate, TRANSITION_EVIDENCE_MARKERS, true);
+    const hasRoleEvidence = roleHits.length > 0;
+
+    return {
+      boostScore: Math.min(32, roleHits.length * 9 + transitionHits.length * 4 + (hasRoleEvidence ? 6 : 0)),
+      penaltyScore: hasRoleEvidence ? (transitionHits.length > 0 ? 0 : 8) : 45,
+      relevanceSignals: [
+        ...(hasRoleEvidence ? ["strict_subject_programmer_match"] : []),
+        ...roleHits.slice(0, 5),
+        ...transitionHits.slice(0, 3)
+      ],
+      penaltySignals: [
+        ...(!hasRoleEvidence ? ["strict_subject_missing_programmer_signal"] : []),
+        ...(hasRoleEvidence && transitionHits.length === 0 ? ["programmer_transition_weak_transition_signal"] : [])
+      ],
+      forceDrop: !hasRoleEvidence
+    };
+  }
+
+  if (hasAny(normalizedContext, POSTGRAD_CONTEXT_MARKERS, false)) {
+    const examHits = markerHits(normalizedCandidate, POSTGRAD_EVIDENCE_MARKERS, false);
+    const strongExamHits = examHits.filter((marker) => !["失败", "考公", "备考"].includes(marker));
+    const hasExamEvidence = strongExamHits.length > 0;
+
+    return {
+      boostScore: Math.min(28, strongExamHits.length * 8 + examHits.length * 3),
+      penaltyScore: hasExamEvidence ? 0 : 38,
+      relevanceSignals: [
+        ...(hasExamEvidence ? ["strict_subject_postgrad_match"] : []),
+        ...strongExamHits.slice(0, 5),
+        ...examHits.filter((marker) => !strongExamHits.includes(marker)).slice(0, 2)
+      ],
+      penaltySignals: !hasExamEvidence ? ["strict_subject_missing_postgrad_signal"] : [],
+      forceDrop: !hasExamEvidence
+    };
+  }
+
+  if (hasAny(normalizedContext, LAYOFF_RESTART_CONTEXT_MARKERS, false)) {
+    const layoffHits = markerHits(normalizedCandidate, LAYOFF_RESTART_EVIDENCE_MARKERS, true);
+    const strongLayoffHits = layoffHits.filter((marker) =>
+      ["裁员", "被裁", "下岗", "优化", "中年", "35岁", "三十五", "n+1"].includes(marker)
+    );
+    const restartHits = layoffHits.filter((marker) =>
+      ["失业", "再就业", "重新开始", "找工作", "求职"].includes(marker)
+    );
+    const hasLayoffEvidence = strongLayoffHits.length > 0 || (restartHits.length >= 2 && layoffHits.length >= 2);
+
+    return {
+      boostScore: Math.min(28, strongLayoffHits.length * 8 + restartHits.length * 4),
+      penaltyScore: hasLayoffEvidence ? 0 : 34,
+      relevanceSignals: [
+        ...(hasLayoffEvidence ? ["strict_subject_layoff_restart_match"] : []),
+        ...strongLayoffHits.slice(0, 4),
+        ...restartHits.slice(0, 3)
+      ],
+      penaltySignals: !hasLayoffEvidence ? ["strict_subject_missing_layoff_signal"] : [],
+      forceDrop: !hasLayoffEvidence
+    };
+  }
+
+  return {
+    boostScore: 0,
+    penaltyScore: 0,
+    relevanceSignals: [],
+    penaltySignals: [],
+    forceDrop: false
   };
 }
 
@@ -1297,6 +1477,18 @@ function buildFilterReason(input: {
     return "downranked: stability-vs-passion query but candidate lacks tradeoff signals";
   }
 
+  if (input.penaltySignals.includes("strict_subject_missing_programmer_signal")) {
+    return "downranked: programmer-transition query but candidate lacks programmer/developer evidence";
+  }
+
+  if (input.penaltySignals.includes("strict_subject_missing_postgrad_signal")) {
+    return "downranked: postgrad query but candidate lacks exam/postgrad evidence";
+  }
+
+  if (input.penaltySignals.includes("strict_subject_missing_layoff_signal")) {
+    return "downranked: layoff-restart query but candidate lacks layoff or restart evidence";
+  }
+
   if (input.contentLength < MIN_EVIDENCE_CONTENT_LENGTH) {
     return `downranked: contentLength=${input.contentLength} is too short for core evidence`;
   }
@@ -1399,6 +1591,21 @@ function extractScenarioTopicSignals(text: string): string[] {
 
   if (/转行|转岗|换行业|转产品/.test(normalized) && /产品经理|产品岗|pm/i.test(normalized)) {
     signals.push("转行", "产品经理", "产品岗", "门槛", "能力", "项目", "岗位", "作品集", "现实");
+  }
+
+  if (
+    /转行|转岗|换行业|职业转型|裸辞/.test(normalized) &&
+    /程序员|开发|代码|编程|计算机|软件|互联网|it|前端|后端|java|python|安卓/.test(normalized.toLowerCase())
+  ) {
+    signals.push("转行", "程序员", "开发", "代码", "编程", "计算机", "软件", "入行", "面试", "现实");
+  }
+
+  if (/考研|研究生|读研|二战|调剂|上岸|初试|复试|落榜/.test(normalized)) {
+    signals.push("考研", "研究生", "二战", "调剂", "上岸", "落榜", "备考", "失败", "选择");
+  }
+
+  if (/裁员|被裁|下岗|优化|失业|35岁|三十五|中年/.test(normalized)) {
+    signals.push("裁员", "被裁", "失业", "中年", "35岁", "重新开始", "再就业", "求职");
   }
 
   if (
@@ -1622,6 +1829,18 @@ function isTopicSignal(value: string): boolean {
     !STOP_TOPIC_SIGNALS.has(value) &&
     !/^(召回|保留用户|基于|当前选择|行动代价|替代路径)/.test(value)
   );
+}
+
+function markerHits(text: string, markers: string[], caseInsensitive = false): string[] {
+  const normalizedText = caseInsensitive ? text.toLowerCase() : text;
+  return markers.filter((marker) => includesLoose(
+    normalizedText,
+    caseInsensitive ? marker.toLowerCase() : marker
+  ));
+}
+
+function hasAny(text: string, markers: string[], caseInsensitive = false): boolean {
+  return markerHits(text, markers, caseInsensitive).length > 0;
 }
 
 function markerScore(text: string, markers: string[], maxHits: number): number {

@@ -751,7 +751,7 @@ function toPerson(
   const matchScore = toMatchScore(quality, index);
   const match = {
     score: matchScore,
-    level: toMatchLevel(matchScore),
+    level: toMatchLevel(matchScore, quality),
     reasons: toMatchReasons(item, sampleType, quality, path),
     matchedVariables: variables,
     riskNotes: ["该样本只代表知乎公开内容片段，不能代表作者完整人生或长期结果"],
@@ -1639,20 +1639,30 @@ function toMatchScore(
   index: number
 ): number {
   return clampScore(
-    0.28 +
-      quality.relevanceScore * 0.28 +
-      quality.qualityScore * 0.26 +
+    0.2 +
+      quality.relevanceScore * 0.42 +
+      quality.qualityScore * 0.2 +
       quality.experienceSignalScore * 0.22 -
       Math.min(index, 5) * 0.01
   );
 }
 
-function toMatchLevel(score: number): "low" | "medium" | "high" {
-  if (score >= 0.72) {
+function toMatchLevel(
+  score: number,
+  quality: Pick<DemoCandidateQuality, "relevanceScore" | "roughTier" | "penaltySignals">
+): "low" | "medium" | "high" {
+  const hasSubjectMismatchPenalty = (quality.penaltySignals ?? []).some((signal) =>
+    /^strict_subject_missing_|missing_.*signal|.*_drift$|.*_drift_penalty$/.test(signal)
+  );
+  const subjectStrongEnough = quality.relevanceScore >= 0.55 && !hasSubjectMismatchPenalty;
+
+  if (score >= 0.82 && subjectStrongEnough && quality.roughTier === "strong") {
     return "high";
   }
 
-  return score >= 0.5 ? "medium" : "low";
+  return score >= 0.58 && quality.relevanceScore >= 0.18 && !hasSubjectMismatchPenalty
+    ? "medium"
+    : "low";
 }
 
 function toPersonaReadiness(
